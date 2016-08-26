@@ -1,0 +1,47 @@
+#!/bin/bash -x
+
+# the container consists of 3 Hardware Keys 
+#      * HW-KeyA - Hardware Public Key A
+#      * HW-KeyB - Hardware Public Key B
+#      * HW-KeyC - Hardware Public Key C
+# and 3 corresponding Hardware Signatures 
+#      * HW-SigA - Hardware Signature A
+#      * HW-SigB - Hardware Signature B
+#      * HW-SigC - Hardware Signature C
+# It also consists of upto 3 Software Keys (depends on project settings)
+#      * SW-KeyP - Software Public Key P
+#      * SW-KeyQ - Software Public Key Q
+#      * SW-KeyR - Software Public Key R
+# and upto 3 corresponding Software Signatures 
+#      * SW-SigP - Software Signature P
+#      * SW-SigQ - Software Signature Q
+#      * SW-SigR - Software Signature R
+ 
+SIGNTOOL=./signtool
+
+# firstly sign the component (signing server will sign for production builds,
+# openssl will be used for development builds).
+#   eg for skiboot.bin
+
+tmpVal=`stat -c %s ./bin/skiboot.bin`
+payloadSize=`printf "%x" ${tmpVal}`
+
+payloadHash=`sha512sum ./bin/skiboot.bin | awk '{print $1}'`
+
+#${SIGNTOOL} --mode production --output keys/production/swSignP.bin --sign ${payloadHash}
+
+# Now create a empty container (some headers will be set to default value)
+# and store in file skiboot_container.bin
+${SIGNTOOL} --create-container --image-name ./bin/skiboot_container.bin
+
+# Now update the SW Public Key-P field in the container created above from file sw-keyP.bin
+${SIGNTOOL} --image-name ./bin/skiboot_container.bin --fld-name sw-keyp --fld-value ./keys/test/swKeyP.bin
+ 
+# Now update the SW Signature-P Field from file sw-signP.bin
+${SIGNTOOL} --image-name ./bin/skiboot_container.bin --fld-name sw-signp --fld-value ./keys/test/swSignP.bin
+
+# To update the Payload size field in Software Header (component built by op-build)
+${SIGNTOOL} --image-name ./bin/skiboot_container.bin --fld-name sw-payload-size --fld-value ${payloadSize}
+
+# To update the Payload Hash (sha512) field in Software Header (component built by op-build)
+${SIGNTOOL} --image-name ./bin/skiboot_container.bin --fld-name sw-payload-hash --fld-value ${payloadHash}
