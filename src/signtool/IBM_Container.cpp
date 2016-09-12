@@ -41,6 +41,13 @@
 
 namespace
 {
+    const static uint32_t g_COL_WIDTH = 24;
+
+    const static uint32_t g_COMPRESSED_PUBKEY_FORMAT = 0x04;
+
+    const static std::string g_HASH_ALGO_SHA512_NAME   = "SHA-512";
+    const static std::string g_SIGN_ALGO_ECDSA521_NAME = "ECDSA521";
+
     template<typename T_PAIR>
     struct GetKey: public std::unary_function<T_PAIR, typename T_PAIR::first_type>
     {
@@ -54,40 +61,37 @@ namespace
     {
         uint16_t value = 0;
 
-        value = data[0] | (data[1] << 8);
+        value = data[1] | (data[0] << 8);
 
-        return be16toh(value);
+        return value;
     }
 
     uint32_t getUint32( const uint8_t *data )
     {
         uint32_t value = 0;
 
-        value = (data[0] | (data[1] << 8) | (data[2] << 16) | (data[3] << 24));
+        value = (data[3] | (data[2] << 8) | (data[1] << 16) | (data[0] << 24));
 
-        return be32toh(value);
+        return value;
     }
 
     uint64_t getUint64( const uint8_t *data )
     {
         uint64_t value = 0;
 
-        value = (            data[0]        | ((uint16_t)data[1] << 8)  | 
-                  ((uint32_t)data[2] << 16) | ((uint32_t)data[3] << 24) |
-                  ((uint64_t)data[4] << 32) | ((uint64_t)data[5] << 40) |
-                  ((uint64_t)data[6] << 48) | ((uint64_t)data[7] << 56) );
+        value = (            data[7]        | ((uint16_t)data[6] << 8)  | 
+                  ((uint32_t)data[5] << 16) | ((uint32_t)data[4] << 24) |
+                  ((uint64_t)data[3] << 32) | ((uint64_t)data[2] << 40) |
+                  ((uint64_t)data[1] << 48) | ((uint64_t)data[0] << 56) );
 
-        return be64toh(value);
+        return value;
     }
 
-    void printHexBytes( const uint8_t* bytes, uint32_t size, uint32_t leadSpace )
+    void printHexBytes( const uint8_t* bytes, size_t size, size_t leadSpace )
     {
         std::vector<uint8_t> byteArray;
 
-        for (uint32_t i = 0; i < size; i++)
-        {
-            byteArray.push_back( bytes[i] );
-        }
+        byteArray.assign(bytes, bytes+size);
 
         IBM_HexString hStr( byteArray );
 
@@ -102,18 +106,20 @@ namespace
     {
         static std::map<int, std::string> s_hashAlgoNames;
 
-        if (s_hashAlgoNames.size() == 0)
+        if (s_hashAlgoNames.empty() == 0)
         {
-            s_hashAlgoNames[HASH_ALG_SHA512] = "SHA-512";
+            s_hashAlgoNames[HASH_ALG_SHA512] = g_HASH_ALGO_SHA512_NAME;
         }
 
-        std::map<int, std::string>::iterator itr = s_hashAlgoNames.find(p_hashAlgoNum);
+        std::string hashAlgoName = "Unknown";
+
+        std::map<int, std::string>::const_iterator itr = s_hashAlgoNames.find(p_hashAlgoNum);
         if (itr != s_hashAlgoNames.end())
         {
-            return itr->second.c_str();
+            hashAlgoName = itr->second.c_str();
         }
 
-        return "Unknown";
+        return hashAlgoName.c_str();
     };
 
   
@@ -121,37 +127,38 @@ namespace
     {
         static std::map<int, std::string> s_signAlgoNames;
 
-        if (s_signAlgoNames.size() == 0)
+        if (s_signAlgoNames.empty() == 0)
         {
-            s_signAlgoNames[SIG_ALG_ECDSA521] = "ECDSA521";
+            s_signAlgoNames[SIG_ALG_ECDSA521] = g_SIGN_ALGO_ECDSA521_NAME;
         }
 
-        std::map<int, std::string>::iterator itr = s_signAlgoNames.find((int) p_signAlgoNum);
+        std::string signAlgoName = "Unknown";
+
+        std::map<int, std::string>::const_iterator itr = s_signAlgoNames.find((int) p_signAlgoNum);
         if (itr != s_signAlgoNames.end())
         {
-            return itr->second.c_str();
+            signAlgoName = itr->second.c_str();
         }
 
-        return "Unknown";
+        return signAlgoName.c_str();
     };
 
     
-    void ReadPublicKeyFromFile( std::string           p_mode,
-                                std::string           p_keyFileName,
-                                std::vector<uint8_t>& p_buffer,
-                                int                   p_size )
+    void ReadPublicKeyFromFile( const std::string&    p_mode,
+                                const std::string&    p_keyFileName,
+                                std::vector<uint8_t>& p_buffer )
     {
         IBM_Utils* pUtils = IBM_Utils::get();
         THROW_EXCEPTION(pUtils == NULL);
 
         if (p_mode == IBM_Utils::g_MODE_PRODUCTION)
         {
-            pUtils->ReadFromFile( p_keyFileName.c_str(),
+            pUtils->ReadFromFile( p_keyFileName,
                                   p_buffer,
-                                  p_size + 1 ); // since keyfile is 133 bytes with 0x04
-                                                // at the begining
+                                  ECDSA521_KEY_SIZE + 1 ); // since keyfile is 133 bytes with 0x04
+                                                           // at the begining
 
-            if (p_buffer[0] != 0x04)
+            if (p_buffer[0] != g_COMPRESSED_PUBKEY_FORMAT)
             {
                 std::stringstream ss;
                 ss << "File <" 
@@ -172,24 +179,27 @@ namespace
         else
         {
             // should never get here
-            THROW_EXCEPTION_STR("Invalid mode.");
+            std::stringstream ss;
+            ss << "mode <" << p_mode << "> is not supported, must be one of "
+               << IBM_Utils::g_MODE_PRODUCTION << " or " << IBM_Utils::g_MODE_DEVELOPMENT;
+
+            THROW_EXCEPTION_STR(ss.str().c_str());
         }
 
-        THROW_EXCEPTION(p_buffer.size() != p_size);
+        THROW_EXCEPTION(p_buffer.size() != ECDSA521_KEY_SIZE);
     }
 
 
-    void ReadSignatureFromFile( std::string           p_mode,
-                                std::string           p_sigFileName,
-                                std::vector<uint8_t>& p_buffer,
-                                int                   p_size )
+    void ReadSignatureFromFile( const std::string&    p_mode,
+                                const std::string&    p_sigFileName,
+                                std::vector<uint8_t>& p_buffer )
     {
         IBM_Utils* pUtils = IBM_Utils::get();
         THROW_EXCEPTION(pUtils == NULL);
 
         if (p_mode == IBM_Utils::g_MODE_PRODUCTION)
         {
-            pUtils->ReadFromFile( p_sigFileName.c_str(), p_buffer, p_size );
+            pUtils->ReadFromFile( p_sigFileName, p_buffer, ECDSA521_SIG_SIZE );
         }
         else if (p_mode == IBM_Utils::g_MODE_DEVELOPMENT)
         {
@@ -198,10 +208,14 @@ namespace
         else
         {
             // should never get here
-            THROW_EXCEPTION_STR("Invalid mode.");
+            std::stringstream ss;
+            ss << "mode <" << p_mode << "> is not supported, must be one of "
+               << IBM_Utils::g_MODE_PRODUCTION << " or " << IBM_Utils::g_MODE_DEVELOPMENT;
+
+            THROW_EXCEPTION_STR(ss.str().c_str());
         } 
 
-        THROW_EXCEPTION(p_buffer.size() != p_size);
+        THROW_EXCEPTION(p_buffer.size() != ECDSA521_SIG_SIZE);
     } 
 }
 
@@ -226,59 +240,49 @@ ContainerHdr::ContainerHdr()
  *
  * @param[out]  packet  -  A reference to a vector of type uint8_t
  */
-void ContainerHdr::GetHeaderBytes( std::vector<uint8_t>& packet )
+void ContainerHdr::GetHeaderBytes( std::vector<uint8_t>& packet ) const
 {
     packet.clear();
 
     // insert the magic nummber field
-    uint32_t magicNumber = htobe32(m_magicNumber);
-    
-    packet.push_back(magicNumber & 0xFF);
-    packet.push_back((magicNumber >> 8) & 0xFF);
-    packet.push_back((magicNumber >> 16) & 0xFF);
-    packet.push_back((magicNumber >> 24) & 0xFF);
+    packet.push_back((m_magicNumber >> 24) & 0xFF);
+    packet.push_back((m_magicNumber >> 16) & 0xFF);
+    packet.push_back((m_magicNumber >> 8) & 0xFF);
+    packet.push_back(m_magicNumber & 0xFF);
 
     // insert the version field
-    uint16_t version = htobe16(m_version);
-    
-    packet.push_back(version & 0xFF);
-    packet.push_back((version >> 8) & 0xFF);
+    packet.push_back((m_version >> 8) & 0xFF);
+    packet.push_back(m_version & 0xFF);
 
     // insert the container size field
-    uint64_t containerSize = htobe64(m_containerSize);
-    
-    packet.push_back(containerSize & 0xFF);
-    packet.push_back((containerSize >> 8) & 0xFF);
-    packet.push_back((containerSize >> 16) & 0xFF);
-    packet.push_back((containerSize >> 24) & 0xFF);
-    packet.push_back((containerSize >> 32) & 0xFF);
-    packet.push_back((containerSize >> 40) & 0xFF);
-    packet.push_back((containerSize >> 48) & 0xFF);
-    packet.push_back((containerSize >> 56) & 0xFF);
+    packet.push_back((m_containerSize >> 56) & 0xFF);
+    packet.push_back((m_containerSize >> 48) & 0xFF);
+    packet.push_back((m_containerSize >> 40) & 0xFF);
+    packet.push_back((m_containerSize >> 32) & 0xFF);
+    packet.push_back((m_containerSize >> 24) & 0xFF);
+    packet.push_back((m_containerSize >> 16) & 0xFF);
+    packet.push_back((m_containerSize >> 8) & 0xFF);
+    packet.push_back(m_containerSize & 0xFF);
 
     // insert the target Hrmor field
-    uint64_t targetHrmor = htobe64(m_targetHrmor);
-    
-    packet.push_back(targetHrmor & 0xFF);
-    packet.push_back((targetHrmor >> 8) & 0xFF);
-    packet.push_back((targetHrmor >> 16) & 0xFF);
-    packet.push_back((targetHrmor >> 24) & 0xFF);
-    packet.push_back((targetHrmor >> 32) & 0xFF);
-    packet.push_back((targetHrmor >> 40) & 0xFF);
-    packet.push_back((targetHrmor >> 48) & 0xFF);
-    packet.push_back((targetHrmor >> 56) & 0xFF);
+    packet.push_back((m_targetHrmor >> 56) & 0xFF);
+    packet.push_back((m_targetHrmor >> 48) & 0xFF);
+    packet.push_back((m_targetHrmor >> 40) & 0xFF);
+    packet.push_back((m_targetHrmor >> 32) & 0xFF);
+    packet.push_back((m_targetHrmor >> 24) & 0xFF);
+    packet.push_back((m_targetHrmor >> 16) & 0xFF);
+    packet.push_back((m_targetHrmor >> 8) & 0xFF);
+    packet.push_back(m_targetHrmor & 0xFF);
     
     // insert the stack Pointer field
-    uint64_t stackPointer = htobe64(m_stackPointer);
-    
-    packet.push_back(stackPointer & 0xFF);
-    packet.push_back((stackPointer >> 8) & 0xFF);
-    packet.push_back((stackPointer >> 16) & 0xFF);
-    packet.push_back((stackPointer >> 24) & 0xFF);
-    packet.push_back((stackPointer >> 32) & 0xFF);
-    packet.push_back((stackPointer >> 40) & 0xFF);
-    packet.push_back((stackPointer >> 48) & 0xFF);
-    packet.push_back((stackPointer >> 56) & 0xFF);
+    packet.push_back((m_stackPointer >> 56) & 0xFF);
+    packet.push_back((m_stackPointer >> 48) & 0xFF);
+    packet.push_back((m_stackPointer >> 40) & 0xFF);
+    packet.push_back((m_stackPointer >> 32) & 0xFF);
+    packet.push_back((m_stackPointer >> 24) & 0xFF);
+    packet.push_back((m_stackPointer >> 16) & 0xFF);
+    packet.push_back((m_stackPointer >> 8) & 0xFF);
+    packet.push_back(m_stackPointer & 0xFF);
     
     // insert the HW Public Key-A field
     packet.insert( packet.end(),
@@ -300,7 +304,7 @@ void ContainerHdr::GetHeaderBytes( std::vector<uint8_t>& packet )
 /**
  *  @brief   print the Container Header
  */
-void ContainerHdr::PrintHeader()
+void ContainerHdr::PrintHeader() const
 {
     std::cout << "-----------------------------------------------------------------"
               << std::endl
@@ -323,13 +327,13 @@ void ContainerHdr::PrintHeader()
               << std::endl;
 
     std::cout << "   m_hwPkeyA          = ";
-    printHexBytes( m_hwPkeyA, ECDSA521_KEY_SIZE, 24 );
+    printHexBytes( m_hwPkeyA, ECDSA521_KEY_SIZE, g_COL_WIDTH );
 
     std::cout << "   m_hwPkeyB          = ";
-    printHexBytes( m_hwPkeyB, ECDSA521_KEY_SIZE, 24 );
+    printHexBytes( m_hwPkeyB, ECDSA521_KEY_SIZE, g_COL_WIDTH );
 
     std::cout << "   m_hwPkeyC          = ";
-    printHexBytes( m_hwPkeyC, ECDSA521_KEY_SIZE, 24 );
+    printHexBytes( m_hwPkeyC, ECDSA521_KEY_SIZE, g_COL_WIDTH );
     std::cout << std::endl;
 }
 
@@ -356,15 +360,13 @@ PrefixHdr::PrefixHdr()
  *
  * @param[out]  packet  -  A reference to a vector of type uint8_t
  */
-void PrefixHdr::GetHeaderBytes( std::vector<uint8_t>& packet )
+void PrefixHdr::GetHeaderBytes( std::vector<uint8_t>& packet ) const
 {
     packet.clear();
 
     // insert the version field
-    uint16_t version = htobe16(m_version);
-
-    packet.push_back( version & 0xFF );
-    packet.push_back( (version >> 8) & 0xFF );
+    packet.push_back( (m_version >> 8) & 0xFF );
+    packet.push_back( m_version & 0xFF );
 
     // insert the hash algorithm field
     packet.push_back( m_hashAlg );
@@ -373,16 +375,14 @@ void PrefixHdr::GetHeaderBytes( std::vector<uint8_t>& packet )
     packet.push_back( m_sigAlg );
 
     // insert the code start offset field
-    uint64_t codeStartOffset = htobe64(m_codeStartOffset);
-    
-    packet.push_back(codeStartOffset & 0xFF);
-    packet.push_back((codeStartOffset >> 8) & 0xFF);
-    packet.push_back((codeStartOffset >> 16) & 0xFF);
-    packet.push_back((codeStartOffset >> 24) & 0xFF);
-    packet.push_back((codeStartOffset >> 32) & 0xFF);
-    packet.push_back((codeStartOffset >> 40) & 0xFF);
-    packet.push_back((codeStartOffset >> 48) & 0xFF);
-    packet.push_back((codeStartOffset >> 56) & 0xFF);
+    packet.push_back((m_codeStartOffset >> 56) & 0xFF);
+    packet.push_back((m_codeStartOffset >> 48) & 0xFF);
+    packet.push_back((m_codeStartOffset >> 40) & 0xFF);
+    packet.push_back((m_codeStartOffset >> 32) & 0xFF);
+    packet.push_back((m_codeStartOffset >> 24) & 0xFF);
+    packet.push_back((m_codeStartOffset >> 16) & 0xFF);
+    packet.push_back((m_codeStartOffset >> 8) & 0xFF);
+    packet.push_back(m_codeStartOffset & 0xFF);
     
     // insert the reserved bytes field
     packet.insert( packet.end(), 
@@ -390,27 +390,23 @@ void PrefixHdr::GetHeaderBytes( std::vector<uint8_t>& packet )
                    (m_reserved + sizeof(m_reserved)) );
     
     // insert the flags field
-    uint32_t flags = htobe32(m_flags);
-
-    packet.push_back(flags & 0xFF );
-    packet.push_back((flags >> 8) & 0xFF );
-    packet.push_back((flags >> 16) & 0xFF );
-    packet.push_back((flags >> 24) & 0xFF );
+    packet.push_back((m_flags >> 24) & 0xFF );
+    packet.push_back((m_flags >> 16) & 0xFF );
+    packet.push_back((m_flags >> 8) & 0xFF );
+    packet.push_back(m_flags & 0xFF );
 
     // insert the sw key count field
     packet.push_back(m_swKeyCount);
 
     // insert the payload size field
-    uint64_t payloadSize = htobe64(m_payloadSize);
-    
-    packet.push_back(payloadSize & 0xFF);
-    packet.push_back((payloadSize >> 8) & 0xFF);
-    packet.push_back((payloadSize >> 16) & 0xFF);
-    packet.push_back((payloadSize >> 24) & 0xFF);
-    packet.push_back((payloadSize >> 32) & 0xFF);
-    packet.push_back((payloadSize >> 40) & 0xFF);
-    packet.push_back((payloadSize >> 48) & 0xFF);
-    packet.push_back((payloadSize >> 56) & 0xFF);
+    packet.push_back((m_payloadSize >> 56) & 0xFF);
+    packet.push_back((m_payloadSize >> 48) & 0xFF);
+    packet.push_back((m_payloadSize >> 40) & 0xFF);
+    packet.push_back((m_payloadSize >> 32) & 0xFF);
+    packet.push_back((m_payloadSize >> 24) & 0xFF);
+    packet.push_back((m_payloadSize >> 16) & 0xFF);
+    packet.push_back((m_payloadSize >> 8) & 0xFF);
+    packet.push_back(m_payloadSize & 0xFF);
     
     // insert the payload hash field
     packet.insert( packet.end(),
@@ -434,7 +430,7 @@ void PrefixHdr::GetHeaderBytes( std::vector<uint8_t>& packet )
 /**
  *  @brief   print the Prefix Header
  */
-void PrefixHdr::PrintHeader()
+void PrefixHdr::PrintHeader() const
 {
     std::cout << "-----------------------------------------------------------------"
               << std::endl
@@ -453,7 +449,7 @@ void PrefixHdr::PrintHeader()
               << std::endl;
 
     std::cout << "   m_reserved         = ";
-    printHexBytes( m_reserved, 8, 24 );
+    printHexBytes( m_reserved, 8, g_COL_WIDTH );
 
     std::cout << "   m_flags            = " << std::hex << std::setfill('0') << std::setw(8) << m_flags
               << std::endl
@@ -464,7 +460,7 @@ void PrefixHdr::PrintHeader()
               << std::endl;
 
     std::cout << "   m_payloadHash      = ";
-    printHexBytes( m_payloadHash, SHA512_DIGEST_SIZE, 24 );
+    printHexBytes( m_payloadHash, SHA512_DIGEST_SIZE, g_COL_WIDTH );
 
     std::cout << "   m_ecidCount        = " <<  (int) m_ecidCount
               << std::endl;
@@ -495,7 +491,7 @@ PrefixData::PrefixData()
  *
  * @param[out]  packet  -  A reference to a vector of type uint8_t
  */
-void PrefixData::GetHeaderBytes( std::vector<uint8_t>& packet )
+void PrefixData::GetHeaderBytes( std::vector<uint8_t>& packet ) const
 {
     packet.clear();
 
@@ -547,7 +543,7 @@ void PrefixData::GetHeaderBytes( std::vector<uint8_t>& packet )
 /**
  *  @brief   print the Prefix Data
  */
-void PrefixData::PrintHeader()
+void PrefixData::PrintHeader() const
 {
     std::cout << "-----------------------------------------------------------------"
               << std::endl
@@ -557,22 +553,22 @@ void PrefixData::PrintHeader()
               << std::endl;
 
     std::cout << "   m_hwSigA           = ";
-    printHexBytes( m_hwSigA, ECDSA521_SIG_SIZE, 24 );
+    printHexBytes( m_hwSigA, ECDSA521_SIG_SIZE, g_COL_WIDTH );
 
     std::cout << "   m_hwSigB           = ";
-    printHexBytes( m_hwSigB, ECDSA521_SIG_SIZE, 24 );
+    printHexBytes( m_hwSigB, ECDSA521_SIG_SIZE, g_COL_WIDTH );
 
     std::cout << "   m_hwSigC           = ";
-    printHexBytes( m_hwSigC, ECDSA521_SIG_SIZE, 24 );
+    printHexBytes( m_hwSigC, ECDSA521_SIG_SIZE, g_COL_WIDTH );
 
     std::cout << "   m_swPkeyP          = ";
-    printHexBytes( m_swPkeyP, ECDSA521_KEY_SIZE, 24 );
+    printHexBytes( m_swPkeyP, ECDSA521_KEY_SIZE, g_COL_WIDTH );
 
     std::cout << "   m_swPkeyQ          = ";
-    printHexBytes( m_swPkeyQ, ECDSA521_KEY_SIZE, 24 );
+    printHexBytes( m_swPkeyQ, ECDSA521_KEY_SIZE, g_COL_WIDTH );
 
     std::cout << "   m_swPkeyR          = ";
-    printHexBytes( m_swPkeyR, ECDSA521_KEY_SIZE, 24 );
+    printHexBytes( m_swPkeyR, ECDSA521_KEY_SIZE, g_COL_WIDTH );
     std::cout << std::endl;
 }
 
@@ -580,7 +576,7 @@ void PrefixData::PrintHeader()
 /**
  *  @brief   Get Number of valid Software keys
  */
-int PrefixData::GetSwKeyCount()
+int PrefixData::GetSwKeyCount() const
 {
     int swKeyCount = 0; 
 
@@ -629,15 +625,13 @@ SoftwareHdr::SoftwareHdr()
  *
  * @param[out]  packet  -  A reference to a vector of type uint8_t
  */
-void SoftwareHdr::GetHeaderBytes( std::vector<uint8_t>& packet )
+void SoftwareHdr::GetHeaderBytes( std::vector<uint8_t>& packet ) const
 {
     packet.clear();
 
     // insert the version field
-    uint16_t version = htobe16(m_version);
-    
-    packet.push_back(version & 0xFF );
-    packet.push_back((version >> 8) & 0xFF );
+    packet.push_back((m_version >> 8) & 0xFF );
+    packet.push_back(m_version & 0xFF );
 
     // insert the hash algorithm field
     packet.push_back( m_hashAlg );
@@ -646,16 +640,14 @@ void SoftwareHdr::GetHeaderBytes( std::vector<uint8_t>& packet )
     packet.push_back( m_unused );
 
     // insert the code start offset field
-    uint64_t codeStartOffset = htobe64(m_codeStartOffset);
-    
-    packet.push_back(codeStartOffset & 0xFF);
-    packet.push_back((codeStartOffset >> 8) & 0xFF);
-    packet.push_back((codeStartOffset >> 16) & 0xFF);
-    packet.push_back((codeStartOffset >> 24) & 0xFF);
-    packet.push_back((codeStartOffset >> 32) & 0xFF);
-    packet.push_back((codeStartOffset >> 40) & 0xFF);
-    packet.push_back((codeStartOffset >> 48) & 0xFF);
-    packet.push_back((codeStartOffset >> 56) & 0xFF);
+    packet.push_back((m_codeStartOffset >> 56) & 0xFF);
+    packet.push_back((m_codeStartOffset >> 48) & 0xFF);
+    packet.push_back((m_codeStartOffset >> 40) & 0xFF);
+    packet.push_back((m_codeStartOffset >> 32) & 0xFF);
+    packet.push_back((m_codeStartOffset >> 24) & 0xFF);
+    packet.push_back((m_codeStartOffset >> 16) & 0xFF);
+    packet.push_back((m_codeStartOffset >> 8) & 0xFF);
+    packet.push_back(m_codeStartOffset & 0xFF);
     
     // insert the reserved bytes field
     packet.insert( packet.end(), 
@@ -663,27 +655,23 @@ void SoftwareHdr::GetHeaderBytes( std::vector<uint8_t>& packet )
                    (m_reserved + sizeof(m_reserved)) );
     
     // insert the flags field
-    uint32_t flags = htobe32(m_flags);
-    
-    packet.push_back(flags & 0xFF );
-    packet.push_back((flags >> 8) & 0xFF );
-    packet.push_back((flags >> 16) & 0xFF );
-    packet.push_back((flags >> 24) & 0xFF );
+    packet.push_back((m_flags >> 24) & 0xFF );
+    packet.push_back((m_flags >> 16) & 0xFF );
+    packet.push_back((m_flags >> 8) & 0xFF );
+    packet.push_back(m_flags & 0xFF );
 
     // insert the reserved0 field
     packet.push_back(m_reserved0);
 
     // insert the payload size field
-    uint64_t payloadSize = htobe64(m_payloadSize);
-    
-    packet.push_back(payloadSize & 0xFF);
-    packet.push_back((payloadSize >> 8) & 0xFF);
-    packet.push_back((payloadSize >> 16) & 0xFF);
-    packet.push_back((payloadSize >> 24) & 0xFF);
-    packet.push_back((payloadSize >> 32) & 0xFF);
-    packet.push_back((payloadSize >> 40) & 0xFF);
-    packet.push_back((payloadSize >> 48) & 0xFF);
-    packet.push_back((payloadSize >> 56) & 0xFF);
+    packet.push_back((m_payloadSize >> 56) & 0xFF);
+    packet.push_back((m_payloadSize >> 48) & 0xFF);
+    packet.push_back((m_payloadSize >> 40) & 0xFF);
+    packet.push_back((m_payloadSize >> 32) & 0xFF);
+    packet.push_back((m_payloadSize >> 24) & 0xFF);
+    packet.push_back((m_payloadSize >> 16) & 0xFF);
+    packet.push_back((m_payloadSize >> 8) & 0xFF);
+    packet.push_back(m_payloadSize & 0xFF);
     
     // insert the payload hash field
     packet.insert( packet.end(),
@@ -707,7 +695,7 @@ void SoftwareHdr::GetHeaderBytes( std::vector<uint8_t>& packet )
 /**
  *  @brief   print the Software Header
  */
-void SoftwareHdr::PrintHeader()
+void SoftwareHdr::PrintHeader() const
 {
     std::cout << "-----------------------------------------------------------------"
               << std::endl
@@ -726,7 +714,7 @@ void SoftwareHdr::PrintHeader()
               << std::endl;
 
     std::cout << "   m_reserved         = ";
-    printHexBytes( m_reserved, 8, 24 );
+    printHexBytes( m_reserved, 8, g_COL_WIDTH );
 
     std::cout << "   m_flags            = " << std::hex << std::setfill('0') << std::setw(8) << std::hex << m_flags
               << std::endl
@@ -737,7 +725,7 @@ void SoftwareHdr::PrintHeader()
               << std::endl;
 
     std::cout << "   m_payloadHash      = ";
-    printHexBytes( m_payloadHash, SHA512_DIGEST_SIZE, 24 );
+    printHexBytes( m_payloadHash, SHA512_DIGEST_SIZE, g_COL_WIDTH );
 
     std::cout << "   m_ecidCount        = " <<  (int) m_ecidCount
               << std::endl;
@@ -745,7 +733,7 @@ void SoftwareHdr::PrintHeader()
     for (int j = 0; j < m_ecidCount; j++)
     {
         std::cout << "   m_ecid[" << j << "]         = ";
-        printHexBytes( (const uint8_t *) &m_ecid[(j*ECID_SIZE)], ECID_SIZE, 24 );
+        printHexBytes( (const uint8_t *) &m_ecid[(j*ECID_SIZE)], ECID_SIZE, g_COL_WIDTH );
     }
     std::cout << std::endl;
 }
@@ -767,7 +755,7 @@ SoftwareSig::SoftwareSig()
  *
  * @param[out]  packet  -  A reference to a vector of type uint8_t
  */
-void SoftwareSig::GetHeaderBytes( std::vector<uint8_t>& packet )
+void SoftwareSig::GetHeaderBytes( std::vector<uint8_t>& packet ) const
 {
     packet.clear();
 
@@ -804,7 +792,7 @@ void SoftwareSig::GetHeaderBytes( std::vector<uint8_t>& packet )
 /**
  *  @brief   print the Software Signature
  */
-void SoftwareSig::PrintHeader()
+void SoftwareSig::PrintHeader() const
 {
     std::cout << "-----------------------------------------------------------------"
               << std::endl
@@ -814,13 +802,13 @@ void SoftwareSig::PrintHeader()
               << std::endl;
 
     std::cout <<  "   m_swSigP           = ";
-    printHexBytes( m_swSigP, ECDSA521_SIG_SIZE, 24 );
+    printHexBytes( m_swSigP, ECDSA521_SIG_SIZE, g_COL_WIDTH );
 
     std::cout <<  "   m_swSigQ           = ";
-    printHexBytes( m_swSigQ, ECDSA521_SIG_SIZE, 24 );
+    printHexBytes( m_swSigQ, ECDSA521_SIG_SIZE, g_COL_WIDTH );
 
     std::cout <<  "   m_swSigR           = ";
-    printHexBytes( m_swSigR, ECDSA521_SIG_SIZE, 24 );
+    printHexBytes( m_swSigR, ECDSA521_SIG_SIZE, g_COL_WIDTH );
     std::cout << std::endl;
 }
 
@@ -879,7 +867,7 @@ IBM_Container::IBM_Container( std::string p_mode,
 
     IBM_Utils* pUtils = IBM_Utils::get();
 
-    pUtils->ReadFromFile( p_containerFileName.c_str(), buffer, 2048 );
+    pUtils->ReadFromFile( p_containerFileName, buffer, 2048 );
                                
     ParseContainer( buffer );
 }
@@ -896,7 +884,7 @@ int IBM_Container::Validate()
 }
 
 
-void IBM_Container::Print()
+void IBM_Container::Print() const
 {
     m_containerHdr.PrintHeader();
     m_prefixHdr.PrintHeader();
@@ -1079,8 +1067,7 @@ bool IBM_Container::UpdateField( const std::string p_fldName, const std::string 
 
             ReadPublicKeyFromFile( m_mode,
                                    p_value,
-                                   buffer,
-                                   sizeof(m_containerHdr.m_hwPkeyA) );
+                                   buffer );
 
             memcpy( m_containerHdr.m_hwPkeyA, &buffer[0], buffer.size() );
 
@@ -1093,8 +1080,7 @@ bool IBM_Container::UpdateField( const std::string p_fldName, const std::string 
 
             ReadPublicKeyFromFile( m_mode,
                                    p_value,
-                                   buffer,
-                                   sizeof(m_containerHdr.m_hwPkeyB) );
+                                   buffer );
 
             memcpy( m_containerHdr.m_hwPkeyB, &buffer[0], buffer.size() );
 
@@ -1107,8 +1093,7 @@ bool IBM_Container::UpdateField( const std::string p_fldName, const std::string 
 
             ReadPublicKeyFromFile( m_mode,
                                    p_value,
-                                   buffer,
-                                   sizeof(m_containerHdr.m_hwPkeyC) );
+                                   buffer );
 
             memcpy( m_containerHdr.m_hwPkeyC, &buffer[0], buffer.size() );
 
@@ -1253,8 +1238,7 @@ bool IBM_Container::UpdateField( const std::string p_fldName, const std::string 
 
             ReadSignatureFromFile( m_mode,
                                    p_value,
-                                   buffer,
-                                   sizeof(m_prefixData.m_hwSigA) );
+                                   buffer );
 
             memcpy( m_prefixData.m_hwSigA, &buffer[0], buffer.size() );
 
@@ -1267,8 +1251,7 @@ bool IBM_Container::UpdateField( const std::string p_fldName, const std::string 
 
             ReadSignatureFromFile( m_mode,
                                    p_value,
-                                   buffer,
-                                   sizeof(m_prefixData.m_hwSigB) );
+                                   buffer );
 
             memcpy( m_prefixData.m_hwSigB, &buffer[0], buffer.size() );
 
@@ -1281,8 +1264,7 @@ bool IBM_Container::UpdateField( const std::string p_fldName, const std::string 
 
             ReadSignatureFromFile( m_mode,
                                    p_value,
-                                   buffer,
-                                   sizeof(m_prefixData.m_hwSigC) );
+                                   buffer );
 
             memcpy( m_prefixData.m_hwSigC, &buffer[0], buffer.size() );
 
@@ -1295,8 +1277,7 @@ bool IBM_Container::UpdateField( const std::string p_fldName, const std::string 
 
             ReadPublicKeyFromFile( m_mode,
                                    p_value,
-                                   buffer,
-                                   sizeof(m_prefixData.m_swPkeyP) );
+                                   buffer );
 
             memcpy( m_prefixData.m_swPkeyP, &buffer[0], buffer.size() );
 
@@ -1309,8 +1290,7 @@ bool IBM_Container::UpdateField( const std::string p_fldName, const std::string 
 
             ReadPublicKeyFromFile( m_mode,
                                    p_value,
-                                   buffer,
-                                   sizeof(m_prefixData.m_swPkeyQ) );
+                                   buffer );
 
             memcpy( m_prefixData.m_swPkeyQ, &buffer[0], buffer.size() );
 
@@ -1323,8 +1303,7 @@ bool IBM_Container::UpdateField( const std::string p_fldName, const std::string 
 
             ReadPublicKeyFromFile( m_mode,
                                    p_value,
-                                   buffer,
-                                   sizeof(m_prefixData.m_swPkeyR) );
+                                   buffer );
 
             memcpy( m_prefixData.m_swPkeyR, &buffer[0], buffer.size() );
 
@@ -1450,8 +1429,7 @@ bool IBM_Container::UpdateField( const std::string p_fldName, const std::string 
 
             ReadSignatureFromFile( m_mode,
                                    p_value,
-                                   buffer,
-                                   sizeof(m_softwareSig.m_swSigP) );
+                                   buffer );
 
             memcpy( m_softwareSig.m_swSigP, &buffer[0], buffer.size() );
 
@@ -1464,8 +1442,7 @@ bool IBM_Container::UpdateField( const std::string p_fldName, const std::string 
 
             ReadSignatureFromFile( m_mode,
                                    p_value,
-                                   buffer,
-                                   sizeof(m_softwareSig.m_swSigQ) );
+                                   buffer );
 
             memcpy( m_softwareSig.m_swSigQ, &buffer[0], buffer.size() );
 
@@ -1478,8 +1455,7 @@ bool IBM_Container::UpdateField( const std::string p_fldName, const std::string 
 
             ReadSignatureFromFile( m_mode,
                                    p_value,
-                                   buffer,
-                                   sizeof(m_softwareSig.m_swSigR) );
+                                   buffer );
 
             memcpy( m_softwareSig.m_swSigR, &buffer[0], buffer.size() );
 

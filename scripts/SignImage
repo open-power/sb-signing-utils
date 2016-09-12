@@ -1,4 +1,29 @@
-#!/bin/bash -x
+#!/bin/bash
+
+# IBM_PROLOG_BEGIN_TAG
+# This is an automatically generated prolog.
+#
+# $Source: src/Makefile.am $
+#
+# OpenPOWER sb-signing-utils Project
+#
+# Contributors Listed Below - COPYRIGHT 2016
+# [+] International Business Machines Corp.
+#
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+# implied. See the License for the specific language governing
+# permissions and limitations under the License.
+#
+# IBM_PROLOG_END_TAG
 
 # the container consists of 3 Hardware Keys 
 #      * HW-KeyA - Hardware Public Key A
@@ -19,29 +44,71 @@
  
 SIGNTOOL=./signtool
 
+IMG_FILE=./images/skiboot.bin
+CONT_FILE=./images/skiboot.container
+CONT_IMG_FILE=./images/skiboot_container.bin
+
+SW_PRIVKEY_P=./keys/private/swpriv-p.key
+SW_PRIVKEY_Q=./keys/private/swpriv-q.key
+SW_PRIVKEY_R=./keys/private/swpriv-r.key
+
+SW_PUBKEY_P=./keys/public/swpub-p.key
+SW_PUBKEY_Q=./keys/public/swpub-q.key
+SW_PUBKEY_R=./keys/public/swpub-r.key
+
+SW_SIGN_P=./sign/swsign-p.bin
+SW_SIGN_Q=./sign/swsign-q.bin
+SW_SIGN_R=./sign/swsign-r.bin
+
+
 # firstly sign the component (signing server will sign for production builds,
 # openssl will be used for development builds).
 #   eg for skiboot.bin
+tmpVal=`stat -c %s ${IMG_FILE}`
 
-tmpVal=`stat -c %s ./bin/skiboot.bin`
 payloadSize=`printf "%x" ${tmpVal}`
+payloadHash=`sha512sum ${IMG_FILE} | awk '{print $1}'`
 
-payloadHash=`sha512sum ./bin/skiboot.bin | awk '{print $1}'`
-
-#${SIGNTOOL} --mode production --output keys/production/swSignP.bin --sign ${payloadHash}
 
 # Now create a empty container (some headers will be set to default value)
-# and store in file skiboot_container.bin
-${SIGNTOOL} --create-container --image-name ./bin/skiboot_container.bin
+# and store in file skiboot_container.bin, by default the tool uses development mode
+${SIGNTOOL} --create-container --image-name ${CONT_FILE}
 
-# Now update the SW Public Key-P field in the container created above from file sw-keyP.bin
-${SIGNTOOL} --image-name ./bin/skiboot_container.bin --fld-name sw-keyp --fld-value ./keys/test/swKeyP.bin
+# Update flags field of software header to 0x10203040
+${SIGNTOOL} --image-name ${CONT_FILE} --fld-name sw-flags --fld-value 0x10203040
+
+# Update payload size and payload hash field of software header
+${SIGNTOOL} --image-name ${CONT_FILE} --fld-name sw-payload-size --fld-value ${payloadSize}
+${SIGNTOOL} --image-name ${CONT_FILE} --fld-name sw-payload-hash --fld-value ${payloadHash}
+
+# Update code start offset field of software header to 0x84
+${SIGNTOOL} --image-name ${CONT_FILE} --fld-name sw-code-start-offset --fld-value 0x84
+
+# calculate Hash of Software header field
+swHdrHash=`${SIGNTOOL} --image-name ${CONT_FILE} --calchash --fldtype software_hdr --hashalgo sha512
+
+# now generate signatures of the software header using private keys (P, Q and R)
+${SIGNTOOL} --sign --privkeyfile ${SW_PRIVKEY_P} --digest ${swHdrHash} --sigfile ${SW_SIGN_P}
+${SIGNTOOL} --sign --privkeyfile ${SW_PRIVKEY_Q} --digest ${swHdrHash} --sigfile ${SW_SIGN_Q}
+${SIGNTOOL} --sign --privkeyfile ${SW_PRIVKEY_R} --digest ${swHdrHash} --sigfile ${SW_SIGN_R}
+
+# Now update the SW Public Key P, Q and R field in the container
+${SIGNTOOL} --image-name ${CONT_FILE} --fld-name sw-keyp --fld-value ${SW_PUBKEY_P}
+${SIGNTOOL} --image-name ${CONT_FILE} --fld-name sw-keyq --fld-value ${SW_PUBKEY_Q}
+${SIGNTOOL} --image-name ${CONT_FILE} --fld-name sw-keyr --fld-value ${SW_PUBKEY_R}
  
-# Now update the SW Signature-P Field from file sw-signP.bin
-${SIGNTOOL} --image-name ./bin/skiboot_container.bin --fld-name sw-signp --fld-value ./keys/test/swSignP.bin
 
-# To update the Payload size field in Software Header (component built by op-build)
-${SIGNTOOL} --image-name ./bin/skiboot_container.bin --fld-name sw-payload-size --fld-value ${payloadSize}
+# Now update the SW Signature P, Q and R Field in the container
+${SIGNTOOL} --image-name ${CONT_FILE} --fld-name sw-signp --fld-value ${SW_SIGN_P}
+${SIGNTOOL} --image-name ${CONT_FILE} --fld-name sw-signq --fld-value ${SW_SIGN_Q}
+${SIGNTOOL} --image-name ${CONT_FILE} --fld-name sw-signr --fld-value ${SW_SIGN_R}
 
-# To update the Payload Hash (sha512) field in Software Header (component built by op-build)
-${SIGNTOOL} --image-name ./bin/skiboot_container.bin --fld-name sw-payload-hash --fld-value ${payloadHash}
+
+# You can verify the signature using the public keys
+${SIGNTOOL} --verify --pubkeyfile ${SW_PUBKEY_P} --digest ${swHdrHash} --sigfile ${SW_SIGN_P}
+${SIGNTOOL} --verify --pubkeyfile ${SW_PUBKEY_Q} --digest ${swHdrHash} --sigfile ${SW_SIGN_Q}
+${SIGNTOOL} --verify --pubkeyfile ${SW_PUBKEY_R} --digest ${swHdrHash} --sigfile ${SW_SIGN_R}
+
+
+# finally stitch the container header to the image 
+cat ${CONT_FILE} ${IMG_FILE} > ${CONT_IMG_FILE}

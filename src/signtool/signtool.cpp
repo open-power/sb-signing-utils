@@ -42,10 +42,10 @@
 
 namespace
 {
-    static bool s_verbose = false;
+    const static uint32_t s_SIGN_VERIFY_FAILURE = 0;
+    const static uint32_t s_SIGN_VERIFY_SUCCESS = 1;
 
-    // assume "big endiannes" by default
-    static bool s_bigEndian = true;
+    static bool s_verbose = false;
 
     // assume "development" build by default
     static std::string s_mode = IBM_Utils::g_MODE_DEVELOPMENT;
@@ -185,7 +185,6 @@ namespace
         static const struct option longopts[] =
         {
             { "mode",                     required_argument, NULL, 'm' },
-            { "little-endian",            no_argument,       NULL, 'l' },
 
             { "sign",                     no_argument,       NULL, 's' },
             { "verify",                   no_argument,       NULL, 't' },
@@ -228,12 +227,6 @@ namespace
                 case 'm':   // Production or Development Mode
                 {
                     s_mode = std::string ( optarg );
-                    break;
-                }
-
-                case 'l':   // Little Endian
-                {
-                    s_bigEndian = false;
                     break;
                 }
 
@@ -520,14 +513,14 @@ int main ( int argc, char** argv )
             std::cout << "ECC Signature ";
             switch (status)
             {
-                case 1:
+                case s_SIGN_VERIFY_SUCCESS:
                 {
                     std::cout << "Verified OK";
                     rc = 0;
                     break;
                 }
 
-                case 0:
+                case s_SIGN_VERIFY_FAILURE:
                 {
                     std::cout << "Verification Failure";
                     rc = 1;

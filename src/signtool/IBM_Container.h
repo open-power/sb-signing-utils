@@ -47,8 +47,8 @@ struct ContainerHdr
 
     ContainerHdr();
 
-    void PrintHeader();
-    void GetHeaderBytes( std::vector<uint8_t>& packet );
+    void PrintHeader() const;
+    void GetHeaderBytes( std::vector<uint8_t>& packet ) const;
 
 }  __attribute__ ((packed));
 
@@ -69,8 +69,8 @@ struct PrefixHdr
                                                  // holder ecid_count * szeof(ecids)
     PrefixHdr();
                                                  
-    void PrintHeader();
-    void GetHeaderBytes( std::vector<uint8_t>& packet );
+    void PrintHeader() const;
+    void GetHeaderBytes( std::vector<uint8_t>& packet ) const;
 
 } __attribute__ ((packed));
 
@@ -86,9 +86,9 @@ struct PrefixData
 
     PrefixData();
 
-    void PrintHeader();
-    int  GetSwKeyCount();
-    void GetHeaderBytes( std::vector<uint8_t>& packet );
+    void PrintHeader() const;
+    int  GetSwKeyCount() const;
+    void GetHeaderBytes( std::vector<uint8_t>& packet ) const;
 
 } __attribute__ ((packed));
 
@@ -109,8 +109,8 @@ struct SoftwareHdr
                                                  // holder ecid_count * szeof(ecids)
     SoftwareHdr();
                                              
-    void PrintHeader();
-    void GetHeaderBytes( std::vector<uint8_t>& packet );
+    void PrintHeader() const;
+    void GetHeaderBytes( std::vector<uint8_t>& packet ) const;
 
 } __attribute__ ((packed));
 
@@ -123,8 +123,8 @@ struct SoftwareSig
 
     SoftwareSig();
                                              
-    void PrintHeader();
-    void GetHeaderBytes( std::vector<uint8_t>& packet );
+    void PrintHeader() const;
+    void GetHeaderBytes( std::vector<uint8_t>& packet ) const;
 
 } __attribute__ ((packed));
 
@@ -203,7 +203,7 @@ public:
 
     int  Validate();
 
-    void Print();
+    void Print() const;
 
     bool Save( const std::string p_fileName ); 
 

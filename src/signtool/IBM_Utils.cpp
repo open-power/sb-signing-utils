@@ -63,7 +63,7 @@ IBM_Utils* IBM_Utils::get()
 }
     
 
-void IBM_Utils::ReadFromFile( const char*        p_fileName,
+void IBM_Utils::ReadFromFile( const std::string& p_fileName,
                               std::vector<byte>& p_buffer )
 {
     std::ifstream ifs( p_fileName, std::ifstream::binary );
@@ -79,6 +79,7 @@ void IBM_Utils::ReadFromFile( const char*        p_fileName,
     ifs.seekg( 0, std::ios_base::end );
     std::streampos fileSize = ifs.tellg();
 
+    p_buffer.clear();
     p_buffer.resize(fileSize);
 
     ifs.seekg( 0, std::ios_base::beg );
@@ -88,7 +89,7 @@ void IBM_Utils::ReadFromFile( const char*        p_fileName,
 }
 
 
-void IBM_Utils::ReadFromFile( const char*        p_fileName,
+void IBM_Utils::ReadFromFile( const std::string& p_fileName,
                               std::vector<byte>& p_buffer,
                               int                p_readSize )
 {
@@ -120,6 +121,7 @@ void IBM_Utils::ReadFromFile( const char*        p_fileName,
         THROW_EXCEPTION_STR(ss.str().c_str());
     }
     
+    p_buffer.clear();
     p_buffer.resize(p_readSize);
     
     ifs.seekg( 0, std::ios_base::beg );
@@ -129,7 +131,7 @@ void IBM_Utils::ReadFromFile( const char*        p_fileName,
 }
 
 
-bool IBM_Utils::WriteToFile( const char*        p_fileName,
+bool IBM_Utils::WriteToFile( const std::string& p_fileName,
                              std::vector<byte>& p_buffer )
 {
     std::ofstream outfile( p_fileName, std::ios_base::binary );
@@ -148,10 +150,10 @@ bool IBM_Utils::WriteToFile( const char*        p_fileName,
 }
 
 
-void IBM_Utils::GetPublicKeyBytes( const char*        p_fileName,
+void IBM_Utils::GetPublicKeyBytes( const std::string& p_fileName,
                                    std::vector<byte>& p_buffer )
 {
-    FILE *fp = fopen( p_fileName, "r" );
+    FILE *fp = fopen( p_fileName.c_str(), "r" );
     if (fp == NULL)
     {
         std::stringstream ss;
@@ -200,6 +202,7 @@ void IBM_Utils::GetPublicKeyBytes( const char*        p_fileName,
         // remove the first byte
         dgstBytes.erase( dgstBytes.begin() );
 
+        p_buffer.clear();
         std::copy( dgstBytes.begin(), dgstBytes.end(), std::back_inserter(p_buffer) );
     
         EVP_PKEY_free(pkey);
@@ -226,12 +229,12 @@ void IBM_Utils::GetPublicKeyBytes( const char*        p_fileName,
 }
 
 
-void IBM_Utils::GetSignatureBytes( const char*        p_fileName,
+void IBM_Utils::GetSignatureBytes( const std::string& p_fileName,
                                    std::vector<byte>& p_buffer )
 {
     std::vector<uint8_t> sigBytes;
 
-    this->ReadFromFile( p_fileName, sigBytes );
+    this->ReadFromFile( p_fileName.c_str(), sigBytes );
 
     const uint8_t* p_sigBytes = &sigBytes[0];
 
@@ -251,6 +254,7 @@ void IBM_Utils::GetSignatureBytes( const char*        p_fileName,
 
     BN_bn2bin(signature->s, &sBuf[sOff]);
 
+    p_buffer.clear();
     p_buffer.resize(ECDSA521_SIG_SIZE);
     memcpy( &p_buffer[0], sBuf, ECDSA521_SIG_SIZE );
 

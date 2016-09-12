@@ -1,16 +1,29 @@
-#-------------------------------------------------------------------------
-# 
-# Licensed Materials - Property of IBM.
-# 
-# (C) Copyright IBM Corporation 2007,2013
-# 
-# All Rights Reserved.
-# 
-# US Government Users Restricted Rights -
-# Use, duplication or disclosure restricted by
-# GSA ADP Schedule Contract with IBM Corporation.
-#---------------------------------------------------------------------------
-AC_INIT(SecureAndTrustedBoot, 1.0.0, subras@us.ibm.com)
+# IBM_PROLOG_BEGIN_TAG
+# This is an automatically generated prolog.
+#
+# $Source: src/Makefile.am $
+#
+# OpenPOWER sb-signing-utils Project
+#
+# Contributors Listed Below - COPYRIGHT 2016
+# [+] International Business Machines Corp.
+#
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+# implied. See the License for the specific language governing
+# permissions and limitations under the License.
+#
+# IBM_PROLOG_END_TAG
+
+AC_INIT(SecurebootSigningUtils, 1.0.0, subras@us.ibm.com)
 AC_CONFIG_AUX_DIR([config])
 AM_INIT_AUTOMAKE([-Wall -Werror foreign -Wno-portability])
 AM_SILENT_RULES([yes])
@@ -25,27 +38,27 @@ AC_PROG_CXX
 
 # Checks for libraries.
  # FIXME: Replace `main' with a function in `-lrt':
- #AC_CHECK_LIB([rt], [main])
+ AC_CHECK_LIB([rt], [main])
 
 # Checks for header files.
 
 # Checks for typedefs, structures, and compiler characteristics.
- #AC_C_CONST
- #AC_TYPE_PID_T
- #AC_HEADER_TIME
- #AC_STRUCT_TM
- #AC_TYPE_UINT16_T
- #AC_TYPE_UINT32_T
- #AC_TYPE_UINT8_T
+ AC_C_CONST
+ AC_TYPE_PID_T
+ AC_HEADER_TIME
+ AC_STRUCT_TM
+ AC_TYPE_UINT16_T
+ AC_TYPE_UINT32_T
+ AC_TYPE_UINT8_T
 
 # Checks for library functions.
- #AC_FUNC_FORK
- #AC_PROG_GCC_TRADITIONAL
- #AC_FUNC_MALLOC
- #AC_HEADER_STDC
- #AC_TYPE_SIGNAL
- #AC_FUNC_VPRINTF
- #AC_CHECK_FUNCS([gettimeofday memset strchr])
+ AC_FUNC_FORK
+ AC_PROG_GCC_TRADITIONAL
+ AC_FUNC_MALLOC
+ AC_HEADER_STDC
+ AC_TYPE_SIGNAL
+ AC_FUNC_VPRINTF
+ AC_CHECK_FUNCS([gettimeofday memset strchr])
 
 #--------------------------------------------------------------------
 # set top level dir, export dir and config dir

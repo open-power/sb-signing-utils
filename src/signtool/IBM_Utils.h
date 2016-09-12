@@ -47,6 +47,7 @@
 #define ECDSA521_SIG_SIZE   132
 #define ECID_SIZE            16
 
+ 
 enum IBM_HashAlgo
 {
     e_SHA1_ALGO,
@@ -66,20 +67,20 @@ public:
     
     static IBM_Utils* get(); 
     
-    void ReadFromFile( const char*        p_fileName,
+    void ReadFromFile( const std::string& p_fileName,
                        std::vector<byte>& p_buffer );
 
-    void ReadFromFile( const char*        p_fileName,
+    void ReadFromFile( const std::string& p_fileName,
                        std::vector<byte>& p_buffer,
                        int                p_readSize );
 
-    bool WriteToFile( const char*        p_fileName,
+    bool WriteToFile( const std::string& p_fileName,
                       std::vector<byte>& p_buffer );
 
-    void GetPublicKeyBytes( const char*        p_fileName,
+    void GetPublicKeyBytes( const std::string& p_fileName,
                             std::vector<byte>& p_buffer );
 
-    void GetSignatureBytes( const char*        p_fileName,
+    void GetSignatureBytes( const std::string& p_fileName,
                             std::vector<byte>& p_buffer );
 
 private:

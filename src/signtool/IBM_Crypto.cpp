@@ -493,7 +493,7 @@ int IBM_Crypto::doCcaVerify( const std::string&  p_pubKeyFileName,
 
     IBM_HexBytes pkBytes;
     
-    pUtils->ReadFromFile( p_pubKeyFileName.c_str(), pkBytes, (ECDSA521_KEY_SIZE+1) );
+    pUtils->ReadFromFile( p_pubKeyFileName, pkBytes, (ECDSA521_KEY_SIZE+1) );
     
     // The first byte should have the value 0x04, else its an invalid public key file
     if (pkBytes[0] != 0x04)
@@ -546,7 +546,7 @@ int IBM_Crypto::doCcaVerify( const std::string&  p_pubKeyFileName,
         // read the Signature file
         IBM_HexBytes sigBytes;
     
-        pUtils->ReadFromFile( p_signFileName.c_str(), sigBytes, ECDSA521_SIG_SIZE );
+        pUtils->ReadFromFile( p_signFileName, sigBytes, ECDSA521_SIG_SIZE );
 
         r = BN_new();
         THROW_EXCEPTION(r == NULL);
@@ -661,7 +661,7 @@ int IBM_Crypto::doOpensslVerify( const std::string&   p_pubKeyFileName,
         IBM_Utils* pUtils = IBM_Utils::get();
         THROW_EXCEPTION(pUtils == NULL);
 
-        pUtils->ReadFromFile( p_signFileName.c_str(), sigBytes );
+        pUtils->ReadFromFile( p_signFileName, sigBytes );
     
         // construct signature object from the signature bytes
         const byte* p_sigBytes = &sigBytes[0];
