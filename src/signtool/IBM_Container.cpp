@@ -43,7 +43,7 @@ namespace
 {
     const static uint32_t g_COL_WIDTH = 24;
 
-    const static uint32_t g_COMPRESSED_PUBKEY_FORMAT = 0x04;
+    const static uint32_t g_UNCOMPRESSED_PUBKEY_FORMAT = 0x04;
 
     const static std::string g_HASH_ALGO_SHA512_NAME   = "SHA-512";
     const static std::string g_SIGN_ALGO_ECDSA521_NAME = "ECDSA521";
@@ -158,7 +158,7 @@ namespace
                                   ECDSA521_KEY_SIZE + 1 ); // since keyfile is 133 bytes with 0x04
                                                            // at the begining
 
-            if (p_buffer[0] != g_COMPRESSED_PUBKEY_FORMAT)
+            if (p_buffer[0] != g_UNCOMPRESSED_PUBKEY_FORMAT)
             {
                 std::stringstream ss;
                 ss << "File <" 
