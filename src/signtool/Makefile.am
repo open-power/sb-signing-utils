@@ -32,7 +32,7 @@ signtool_SOURCES = \
         IBM_Crypto.cpp  \
         signtool.cpp
 
-signtool_CPPFLAGS = -I. -I -g3 -std=c++11
+signtool_CPPFLAGS = -I. -I -g3 -std=c++0x
 signtool_LDFLAGS = 
 signtool_LDADD = -lcrypto
  
