@@ -1,7 +1,7 @@
 # IBM_PROLOG_BEGIN_TAG
 # This is an automatically generated prolog.
 #
-# $Source: src/Makefile.am $
+# $Source: configure.ac $
 #
 # OpenPOWER sb-signing-utils Project
 #

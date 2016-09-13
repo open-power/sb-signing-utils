@@ -1,7 +1,9 @@
+#!/bin/sh
+
 # IBM_PROLOG_BEGIN_TAG
 # This is an automatically generated prolog.
 #
-# $Source: src/Makefile.am $
+# $Source: bootstrap.sh $
 #
 # OpenPOWER sb-signing-utils Project
 #
@@ -22,8 +24,6 @@
 # permissions and limitations under the License.
 #
 # IBM_PROLOG_END_TAG
-
-#!/bin/sh
 
 # get things started by running autoreconf 
 AUTORECONF=`which autoreconf`
