@@ -32,12 +32,17 @@ signtool_SOURCES = \
         IBM_Crypto.cpp  \
         signtool.cpp
 
-signtool_CPPFLAGS = -I. -I -g3 -std=c++0x
-signtool_LDFLAGS = 
+# If c++11 support exists, the appropriate compile flag will end up in CXXCPP.
+# If we couldn't find c++11 support, make a last ditch effort and try to use
+# c++0x (will fail compile if even this is not available)
+CXXCPP0X=$(if ifeq @HAVE_CXX11@ "0",-std=c++0x,)
+
+signtool_CPPFLAGS = $(CXXCPP) $(CXXCPP0X) -I. -I -g3
+signtool_LDFLAGS =
 signtool_LDADD = -lcrypto
- 
+
 install-data-local:
 	$(INSTALL) -dv   $(localstatedir)/rca
 
 install-exec-local:
-	$(INSTALL) -dv $(bindir) 
+	$(INSTALL) -dv $(bindir)

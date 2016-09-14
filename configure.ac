@@ -27,6 +27,7 @@ AC_INIT(SecurebootSigningUtils, 1.0.0, subras@us.ibm.com)
 AC_CONFIG_AUX_DIR([config])
 AM_INIT_AUTOMAKE([-Wall -Werror foreign -Wno-portability])
 AM_SILENT_RULES([yes])
+AC_CONFIG_MACRO_DIR([m4])
 
 # not using config.h yet
 AC_CONFIG_HEADER([config.h])
@@ -35,6 +36,9 @@ AC_CONFIG_HEADER([config.h])
 AC_PROG_CC
 AC_PROG_RANLIB
 AC_PROG_CXX
+
+# Checks for c++11 compatibility
+AX_CXX_COMPILE_STDCXX_11([noext],[optional])
 
 # Checks for libraries.
  # FIXME: Replace `main' with a function in `-lrt':
@@ -79,14 +83,6 @@ else
    EXPORT_LIBDIR=$EXPORT_DIR/lib/x86
 fi
 AC_SUBST(EXPORT_LIBDIR)
-
-
-# Check host for build type
-AM_CONDITIONAL(BLD_X86,  [test x${host}  = x] )
-
-# Set #define in config.h
-AH_TEMPLATE([__X86], [Defined if compiling for x86])
-AC_DEFINE(__X86,1)
 
 # initialize name of include directory
 EXPORT_INCDIR=$EXPORT_DIR/include

@@ -23,4 +23,7 @@
 #
 # IBM_PROLOG_END_TAG
 
+# Import the c++11 detection macros in the m4 dir
+ACLOCAL_AMFLAGS = -I m4
+
 SUBDIRS = src
