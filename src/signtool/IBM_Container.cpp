@@ -41,12 +41,11 @@
 
 namespace
 {
-    const static uint32_t g_COL_WIDTH = 24;
+    constexpr uint32_t g_COL_WIDTH = 24;
+    constexpr uint32_t g_UNCOMPRESSED_PUBKEY_FORMAT = 0x04;
 
-    const static uint32_t g_UNCOMPRESSED_PUBKEY_FORMAT = 0x04;
-
-    const static std::string g_HASH_ALGO_SHA512_NAME   = "SHA-512";
-    const static std::string g_SIGN_ALGO_ECDSA521_NAME = "ECDSA521";
+    constexpr auto g_HASH_ALGO_SHA512_NAME   = "SHA-512";
+    constexpr auto g_SIGN_ALGO_ECDSA521_NAME = "ECDSA521";
 
     template<typename T_PAIR>
     struct GetKey: public std::unary_function<T_PAIR, typename T_PAIR::first_type>
@@ -102,137 +101,135 @@ namespace
     }
 
   
-    const char* GetHashAlgoName( int p_hashAlgoNum )
+    std::string GetHashAlgoName( int p_hashAlgoNum )
     {
-        static std::map<int, std::string> s_hashAlgoNames;
-
-        if (s_hashAlgoNames.empty() == 0)
+        static const std::map<int, std::string> s_hashAlgoNames =
         {
-            s_hashAlgoNames[HASH_ALG_SHA512] = g_HASH_ALGO_SHA512_NAME;
-        }
+            { HASH_ALG_SHA512, g_HASH_ALGO_SHA512_NAME }
+        };
 
         std::string hashAlgoName = "Unknown";
 
         std::map<int, std::string>::const_iterator itr = s_hashAlgoNames.find(p_hashAlgoNum);
         if (itr != s_hashAlgoNames.end())
         {
-            hashAlgoName = itr->second.c_str();
+            hashAlgoName = itr->second;
         }
 
-        return hashAlgoName.c_str();
+        return hashAlgoName;
     };
 
   
-    const char* GetSignAlgoName( int p_signAlgoNum )
+    std::string GetSignAlgoName( int p_signAlgoNum )
     {
-        static std::map<int, std::string> s_signAlgoNames;
-
-        if (s_signAlgoNames.empty() == 0)
+        static const std::map<int, std::string> s_signAlgoNames =
         {
-            s_signAlgoNames[SIG_ALG_ECDSA521] = g_SIGN_ALGO_ECDSA521_NAME;
-        }
+            { SIG_ALG_ECDSA521, g_SIGN_ALGO_ECDSA521_NAME }
+        };
 
         std::string signAlgoName = "Unknown";
 
         std::map<int, std::string>::const_iterator itr = s_signAlgoNames.find((int) p_signAlgoNum);
         if (itr != s_signAlgoNames.end())
         {
-            signAlgoName = itr->second.c_str();
+            signAlgoName = itr->second;
         }
 
-        return signAlgoName.c_str();
+        return signAlgoName;
     };
 
     
-    void ReadPublicKeyFromFile( const std::string&    p_mode,
+    void ReadPublicKeyFromFile( IBM_Mode              p_mode,
                                 const std::string&    p_keyFileName,
                                 std::vector<uint8_t>& p_buffer )
     {
         IBM_Utils* pUtils = IBM_Utils::get();
         THROW_EXCEPTION(pUtils == NULL);
 
-        if (p_mode == IBM_Utils::g_MODE_PRODUCTION)
+        switch (p_mode)
         {
-            pUtils->ReadFromFile( p_keyFileName,
-                                  p_buffer,
-                                  ECDSA521_KEY_SIZE + 1 ); // since keyfile is 133 bytes with 0x04
-                                                           // at the begining
+            case e_MODE_IBM_PRODUCTION:
+            {
+                pUtils->ReadFromFile( p_keyFileName,
+                                      p_buffer,
+                                      ECDSA521_KEY_SIZE + 1 ); // since keyfile is 133 bytes with 0x04
+                                                               // at the begining
 
-            if (p_buffer[0] != g_UNCOMPRESSED_PUBKEY_FORMAT)
+                if (p_buffer[0] != g_UNCOMPRESSED_PUBKEY_FORMAT)
+                {
+                    std::stringstream ss;
+                    ss << "File <" 
+                       << p_keyFileName 
+                       << "> is not a vaid p521 public key file"
+                       << std::endl;
+
+                    THROW_EXCEPTION_STR(ss.str().c_str());
+                }
+            
+                // public key file OK, delete the first byte
+                p_buffer.erase( p_buffer.begin() );
+                break;
+            }
+
+            case e_MODE_DEVELOPMENT:
+            {
+                pUtils->GetPublicKeyBytes( p_keyFileName.c_str(), p_buffer );
+                break;
+            }
+            
+            default:
             {
                 std::stringstream ss;
-                ss << "File <" 
-                   << p_keyFileName 
-                   << "> is not a vaid p521 public key file"
-                   << std::endl;
+                ss << "*** Invalid value for mode" << std::endl
+                   << "--- Expecting <" << (int) e_MODE_IBM_PRODUCTION
+                   << "> or <" << (int) e_MODE_DEVELOPMENT << ">, got <"
+                   << p_mode << ">" << std::endl;
 
                 THROW_EXCEPTION_STR(ss.str().c_str());
             }
-            
-            // public key file OK, delete the first byte
-            p_buffer.erase( p_buffer.begin() );
-        }
-        else if (p_mode == IBM_Utils::g_MODE_DEVELOPMENT)
-        {
-            pUtils->GetPublicKeyBytes( p_keyFileName.c_str(), p_buffer );
-        }
-        else
-        {
-            // should never get here
-            std::stringstream ss;
-            ss << "mode <" << p_mode << "> is not supported, must be one of "
-               << IBM_Utils::g_MODE_PRODUCTION << " or " << IBM_Utils::g_MODE_DEVELOPMENT;
-
-            THROW_EXCEPTION_STR(ss.str().c_str());
         }
 
         THROW_EXCEPTION(p_buffer.size() != ECDSA521_KEY_SIZE);
     }
 
 
-    void ReadSignatureFromFile( const std::string&    p_mode,
+    void ReadSignatureFromFile( IBM_Mode              p_mode,
                                 const std::string&    p_sigFileName,
                                 std::vector<uint8_t>& p_buffer )
     {
         IBM_Utils* pUtils = IBM_Utils::get();
         THROW_EXCEPTION(pUtils == NULL);
 
-        if (p_mode == IBM_Utils::g_MODE_PRODUCTION)
+        switch (p_mode)
         {
-            pUtils->ReadFromFile( p_sigFileName, p_buffer, ECDSA521_SIG_SIZE );
-        }
-        else if (p_mode == IBM_Utils::g_MODE_DEVELOPMENT)
-        {
-            pUtils->GetSignatureBytes( p_sigFileName.c_str(), p_buffer );
-        }
-        else
-        {
-            // should never get here
-            std::stringstream ss;
-            ss << "mode <" << p_mode << "> is not supported, must be one of "
-               << IBM_Utils::g_MODE_PRODUCTION << " or " << IBM_Utils::g_MODE_DEVELOPMENT;
+            case e_MODE_IBM_PRODUCTION:
+            {
+                pUtils->ReadFromFile( p_sigFileName, p_buffer, ECDSA521_SIG_SIZE );
+                break;
+            }
 
-            THROW_EXCEPTION_STR(ss.str().c_str());
-        } 
+            case e_MODE_DEVELOPMENT:
+            {
+                pUtils->GetSignatureBytes( p_sigFileName.c_str(), p_buffer );
+                break;
+            }
+            
+            default:
+            {
+                std::stringstream ss;
+                ss << "*** Invalid value for mode" << std::endl
+                   << "--- Expecting <" << (int) e_MODE_IBM_PRODUCTION
+                   << "> or <" << (int) e_MODE_DEVELOPMENT << ">, got <"
+                   << p_mode << ">" << std::endl;
+
+                THROW_EXCEPTION_STR(ss.str().c_str());
+            }
+        }
 
         THROW_EXCEPTION(p_buffer.size() != ECDSA521_SIG_SIZE);
     } 
 }
 
-
-
-// ContainerHdr C'tor
-ContainerHdr::ContainerHdr()
-   : m_magicNumber( ROM_MAGIC_NUMBER ),
-     m_version( CONTAINER_VERSION ),
-     m_containerSize(0),
-     m_targetHrmor(0),
-     m_stackPointer(0),
-     m_hwPkeyA(),
-     m_hwPkeyB(),
-     m_hwPkeyC()
-{
-}
 
 
 /**
@@ -335,23 +332,6 @@ void ContainerHdr::PrintHeader() const
     std::cout << "   m_hwPkeyC          = ";
     printHexBytes( m_hwPkeyC, ECDSA521_KEY_SIZE, g_COL_WIDTH );
     std::cout << std::endl;
-}
-
-
-// PrefixHdr C'tor
-PrefixHdr::PrefixHdr()
-   : m_version( HEADER_VERSION ),
-     m_hashAlg( HASH_ALG_SHA512 ),
-     m_sigAlg( SIG_ALG_ECDSA521 ),
-     m_codeStartOffset(0),
-     m_reserved(),
-     m_flags( 0 ),
-     m_swKeyCount( 0 ),
-     m_payloadSize(0),
-     m_payloadHash(),
-     m_ecidCount( 0 ),
-     m_ecid()
-{
 }
 
 
@@ -474,18 +454,6 @@ void PrefixHdr::PrintHeader() const
 }
 
 
-// PrefixData C'tor
-PrefixData::PrefixData()
-   : m_hwSigA(),
-     m_hwSigB(),
-     m_hwSigC(),
-     m_swPkeyP(),
-     m_swPkeyQ(),
-     m_swPkeyR()
-{
-}
-
-
 /**
  * @brief   Get the Prefix Data Header message as a byte stream
  *
@@ -601,23 +569,6 @@ int PrefixData::GetSwKeyCount() const
     return swKeyCount;
 }
 
-
-
-// SoftwareHdr C'tor
-SoftwareHdr::SoftwareHdr()
-   : m_version( HEADER_VERSION ),
-     m_hashAlg( HASH_ALG_SHA512 ),
-     m_unused( 0 ),
-     m_codeStartOffset(),
-     m_reserved(),
-     m_flags( 0 ),
-     m_reserved0( 0 ),
-     m_payloadSize(),
-     m_payloadHash(),
-     m_ecidCount( 0 ),
-     m_ecid()
-{
-}
 
 
 /**
@@ -740,16 +691,6 @@ void SoftwareHdr::PrintHeader() const
 
 
 
-
-// SoftwareSig C'tor
-SoftwareSig::SoftwareSig()
-   : m_swSigP(),
-     m_swSigQ(),
-     m_swSigR()
-{
-}
-
-
 /**
  * @brief   Get the Prefix Data Header message as a byte stream
  *
@@ -814,7 +755,7 @@ void SoftwareSig::PrintHeader() const
 
 
 // default C'tor
-IBM_Container::IBM_Container( std::string p_mode )
+IBM_Container::IBM_Container( IBM_Mode p_mode )
    : m_containerHdr(),
      m_prefixHdr(),
      m_prefixData(),
@@ -822,16 +763,25 @@ IBM_Container::IBM_Container( std::string p_mode )
      m_softwareSig(),
      m_mode( p_mode )
 {
-    if ( !((m_mode == IBM_Utils::g_MODE_PRODUCTION) || 
-           (m_mode == IBM_Utils::g_MODE_DEVELOPMENT))  )
+    switch (m_mode)
     {
-        std::stringstream ss;
-        ss << "*** Invalid value for mode" << std::endl
-           << "--- Expecting <" << IBM_Utils::g_MODE_PRODUCTION 
-           << "> or <" << IBM_Utils::g_MODE_DEVELOPMENT << ">, got <"
-           << p_mode << ">" << std::endl;
-
-        THROW_EXCEPTION_STR(ss.str().c_str());
+        case e_MODE_IBM_PRODUCTION:
+        case e_MODE_DEVELOPMENT:
+        {
+            // supported modes
+            break;
+        }
+        
+        default:
+        {
+            std::stringstream ss;
+            ss << "*** Invalid value for mode" << std::endl
+               << "--- Expecting <" << (int) e_MODE_IBM_PRODUCTION 
+               << "> or <" << (int) e_MODE_DEVELOPMENT << ">, got <"
+               << m_mode << ">" << std::endl;
+           
+            THROW_EXCEPTION_STR(ss.str().c_str());
+        }
     }
 
     initializeMap();
@@ -840,7 +790,7 @@ IBM_Container::IBM_Container( std::string p_mode )
 
 
 // Given a filename, read its contents, parse the data and constuct the container
-IBM_Container::IBM_Container( std::string p_mode,
+IBM_Container::IBM_Container( IBM_Mode    p_mode,
                               std::string p_containerFileName )
    : m_containerHdr(),
      m_prefixHdr(),
@@ -849,16 +799,25 @@ IBM_Container::IBM_Container( std::string p_mode,
      m_softwareSig(),
      m_mode( p_mode )
 {
-    if ( !((m_mode == IBM_Utils::g_MODE_PRODUCTION) || 
-           (m_mode == IBM_Utils::g_MODE_DEVELOPMENT))  )
+    switch (m_mode)
     {
-        std::stringstream ss;
-        ss << "*** Invalid value for mode" << std::endl
-           << "--- Expecting <" << IBM_Utils::g_MODE_PRODUCTION 
-           << "> or <" << IBM_Utils::g_MODE_DEVELOPMENT << ">, got <"
-           << p_mode << ">" << std::endl;
-
-        THROW_EXCEPTION_STR(ss.str().c_str());
+        case e_MODE_IBM_PRODUCTION:
+        case e_MODE_DEVELOPMENT:
+        {
+            // supported modes
+            break;
+        }
+        
+        default:
+        {
+            std::stringstream ss;
+            ss << "*** Invalid value for mode" << std::endl
+               << "--- Expecting <" << (int) e_MODE_IBM_PRODUCTION 
+               << "> or <" << (int) e_MODE_DEVELOPMENT << ">, got <"
+               << m_mode << ">" << std::endl;
+           
+            THROW_EXCEPTION_STR(ss.str().c_str());
+        }
     }
 
     initializeMap();
@@ -881,6 +840,7 @@ IBM_Container::~IBM_Container()
 
 int IBM_Container::Validate()
 {
+    // TBD
 }
 
 
@@ -1526,47 +1486,57 @@ bool IBM_Container::ComputeHash( std::string  p_hdrFldType,
 
 void IBM_Container::initializeMap()
 {
-    m_contFldMap["container-version"]      =  e_CONTAINER_VERSION;
-    m_contFldMap["container-size"]         =  e_CONTAINER_SIZE;
-    m_contFldMap["target-hrmor"]           =  e_TARGET_HRMOR;
-    m_contFldMap["stack-pointer"]          =  e_STACK_POINTER;
-    m_contFldMap["hw-keya"]                =  e_HW_PUBLIC_KEY_A;
-    m_contFldMap["hw-keyb"]                =  e_HW_PUBLIC_KEY_B;
-    m_contFldMap["hw-keyc"]                =  e_HW_PUBLIC_KEY_C;
+    m_contFldMap = 
+    {
+       { "container-version",      e_CONTAINER_VERSION },
+       { "container-size",         e_CONTAINER_SIZE },
+       { "target-hrmor",           e_TARGET_HRMOR },
+       { "stack-pointer",          e_STACK_POINTER },
+       { "hw-keya",                e_HW_PUBLIC_KEY_A },
+       { "hw-keyb",                e_HW_PUBLIC_KEY_B },
+       { "hw-keyc",                e_HW_PUBLIC_KEY_C },
 
-    m_contFldMap["hdr-version"]            =  e_PRE_HDR_VERSION;
-    m_contFldMap["hdr-hash-algo"]          =  e_PRE_HDR_HASH_ALGORITHM;
-    m_contFldMap["hdr-sign-algo"]          =  e_PRE_HDR_SIGNING_ALGORITHM;
-    m_contFldMap["hdr-code-start-offset"]  =  e_PRE_HDR_CODE_START_OFFSET;
-    m_contFldMap["hdr-flags"]              =  e_PRE_HDR_FLAGS;
-    m_contFldMap["hdr-payload-size"]       =  e_PRE_HDR_PAYLOAD_SIZE;
-    m_contFldMap["hdr-payload-hash"]       =  e_PRE_HDR_PAYLOAD_HASH;
+       { "hdr-version",            e_PRE_HDR_VERSION },
+       { "hdr-hash-algo",          e_PRE_HDR_HASH_ALGORITHM },
+       { "hdr-sign-algo",          e_PRE_HDR_SIGNING_ALGORITHM },
+       { "hdr-code-start-offset",  e_PRE_HDR_CODE_START_OFFSET },
+       { "hdr-flags",              e_PRE_HDR_FLAGS },
+       { "hdr-payload-size",       e_PRE_HDR_PAYLOAD_SIZE },
+       { "hdr-payload-hash",       e_PRE_HDR_PAYLOAD_HASH },
 
-    m_contFldMap["hw-signa"]               =  e_HW_SIGNATURE_A;
-    m_contFldMap["hw-signb"]               =  e_HW_SIGNATURE_B;
-    m_contFldMap["hw-signc"]               =  e_HW_SIGNATURE_C;
-    m_contFldMap["sw-keyp"]                =  e_SW_PUBLIC_KEY_P;
-    m_contFldMap["sw-keyq"]                =  e_SW_PUBLIC_KEY_Q;
-    m_contFldMap["sw-keyr"]                =  e_SW_PUBLIC_KEY_R;
+       { "hw-signa",               e_HW_SIGNATURE_A },
+       { "hw-signb",               e_HW_SIGNATURE_B },
+       { "hw-signc",               e_HW_SIGNATURE_C },
+       { "sw-keyp",                e_SW_PUBLIC_KEY_P },
+       { "sw-keyq",                e_SW_PUBLIC_KEY_Q },
+       { "sw-keyr",                e_SW_PUBLIC_KEY_R },
 
-    m_contFldMap["sw-version"]             =  e_SW_HDR_VERSION;
-    m_contFldMap["sw-hash-algo"]           =  e_SW_HDR_HASH_ALGORITHM;
-    m_contFldMap["sw-code-start-offset"]   =  e_SW_HDR_CODE_START_OFFSET;
-    m_contFldMap["sw-flags"]               =  e_SW_HDR_FLAGS;
-    m_contFldMap["sw-payload-size"]        =  e_SW_HDR_PAYLOAD_SIZE;
-    m_contFldMap["sw-payload-hash"]        =  e_SW_HDR_PAYLOAD_HASH;
+       { "sw-version",             e_SW_HDR_VERSION },
+       { "sw-hash-algo",           e_SW_HDR_HASH_ALGORITHM },
+       { "sw-code-start-offset",   e_SW_HDR_CODE_START_OFFSET },
+       { "sw-flags",               e_SW_HDR_FLAGS },
+       { "sw-payload-size",        e_SW_HDR_PAYLOAD_SIZE },
+       { "sw-payload-hash",        e_SW_HDR_PAYLOAD_HASH },
 
-    m_contFldMap["sw-signp"]               =  e_SW_SIGNATURE_P;
-    m_contFldMap["sw-signq"]               =  e_SW_SIGNATURE_Q;
-    m_contFldMap["sw-signr"]               =  e_SW_SIGNATURE_R;
+       { "sw-signp",               e_SW_SIGNATURE_P },
+       { "sw-signq",               e_SW_SIGNATURE_Q },
+       { "sw-signr",               e_SW_SIGNATURE_R }
+    };
 
-    m_hdrFldTypeMap["prefix_hdr"]          =  e_FLD_PREFIX_HDR;
-    m_hdrFldTypeMap["software_hdr"]        =  e_FLD_SOFTWARE_HDR;
 
-    m_hashAlgoMap["sha1"]                  =  e_SHA1_ALGO;
-    m_hashAlgoMap["sha256"]                =  e_SHA256_ALGO;
-    m_hashAlgoMap["sha384"]                =  e_SHA384_ALGO;
-    m_hashAlgoMap["sha512"]                =  e_SHA512_ALGO;
+    m_hdrFldTypeMap = 
+    {  
+        { "prefix_hdr",   e_FLD_PREFIX_HDR },
+        { "software_hdr", e_FLD_SOFTWARE_HDR}
+    };
+
+    m_hashAlgoMap = 
+    {
+        { "sha1",    e_SHA1_ALGO },
+        { "sha256",  e_SHA256_ALGO },
+        { "sha384",  e_SHA384_ALGO },
+        { "sha512",  e_SHA512_ALGO }
+    };
 }
 
 

@@ -42,14 +42,18 @@
 
 namespace
 {
-    const static uint32_t s_SIGN_VERIFY_FAILURE = 0;
-    const static uint32_t s_SIGN_VERIFY_SUCCESS = 1;
+    constexpr uint32_t s_SIGN_VERIFY_FAILURE = 0;
+    constexpr uint32_t s_SIGN_VERIFY_SUCCESS = 1;
 
     static bool s_verbose = false;
 
     // assume "development" build by default
-    static std::string s_mode = IBM_Utils::g_MODE_DEVELOPMENT;
+    static IBM_Mode s_mode = e_MODE_DEVELOPMENT;
 
+    static std::string s_devMode = "development";
+    static std::string s_ibmProdMode = "ibm-production";
+
+    static std::string s_modeStr;
     static std::string s_output;
 
     static std::string s_shaDigest;
@@ -156,7 +160,7 @@ namespace
                   << std::endl << std::endl << std::endl;
         std::cout << "   The following values are accepted for option <--fldname>" << std::endl;
 
-        IBM_Container junk(s_mode);
+        IBM_Container junk(e_MODE_DEVELOPMENT);
 
         std::vector<std::string> fldNamesList;
         junk.GetFieldNameList( fldNamesList );
@@ -226,7 +230,7 @@ namespace
             {
                 case 'm':   // Production or Development Mode
                 {
-                    s_mode = std::string ( optarg );
+                    s_modeStr = std::string ( optarg );
                     break;
                 }
 
@@ -409,6 +413,28 @@ int main ( int argc, char** argv )
 
     try
     {
+        // check what mode we are asked to use
+        if (!s_modeStr.empty())
+        {
+            if (s_modeStr == s_ibmProdMode)
+            {
+                s_mode = e_MODE_IBM_PRODUCTION;
+            }
+            else if (s_modeStr == s_devMode)
+            {
+                s_mode = e_MODE_DEVELOPMENT;
+            }
+            else
+            {
+                std::stringstream ss;
+                ss << "*** Invalid value for mode" << std::endl
+                   << "--- Expecting <" << s_ibmProdMode << "> or <" << s_devMode
+                   << ">, got <" << s_modeStr << ">" << std::endl;
+
+                THROW_EXCEPTION_STR(ss.str().c_str());
+            }
+        }
+
         if (flags & s_CMD_CREATE_CONTAINER)
         {
             if (s_imgFileName.size() == 0)

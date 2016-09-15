@@ -57,12 +57,16 @@ enum IBM_HashAlgo
 };
 
 
+enum IBM_Mode
+{
+    e_MODE_IBM_PRODUCTION,
+    e_MODE_DEVELOPMENT
+};
+
+
 class IBM_Utils
 {
 public:
-    static const std::string g_MODE_PRODUCTION;
-    static const std::string g_MODE_DEVELOPMENT;
- 
     ~IBM_Utils(); 
     
     static IBM_Utils* get(); 
@@ -84,9 +88,10 @@ public:
                             std::vector<byte>& p_buffer );
 
 private:
-    IBM_Utils();                                //!< disallow 
-    IBM_Utils( IBM_Utils& );                    //!< disallow
-    IBM_Utils& operator = ( const IBM_Utils& ); //!< disallow
+    IBM_Utils();
+
+    IBM_Utils( IBM_Utils& ) = delete;                    //!< disallow
+    IBM_Utils& operator = ( const IBM_Utils& ) = delete; //!< disallow
 }; 
 
 #endif //  __IBM_UTILS_H_

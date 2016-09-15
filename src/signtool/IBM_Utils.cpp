@@ -43,9 +43,6 @@
 #include "IBM_Utils.h"
 
 
-const std::string IBM_Utils::g_MODE_PRODUCTION  = "production";
-const std::string IBM_Utils::g_MODE_DEVELOPMENT = "development";
-
 IBM_Utils::IBM_Utils()
 {
 }

@@ -44,19 +44,28 @@
 #include "IBM_Crypto.h"
 
 
-IBM_Crypto::IBM_Crypto( const std::string& p_mode )
+IBM_Crypto::IBM_Crypto( IBM_Mode p_mode )
    : m_mode(p_mode)
 {
-    if ( !((m_mode == IBM_Utils::g_MODE_PRODUCTION) || 
-           (m_mode == IBM_Utils::g_MODE_DEVELOPMENT))  )
+    switch (m_mode)
     {
-        std::stringstream ss;
-        ss << "*** Invalid value for mode" << std::endl
-           << "--- Expecting <" << IBM_Utils::g_MODE_PRODUCTION 
-           << "> or <" << IBM_Utils::g_MODE_DEVELOPMENT << ">, got <"
-           << p_mode << ">" << std::endl;
+        case e_MODE_IBM_PRODUCTION:
+        case e_MODE_DEVELOPMENT:
+        {
+            // supported modes
+            break;
+        }
 
-        THROW_EXCEPTION_STR(ss.str().c_str());
+        default:
+        {
+            std::stringstream ss;
+            ss << "*** Invalid value for mode" << std::endl
+               << "--- Expecting <" << (int) e_MODE_IBM_PRODUCTION 
+               << "> or <" << (int) e_MODE_DEVELOPMENT << ">, got <"
+               << m_mode << ">" << std::endl;
+
+            THROW_EXCEPTION_STR(ss.str().c_str());
+        }
     }
 
     OpenSSL_add_all_algorithms();
@@ -195,22 +204,30 @@ bool IBM_Crypto::Sign( const std::string& p_pKeyName,
 
     int rv = -1;
 
-    if (m_mode == IBM_Utils::g_MODE_DEVELOPMENT)
+    switch (m_mode)
     {
-        rv = doOpensslSign( p_pKeyName, dgstBytes, signBytes );
+        case e_MODE_DEVELOPMENT:
+        {
+            rv = doOpensslSign( p_pKeyName, dgstBytes, signBytes );
+            break;
+        }
+
+        case e_MODE_IBM_PRODUCTION:
+        {
+            rv = doCcaSign( p_pKeyName, dgstBytes, signBytes, p_saHostName, p_saPortNum );
+            break;
+        }
     }
-    else if (m_mode == IBM_Utils::g_MODE_PRODUCTION)
+
+    if (rv == 0)
     {
-        // FIXME - add support to pass in sign_agent hostname and port
-        rv = doCcaSign( p_pKeyName, dgstBytes, signBytes, p_saHostName, p_saPortNum );
+        std::cout << "signature :" << IBM_HexString(signBytes) << std::endl;
+
+        IBM_Utils* pUtils = IBM_Utils::get();
+        THROW_EXCEPTION(pUtils == NULL);
+
+        pUtils->WriteToFile( p_signFileName.c_str(), signBytes );
     }
-
-    std::cout << "CCA sign: signature :" << IBM_HexString(signBytes) << std::endl;
-
-    IBM_Utils* pUtils = IBM_Utils::get();
-    THROW_EXCEPTION(pUtils == NULL);
-
-    pUtils->WriteToFile( p_signFileName.c_str(), signBytes );
 
     return (rv == 0) ? true : false;
 }
@@ -248,13 +265,19 @@ int IBM_Crypto::Verify( const std::string& p_pubKeyFileName,
         }
     }
 
-    if (m_mode == IBM_Utils::g_MODE_DEVELOPMENT)
+    switch (m_mode)
     {
-        rv = doOpensslVerify( p_pubKeyFileName, dgstBytes, p_signFileName );
-    }
-    else if (m_mode == IBM_Utils::g_MODE_PRODUCTION )
-    {
-        rv = doCcaVerify( p_pubKeyFileName, dgstBytes, p_signFileName );
+        case e_MODE_IBM_PRODUCTION:
+        {
+            rv = doOpensslVerify( p_pubKeyFileName, dgstBytes, p_signFileName );
+            break;
+        }
+
+        case e_MODE_DEVELOPMENT:
+        {
+            rv = doCcaVerify( p_pubKeyFileName, dgstBytes, p_signFileName );
+            break;
+        }
     }
 
     return rv;

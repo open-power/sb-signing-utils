@@ -36,16 +36,16 @@
 
 struct ContainerHdr
 {
-    uint32_t  m_magicNumber;                    // (17082011)
-    uint16_t  m_version;                        // (1: see versions above)
-    uint64_t  m_containerSize;                  // filled by caller
-    uint64_t  m_targetHrmor;                    // filled by caller
-    uint64_t  m_stackPointer;                   // filled by caller
-    uint8_t   m_hwPkeyA[ECDSA521_KEY_SIZE];
-    uint8_t   m_hwPkeyB[ECDSA521_KEY_SIZE];
-    uint8_t   m_hwPkeyC[ECDSA521_KEY_SIZE];
+    uint32_t  m_magicNumber                = ROM_MAGIC_NUMBER;
+    uint16_t  m_version                    = CONTAINER_VERSION;
+    uint64_t  m_containerSize              = 0;
+    uint64_t  m_targetHrmor                = 0;
+    uint64_t  m_stackPointer               = 0;
+    uint8_t   m_hwPkeyA[ECDSA521_KEY_SIZE] = {0};
+    uint8_t   m_hwPkeyB[ECDSA521_KEY_SIZE] = {0};
+    uint8_t   m_hwPkeyC[ECDSA521_KEY_SIZE] = {0};
 
-    ContainerHdr();
+    ContainerHdr() = default;
 
     void PrintHeader() const;
     void GetHeaderBytes( std::vector<uint8_t>& packet ) const;
@@ -55,19 +55,19 @@ struct ContainerHdr
 
 struct PrefixHdr
 {
-    uint16_t  m_version;                         // (1: see versions above)
-    uint8_t   m_hashAlg;                         // (1: SHA-512)
-    uint8_t   m_sigAlg;                          // (1: SHA-512/ECDSA-521)
-    uint64_t  m_codeStartOffset;
-    uint8_t   m_reserved[8];
-    uint32_t  m_flags;
-    uint8_t   m_swKeyCount;
-    uint64_t  m_payloadSize;
-    uint8_t   m_payloadHash[SHA512_DIGEST_SIZE];
-    uint8_t   m_ecidCount;
-    uint8_t   m_ecid[ECID_SIZE];                 // optional ecid place 
-                                                 // holder ecid_count * szeof(ecids)
-    PrefixHdr();
+    uint16_t  m_version                         = HEADER_VERSION;
+    uint8_t   m_hashAlg                         = HASH_ALG_SHA512;
+    uint8_t   m_sigAlg                          = SIG_ALG_ECDSA521;
+    uint64_t  m_codeStartOffset                 = 0;
+    uint8_t   m_reserved[8]                     = {0};;
+    uint32_t  m_flags                           = 0;
+    uint8_t   m_swKeyCount                      = 0;
+    uint64_t  m_payloadSize                     = 0 ;
+    uint8_t   m_payloadHash[SHA512_DIGEST_SIZE] = {0};
+    uint8_t   m_ecidCount                       = 0;
+    uint8_t   m_ecid[ECID_SIZE]                 = {0};
+                                        
+    PrefixHdr() = default;
                                                  
     void PrintHeader() const;
     void GetHeaderBytes( std::vector<uint8_t>& packet ) const;
@@ -77,14 +77,14 @@ struct PrefixHdr
 
 struct PrefixData
 {
-    uint8_t   m_hwSigA[ECDSA521_SIG_SIZE];
-    uint8_t   m_hwSigB[ECDSA521_SIG_SIZE];
-    uint8_t   m_hwSigC[ECDSA521_SIG_SIZE];
-    uint8_t   m_swPkeyP[ECDSA521_KEY_SIZE];
-    uint8_t   m_swPkeyQ[ECDSA521_KEY_SIZE];
-    uint8_t   m_swPkeyR[ECDSA521_KEY_SIZE];
+    uint8_t   m_hwSigA[ECDSA521_SIG_SIZE]  = {0};
+    uint8_t   m_hwSigB[ECDSA521_SIG_SIZE]  = {0};
+    uint8_t   m_hwSigC[ECDSA521_SIG_SIZE]  = {0};
+    uint8_t   m_swPkeyP[ECDSA521_KEY_SIZE] = {0};
+    uint8_t   m_swPkeyQ[ECDSA521_KEY_SIZE] = {0};
+    uint8_t   m_swPkeyR[ECDSA521_KEY_SIZE] = {0};
 
-    PrefixData();
+    PrefixData() = default;
 
     void PrintHeader() const;
     int  GetSwKeyCount() const;
@@ -95,19 +95,19 @@ struct PrefixData
 
 struct SoftwareHdr
 {
-    uint16_t  m_version;                         // (1: see versions above)
-    uint8_t   m_hashAlg;                         // (1: SHA-512)
-    uint8_t   m_unused;
-    uint64_t  m_codeStartOffset;
-    uint8_t   m_reserved[8];
-    uint32_t  m_flags;
-    uint8_t   m_reserved0;
-    uint64_t  m_payloadSize;
-    uint8_t   m_payloadHash[SHA512_DIGEST_SIZE];
-    uint8_t   m_ecidCount;
-    uint8_t   m_ecid[ECID_SIZE];                 // optional ecid place 
-                                                 // holder ecid_count * szeof(ecids)
-    SoftwareHdr();
+    uint16_t  m_version                         = HEADER_VERSION;
+    uint8_t   m_hashAlg                         = HASH_ALG_SHA512;
+    uint8_t   m_unused                          = 0;
+    uint64_t  m_codeStartOffset                 = 0;
+    uint8_t   m_reserved[8]                     = {0};
+    uint32_t  m_flags                           = 0;
+    uint8_t   m_reserved0                       = 0;
+    uint64_t  m_payloadSize                     = 0;
+    uint8_t   m_payloadHash[SHA512_DIGEST_SIZE] = {0};
+    uint8_t   m_ecidCount                       = 0;
+    uint8_t   m_ecid[ECID_SIZE]                 = {0};
+                                                
+    SoftwareHdr() = default;
                                              
     void PrintHeader() const;
     void GetHeaderBytes( std::vector<uint8_t>& packet ) const;
@@ -117,11 +117,11 @@ struct SoftwareHdr
 
 struct SoftwareSig
 {
-    uint8_t   m_swSigP[ECDSA521_SIG_SIZE];
-    uint8_t   m_swSigQ[ECDSA521_SIG_SIZE];
-    uint8_t   m_swSigR[ECDSA521_SIG_SIZE];
+    uint8_t   m_swSigP[ECDSA521_SIG_SIZE] = {0};
+    uint8_t   m_swSigQ[ECDSA521_SIG_SIZE] = {0};
+    uint8_t   m_swSigR[ECDSA521_SIG_SIZE] = {0};
 
-    SoftwareSig();
+    SoftwareSig() = default;
                                              
     void PrintHeader() const;
     void GetHeaderBytes( std::vector<uint8_t>& packet ) const;
@@ -190,10 +190,10 @@ public:
     };
 
     // default C'tor
-    IBM_Container( std::string p_mode );
+    IBM_Container( IBM_Mode p_mode );
 
     // Given a filename, read its contents, parse the data and constuct the container
-    IBM_Container( std::string p_mode,
+    IBM_Container( IBM_Mode    p_mode,
                    std::string p_containerFileName );
 
     // Given a stream of bytes, parse the data and constuct the container
@@ -217,8 +217,8 @@ public:
 
 private:
     // Disallow Copy Constructor and Assignment Operator
-    IBM_Container( IBM_Container& ); 
-    IBM_Container operator = ( IBM_Container& );
+    IBM_Container( IBM_Container& ) = delete; 
+    IBM_Container operator = ( IBM_Container& ) = delete;
     
     void initializeMap();
 
@@ -237,7 +237,7 @@ private:
     SoftwareHdr  m_softwareHdr;
     SoftwareSig  m_softwareSig;
 
-    std::string  m_mode;
+    IBM_Mode     m_mode;
 
     typedef std::map<std::string, IBM_ContainerFld> ContainerFldMap;
 
