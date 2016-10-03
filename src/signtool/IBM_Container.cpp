@@ -43,6 +43,7 @@ namespace
 {
     constexpr uint32_t g_COL_WIDTH = 24;
     constexpr uint32_t g_UNCOMPRESSED_PUBKEY_FORMAT = 0x04;
+    constexpr uint32_t g_CONTAINER_MAX_SIZE = 4096;
 
     constexpr auto g_HASH_ALGO_SHA512_NAME   = "SHA-512";
     constexpr auto g_SIGN_ALGO_ECDSA521_NAME = "ECDSA521";
@@ -55,36 +56,6 @@ namespace
             return item.first;
         }
     };
-
-    uint16_t getUint16( const uint8_t *data )
-    {
-        uint16_t value = 0;
-
-        value = data[1] | (data[0] << 8);
-
-        return value;
-    }
-
-    uint32_t getUint32( const uint8_t *data )
-    {
-        uint32_t value = 0;
-
-        value = (data[3] | (data[2] << 8) | (data[1] << 16) | (data[0] << 24));
-
-        return value;
-    }
-
-    uint64_t getUint64( const uint8_t *data )
-    {
-        uint64_t value = 0;
-
-        value = (            data[7]        | ((uint16_t)data[6] << 8)  | 
-                  ((uint32_t)data[5] << 16) | ((uint32_t)data[4] << 24) |
-                  ((uint64_t)data[3] << 32) | ((uint64_t)data[2] << 40) |
-                  ((uint64_t)data[1] << 48) | ((uint64_t)data[0] << 56) );
-
-        return value;
-    }
 
     void printHexBytes( const uint8_t* bytes, size_t size, size_t leadSpace )
     {
@@ -868,7 +839,7 @@ bool IBM_Container::Save( const std::string p_fileName )
         THROW_EXCEPTION_STR(ss.str().c_str());
     }
 
-    int padLen = 4096;
+    int padLen = g_CONTAINER_MAX_SIZE;
 
     std::vector<uint8_t> hdrBytes;
 
@@ -906,8 +877,9 @@ bool IBM_Container::Save( const std::string p_fileName )
     if (padLen < 0)
     {
         std::stringstream ss;
-        ss << "!-> Wrong container length, must be <= 4096 bytes, it is <" 
-           << (4096 - padLen) << "> bytes" << std::endl;
+        ss << "!-> Wrong container length, must be <= " << g_CONTAINER_MAX_SIZE
+           << " bytes, it is <" << (g_CONTAINER_MAX_SIZE - padLen) << "> bytes"
+           << std::endl;
 
         THROW_EXCEPTION_STR(ss.str().c_str());
     }
@@ -1560,20 +1532,23 @@ void IBM_Container::ParseContainer( const std::vector<uint8_t>& p_rawData )
 
     int keyCount = 0;
 
+    IBM_Utils* pUtils = IBM_Utils::get();
+    THROW_EXCEPTION( pUtils == NULL );
+
     // Parse the ContainerHdr
-    m_containerHdr.m_magicNumber = getUint32( pRawData );
+    m_containerHdr.m_magicNumber = pUtils->getUint32( pRawData );
     pRawData += 4;
    
-    m_containerHdr.m_version = getUint16( pRawData );
+    m_containerHdr.m_version = pUtils->getUint16( pRawData );
     pRawData += 2;
 
-    m_containerHdr.m_containerSize = getUint64( pRawData );
+    m_containerHdr.m_containerSize = pUtils->getUint64( pRawData );
     pRawData += 8;
    
-    m_containerHdr.m_targetHrmor = getUint64( pRawData );
+    m_containerHdr.m_targetHrmor = pUtils->getUint64( pRawData );
     pRawData += 8;
    
-    m_containerHdr.m_stackPointer = getUint64( pRawData );
+    m_containerHdr.m_stackPointer = pUtils->getUint64( pRawData );
     pRawData += 8;
    
     memcpy( &m_containerHdr.m_hwPkeyA, pRawData, ECDSA521_KEY_SIZE );
@@ -1586,25 +1561,25 @@ void IBM_Container::ParseContainer( const std::vector<uint8_t>& p_rawData )
     pRawData += ECDSA521_KEY_SIZE;
 
     // Parse the PrefixHdr
-    m_prefixHdr.m_version = getUint16( pRawData );
+    m_prefixHdr.m_version = pUtils->getUint16( pRawData );
     pRawData += 2;
 
     m_prefixHdr.m_hashAlg = *pRawData++;
     m_prefixHdr.m_sigAlg  = *pRawData++;
 
-    m_prefixHdr.m_codeStartOffset = getUint64( pRawData );
+    m_prefixHdr.m_codeStartOffset = pUtils->getUint64( pRawData );
     pRawData += 8;
    
     memcpy( m_prefixHdr.m_reserved, pRawData, 8 );
     pRawData += 8;
    
-    m_prefixHdr.m_flags = getUint32( pRawData );
+    m_prefixHdr.m_flags = pUtils->getUint32( pRawData );
     pRawData += 4;
    
     m_prefixHdr.m_swKeyCount  = *pRawData++;
     keyCount = m_prefixHdr.m_swKeyCount;
 
-    m_prefixHdr.m_payloadSize = getUint64( pRawData );
+    m_prefixHdr.m_payloadSize = pUtils->getUint64( pRawData );
     pRawData += 8;
    
     memcpy( m_prefixHdr.m_payloadHash, pRawData, SHA512_DIGEST_SIZE );
@@ -1665,24 +1640,24 @@ void IBM_Container::ParseContainer( const std::vector<uint8_t>& p_rawData )
     }
 
     // Parse the SoftwareHdr
-    m_softwareHdr.m_version = getUint16( pRawData );
+    m_softwareHdr.m_version = pUtils->getUint16( pRawData );
     pRawData += 2;
 
     m_softwareHdr.m_hashAlg = *pRawData++;
     m_softwareHdr.m_unused  = *pRawData++;
 
-    m_softwareHdr.m_codeStartOffset = getUint64( pRawData );
+    m_softwareHdr.m_codeStartOffset = pUtils->getUint64( pRawData );
     pRawData += 8;
 
     memcpy( m_softwareHdr.m_reserved, pRawData, 8 );
     pRawData += 8;
 
-    m_softwareHdr.m_flags = getUint32( pRawData );
+    m_softwareHdr.m_flags = pUtils->getUint32( pRawData );
     pRawData += 4;
 
     m_softwareHdr.m_reserved0  = *pRawData++;
 
-    m_softwareHdr.m_payloadSize = getUint64( pRawData );
+    m_softwareHdr.m_payloadSize = pUtils->getUint64( pRawData );
     pRawData += 8;
 
     memcpy( m_softwareHdr.m_payloadHash, pRawData, SHA512_DIGEST_SIZE );

@@ -42,7 +42,7 @@ public:
                const std::string& p_digest,
                const std::string& p_signFileName,
                const std::string& p_saHostName,
-               int                p_saPortNum );
+               uint16_t           p_saPortNum );
 
     int Verify( const std::string& p_pubKeyFileName,
                 const std::string& p_digest,
@@ -57,19 +57,20 @@ public:
                       std::string&         p_digestStr );
 
 private:
-    // Disallow Copy Constructor and Assignment Operator
+    // Disallow Move Constructor, Copy Constructor and  Assignment Operator
     IBM_Crypto( IBM_Crypto& ) = delete; 
+    IBM_Crypto( IBM_Crypto&& ) = delete;
     IBM_Crypto operator = ( IBM_Crypto& ) = delete;
     
-    virtual bool doCcaSign( const std::string&  p_pKeyName,
-                            const IBM_HexBytes& p_dgstBytes,
-                            IBM_HexBytes&       p_signBytes,
-                            const std::string&  p_serverName,
-                            int                 p_serverPort );
+    virtual int doCcaSign( const std::string&  p_pKeyName,
+                           const IBM_HexBytes& p_dgstBytes,
+                           IBM_HexBytes&       p_signBytes,
+                           const std::string&  p_serverName,
+                           uint16_t            p_saPortNum );
 
-    virtual bool doOpensslSign( const std::string&  p_privKeyFileName,
-                                const IBM_HexBytes& p_dgstBytes,
-                                IBM_HexBytes&       p_signBytes );
+    virtual int doOpensslSign( const std::string&  p_privKeyFileName,
+                               const IBM_HexBytes& p_dgstBytes,
+                               IBM_HexBytes&       p_signBytes );
 
     virtual int doCcaVerify( const std::string&  p_pubKeyFileName,
                              const IBM_HexBytes& p_dgstBytes,
@@ -81,13 +82,5 @@ private:
 
     IBM_Mode  m_mode;
 };
-
-
-struct sign_agent_packet_s
-{
-    uint8_t     keyname[32];
-    uint8_t     digest[32];
-} __attribute__((packed));
-
 
 #endif // __IBM_CRYPTO_H_

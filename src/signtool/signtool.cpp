@@ -183,6 +183,7 @@ namespace
     static const int s_CMD_CREATE_CONTAINER(0x40);
     static const int s_CMD_UPD_CONTAINER_FLD(0x80);
     static const int s_CMD_CALCULATE_HASH(0x100);
+    static const int s_CMD_GET_PUBLIC_KEY(0x200);
 
     int ParseArguments( int argc, char* argv[] )
     {
@@ -193,6 +194,7 @@ namespace
             { "sign",                     no_argument,       NULL, 's' },
             { "verify",                   no_argument,       NULL, 't' },
             { "create_key",               no_argument,       NULL, 'u' },
+            { "get_pubkey",               no_argument,       NULL, 'g' },
             { "projname",                 required_argument, NULL, 'N' },
             { "sigfile",                  required_argument, NULL, 'S' },
             { "pubkeyfile",               required_argument, NULL, 'K' },
@@ -249,6 +251,12 @@ namespace
                 case 'u':   // Create ec curve 521 Key
                 {
                     startFlags = s_CMD_CREATE_KEY;
+                    break;
+                }
+
+                case 'g':   // Get Public Key for the given project
+                {
+                    startFlags = s_CMD_GET_PUBLIC_KEY;
                     break;
                 }
 
@@ -563,6 +571,25 @@ int main ( int argc, char** argv )
             std::cout << std::endl;
         }
         else if (flags & s_CMD_CREATE_KEY)
+        {
+            // construct the Crypto Object
+            IBM_Crypto crypto(s_mode);
+
+            if (s_pubkeyFileName.size() == 0 )
+            {
+                THROW_EXCEPTION_STR( "missing --pubkeyfile parameter." );
+            }
+
+            if (s_privkeyOrProjName.size() == 0 )
+            {
+                THROW_EXCEPTION_STR( "missing --privkeyfile parameter." );
+            }
+
+            //  Create the keypair and save them in the specfied
+            //  files in PEM foramt
+            THROW_EXCEPTION( crypto.CreateKeyPair( s_privkeyOrProjName, s_pubkeyFileName ) == false );
+        }
+        else if (flags & s_CMD_GET_PUBLIC_KEY)
         {
             // construct the Crypto Object
             IBM_Crypto crypto(s_mode);

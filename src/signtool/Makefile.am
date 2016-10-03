@@ -26,6 +26,8 @@
 bin_PROGRAMS = signtool
 
 signtool_SOURCES = \
+        IBM_Socket.cpp \
+        IBM_SignAgentMessages.cpp \
         IBM_Container.cpp \
         IBM_Exception.cpp \
         IBM_Utils.cpp  \
@@ -37,7 +39,7 @@ signtool_SOURCES = \
 # c++0x (will fail compile if even this is not available)
 CXXCPP0X=$(if ifeq @HAVE_CXX11@ "0",-std=c++0x,)
 
-signtool_CPPFLAGS = $(CXXCPP) $(CXXCPP0X) -I. -I -g3
+signtool_CPPFLAGS = $(CXXCPP) $(CXXCPP0X) -I. -I -g3 
 signtool_LDFLAGS =
 signtool_LDADD = -lcrypto
 

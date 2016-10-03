@@ -257,3 +257,34 @@ void IBM_Utils::GetSignatureBytes( const std::string& p_fileName,
 
     return;
 }
+
+
+uint16_t IBM_Utils::getUint16( const uint8_t *data )
+{
+    uint16_t value = 0;
+
+    value = data[1] | (data[0] << 8);
+
+    return value;
+}
+
+uint32_t IBM_Utils::getUint32( const uint8_t *data )
+{
+    uint32_t value = 0;
+
+    value = (data[3] | (data[2] << 8) | (data[1] << 16) | (data[0] << 24));
+
+    return value;
+}
+
+uint64_t IBM_Utils::getUint64( const uint8_t *data )
+{
+    uint64_t value = 0;
+
+    value = (            data[7]        | ((uint16_t)data[6] << 8)  |
+              ((uint32_t)data[5] << 16) | ((uint32_t)data[4] << 24) |
+              ((uint64_t)data[3] << 32) | ((uint64_t)data[2] << 40) |
+              ((uint64_t)data[1] << 48) | ((uint64_t)data[0] << 56) );
+
+    return value;
+}

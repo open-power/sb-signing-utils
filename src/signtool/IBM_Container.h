@@ -216,8 +216,9 @@ public:
                       std::string& p_digestStr );
 
 private:
-    // Disallow Copy Constructor and Assignment Operator
+    // Disallow Move Constructor, Copy Constructor and  Assignment Operator
     IBM_Container( IBM_Container& ) = delete; 
+    IBM_Container( IBM_Container&& ) = delete;
     IBM_Container operator = ( IBM_Container& ) = delete;
     
     void initializeMap();

@@ -37,9 +37,11 @@
 #include <openssl/evp.h>
 #include <openssl/pem.h>
 
+#include "IBM_Socket.h"
 #include "IBM_Utils.h"
 #include "IBM_HexString.h"
 #include "IBM_Exception.h"
+#include "IBM_SignAgentMessages.h"
 
 #include "IBM_Crypto.h"
 
@@ -166,7 +168,7 @@ bool IBM_Crypto::Sign( const std::string& p_pKeyName,
                        const std::string& p_digest,
                        const std::string& p_signFileName,
                        const std::string& p_saHostName,
-                       int                p_saPortNum )
+                       uint16_t           p_saPortNum )
 {
     //  Make sure the signature is in upper case.
     std::string digest = p_digest;
@@ -219,17 +221,14 @@ bool IBM_Crypto::Sign( const std::string& p_pKeyName,
         }
     }
 
-    if (rv == 0)
-    {
-        std::cout << "signature :" << IBM_HexString(signBytes) << std::endl;
+    std::cout << "signature :" << IBM_HexString(signBytes) << std::endl;
 
-        IBM_Utils* pUtils = IBM_Utils::get();
-        THROW_EXCEPTION(pUtils == NULL);
+    IBM_Utils* pUtils = IBM_Utils::get();
+    THROW_EXCEPTION(pUtils == NULL);
 
-        pUtils->WriteToFile( p_signFileName.c_str(), signBytes );
-    }
+    pUtils->WriteToFile( p_signFileName.c_str(), signBytes );
 
-    return (rv == 0) ? true : false;
+    return true;
 }
 
 
@@ -331,22 +330,18 @@ bool IBM_Crypto::ComputeHash( IBM_HashAlgo         p_hashAlgo,
 }
 
 
-bool IBM_Crypto::doCcaSign( const std::string&  p_pKeyName,
-                            const IBM_HexBytes& p_dgstBytes,
-                            IBM_HexBytes&       p_signBytes,
-                            const std::string&  p_serverHost,
-                            int                 p_serverPort )
+int IBM_Crypto::doCcaSign( const std::string&  p_pKeyName,
+                           const IBM_HexBytes& p_dgstBytes,
+                           IBM_HexBytes&       p_signBytes,
+                           const std::string&  p_serverHost,
+                           uint16_t            p_serverPort )
 {
-    uint8_t buf[1024];
-
     struct sockaddr_in server_addr;
 
     /* fill in sign agent packet */
-    struct sign_agent_packet_s pkt;
+    SignMessageReq reqPkt;
 
-    memset( (void *) &pkt, 0, sizeof(pkt) );
-
-    if (p_pKeyName.length() >= sizeof(pkt.keyname))
+    if (p_pKeyName.length() >= sizeof(reqPkt.m_projectName))
     {
         std::stringstream ss;
         ss << "*** Length of keyname is too long for use with CCA" << std::endl
@@ -356,28 +351,25 @@ bool IBM_Crypto::doCcaSign( const std::string&  p_pKeyName,
         THROW_EXCEPTION_STR(ss.str().c_str());
     }
 
-    snprintf( (char*)pkt.keyname, sizeof( pkt.keyname ) - 1, "%s", p_pKeyName.c_str() );
+    memcpy( reqPkt.m_projectName, p_pKeyName.c_str(), p_pKeyName.length() );
+    memcpy( reqPkt.m_digestBytes, &p_dgstBytes[0], p_dgstBytes.size() );
 
-    for (uint32_t i = 0; i < p_dgstBytes.size(); i++)
+    std::vector<uint8_t> rawReqData;
+    reqPkt.GetMessageBytes( rawReqData );
+
+    std::cout << "CCA sign: key:" << p_pKeyName << " data:" << IBM_HexString(p_dgstBytes) << std::endl;
+
+    /* create a socket and connect to the signer */
+    IBM_Socket clientSocket;
+
+    std::cout << "Connecting to address " << p_serverHost << " port " << p_serverPort << std::endl;
+
+    if (!clientSocket.Initialize(IBM_Socket::TCP_CLIENT))
     {
-        pkt.digest[i] = p_dgstBytes[i];
+        throw IBM_Exception("Failed to Initialize TCP Client socket");
     }
-
-    std::cout << "CCA sign: key:" << p_pKeyName << " data:" << IBM_HexString(p_dgstBytes);
-
-    /* create a Unix domain stream socket */
-    int fd = socket( AF_INET, SOCK_STREAM, 0 );
-    if (fd < 0)
-    {
-        THROW_EXCEPTION_STR("Unable to create socket.\n");
-    }
-
-    /* fill socket address structure w/server's addr */
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(p_serverPort);
-    inet_aton( p_serverHost.c_str(), &(server_addr.sin_addr) );
-
-    if (connect (fd, (struct sockaddr*)&server_addr, sizeof(struct sockaddr_in)) < 0)
+    
+    if (!clientSocket.Connect(p_serverHost.c_str(), p_serverPort))
     {
         std::stringstream ss;
         ss << "*** Unable to connect to sign_agent" << std::endl
@@ -386,30 +378,63 @@ bool IBM_Crypto::doCcaSign( const std::string&  p_pKeyName,
 
         THROW_EXCEPTION_STR(ss.str().c_str());
     }
+    clientSocket.SetLinger(true, 1);
 
-    if (write( fd, &pkt, sizeof(struct sign_agent_packet_s) )
-                                != sizeof(struct sign_agent_packet_s))
+    uint32_t msgLen = rawReqData.size();
+    if (!clientSocket.WriteInt(msgLen))
     {
         THROW_EXCEPTION_STR("Unable to send data to sign_agent.\n");
     }
 
-    int len = read( fd, buf, 1024 );
-    if (len < 0)
+    if (!clientSocket.Write((const char*) &rawReqData[0], rawReqData.size()))
     {
-        THROW_EXCEPTION_STR("Failed to read from sign_agent.\n");
+        THROW_EXCEPTION_STR("Unable to send data to sign_agent.\n");
     }
 
-    p_signBytes.assign( buf, buf + len );
+    // first read 4 bytes to get the length of the response 
+    msgLen = 0;
+    if (!clientSocket.ReadInt(msgLen))
+    {
+        THROW_EXCEPTION_STR("Unable to read data from sign_agent.\n");
+    }
 
-    close(fd);
+    uint32_t command;
+    if (!clientSocket.ReadInt(command))
+    {
+        THROW_EXCEPTION_STR("Unable to read data from sign_agent.\n");
+    }
+    THROW_EXCEPTION( command != e_SIGN_MESSAGE_RSP );
+
+    uint8_t buffer[msgLen - 4];
+    memset( buffer, 0, sizeof(buffer) );
+
+    size_t rspLen = sizeof(buffer);
+    if (!clientSocket.Read((char *)buffer, &rspLen))
+    {
+        THROW_EXCEPTION_STR("Unable to read data from sign_agent.\n");
+    }
+
+    std::vector<uint8_t> rawRspData;
+    rawRspData.assign( buffer, buffer + rspLen );
+
+    SignMessageRsp rspPkt(rawRspData);
+    if (rspPkt.m_status == e_CMD_RSP_SUCCESS)
+    {
+        p_signBytes.assign( rspPkt.m_signBytes, 
+                            rspPkt.m_signBytes + sizeof(rspPkt.m_signBytes) );
+    }
+    else
+    {
+        THROW_EXCEPTION_STR((char *) rspPkt.m_errorMsg );
+    }
 
     return 0;
 }
 
 
-bool IBM_Crypto::doOpensslSign( const std::string&  p_privKeyFileName,
-                                const IBM_HexBytes& p_dgstBytes,
-                                IBM_HexBytes&       p_signBytes )
+int IBM_Crypto::doOpensslSign( const std::string&  p_privKeyFileName,
+                               const IBM_HexBytes& p_dgstBytes,
+                               IBM_HexBytes&       p_signBytes )
 {
     FILE *fp = fopen( p_privKeyFileName.c_str(), "r" );
     if (fp == NULL)
@@ -422,8 +447,6 @@ bool IBM_Crypto::doOpensslSign( const std::string&  p_privKeyFileName,
         
         THROW_EXCEPTION_STR(ss.str().c_str());
     }
-
-    int retVal = -1;
 
     ECDSA_SIG *eccSig = NULL;
     EVP_PKEY* pkey = PEM_read_PrivateKey( fp, NULL, NULL, NULL );

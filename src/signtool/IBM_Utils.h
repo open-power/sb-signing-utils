@@ -87,10 +87,15 @@ public:
     void GetSignatureBytes( const std::string& p_fileName,
                             std::vector<byte>& p_buffer );
 
+    uint16_t getUint16( const uint8_t *data );
+    uint32_t getUint32( const uint8_t *data );
+    uint64_t getUint64( const uint8_t *data );
+
 private:
     IBM_Utils();
 
     IBM_Utils( IBM_Utils& ) = delete;                    //!< disallow
+    IBM_Utils( IBM_Utils&& ) = delete;                   //!< disallow
     IBM_Utils& operator = ( const IBM_Utils& ) = delete; //!< disallow
 }; 
 
