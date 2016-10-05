@@ -226,7 +226,7 @@ bool IBM_Crypto::Sign( const std::string& p_pKeyName,
     IBM_Utils* pUtils = IBM_Utils::get();
     THROW_EXCEPTION(pUtils == NULL);
 
-    pUtils->WriteToFile( p_signFileName.c_str(), signBytes );
+    pUtils->WriteToFile( p_signFileName, signBytes );
 
     return true;
 }
@@ -330,15 +330,119 @@ bool IBM_Crypto::ComputeHash( IBM_HashAlgo         p_hashAlgo,
 }
 
 
+bool IBM_Crypto::GetPublicKey( const std::string&  p_projName,
+                               const std::string&  p_pubKeyFileName,
+                               const std::string&  p_serverHost,
+                               uint16_t            p_serverPort )
+{
+    /* fill in get public key request packet */
+    GetPublicKeyReq reqPkt;
+
+    if (p_projName.length() >= sizeof(reqPkt.m_projectName))
+    {
+        std::stringstream ss;
+        ss << "*** Length of project name is too long for use with CCA" << std::endl
+           << "--- Passed in project name length is " << p_projName.length() 
+           << " bytes, must be <= 32 bytes." << std::endl;
+
+        THROW_EXCEPTION_STR(ss.str().c_str());
+    }
+    memcpy( reqPkt.m_projectName, p_projName.c_str(), p_projName.length() );
+
+    std::vector<uint8_t> rawReqData;
+    reqPkt.GetMessageBytes( rawReqData );
+
+    std::cout << "project name:" << p_projName << std::endl;
+
+    /* create a socket and connect to the signer */
+    IBM_Socket clientSocket;
+
+    std::cout << "Connecting to address " << p_serverHost << " port " << p_serverPort << std::endl;
+
+    if (!clientSocket.Initialize(IBM_Socket::TCP_CLIENT))
+    {
+        throw IBM_Exception("Failed to Initialize TCP Client socket");
+    }
+    
+    if (!clientSocket.Connect(p_serverHost.c_str(), p_serverPort))
+    {
+        std::stringstream ss;
+        ss << "*** Unable to connect to sign_agent" << std::endl
+           << "--- Socket connect to " << p_serverHost << "@" << p_serverPort
+           << " failed." << std::endl;
+
+        THROW_EXCEPTION_STR(ss.str().c_str());
+    }
+    clientSocket.SetLinger(true, 1);
+
+    uint32_t msgLen = rawReqData.size();
+    if (!clientSocket.WriteInt(msgLen))
+    {
+        THROW_EXCEPTION_STR("Unable to send data to sign_agent.\n");
+    }
+
+    if (!clientSocket.Write((const char*) &rawReqData[0], rawReqData.size()))
+    {
+        THROW_EXCEPTION_STR("Unable to send data to sign_agent.\n");
+    }
+
+    // first read 4 bytes to get the length of the response 
+    msgLen = 0;
+    if (!clientSocket.ReadInt(msgLen))
+    {
+        THROW_EXCEPTION_STR("Unable to read data from sign_agent.\n");
+    }
+
+    uint32_t command;
+    if (!clientSocket.ReadInt(command))
+    {
+        THROW_EXCEPTION_STR("Unable to read data from sign_agent.\n");
+    }
+    THROW_EXCEPTION( command != e_GET_PUBLIC_KEY_RSP );
+
+    uint8_t buffer[msgLen - 4];
+    memset( buffer, 0, sizeof(buffer) );
+
+    size_t rspLen = sizeof(buffer);
+    if (!clientSocket.Read((char *)buffer, &rspLen))
+    {
+        THROW_EXCEPTION_STR("Unable to read data from sign_agent.\n");
+    }
+
+    std::vector<uint8_t> rawRspData;
+    rawRspData.assign( buffer, buffer + rspLen );
+
+    GetPublicKeyRsp rspPkt(rawRspData);
+    if (rspPkt.m_status == e_CMD_RSP_SUCCESS)
+    {
+        IBM_HexBytes publicKey;
+        publicKey.assign( rspPkt.m_publicKey, 
+                          rspPkt.m_publicKey + sizeof(rspPkt.m_publicKey) );
+
+        std::cout << "public key :" << IBM_HexString(publicKey) << std::endl;
+
+        IBM_Utils* pUtils = IBM_Utils::get();
+        THROW_EXCEPTION(pUtils == NULL);
+
+        pUtils->WriteToFile( p_pubKeyFileName, publicKey );
+    }
+    else
+    {
+        THROW_EXCEPTION_STR((char *) rspPkt.m_errorMsg );
+    }
+
+    return 0;
+}
+
+
+
 int IBM_Crypto::doCcaSign( const std::string&  p_pKeyName,
                            const IBM_HexBytes& p_dgstBytes,
                            IBM_HexBytes&       p_signBytes,
                            const std::string&  p_serverHost,
                            uint16_t            p_serverPort )
 {
-    struct sockaddr_in server_addr;
-
-    /* fill in sign agent packet */
+    /* fill in sign message request packet */
     SignMessageReq reqPkt;
 
     if (p_pKeyName.length() >= sizeof(reqPkt.m_projectName))

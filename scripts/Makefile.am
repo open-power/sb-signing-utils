@@ -1,7 +1,7 @@
 # IBM_PROLOG_BEGIN_TAG
 # This is an automatically generated prolog.
 #
-# $Source: Makefile.am $
+# $Source: scripts/Makefile.am $
 #
 # OpenPOWER sb-signing-utils Project
 #
@@ -23,7 +23,7 @@
 #
 # IBM_PROLOG_END_TAG
 
-# Import the c++11 detection macros in the m4 dir
-ACLOCAL_AMFLAGS = -I m4
+dist_bin_SCRIPTS = crtSignedContainer.pl
 
-SUBDIRS = src scripts
+install-exec-local:
+	$(INSTALL) -dv $(bindir)

@@ -51,6 +51,11 @@ public:
     bool CreateKeyPair( const std::string& p_privKeyFileName,
                         const std::string& p_pubKeyFileName );
 
+    bool GetPublicKey( const std::string&  p_projName,
+                       const std::string&  p_pubKeyFileName,
+                       const std::string&  p_saHostName,
+                       uint16_t            p_saPortNum );
+
     bool ComputeHash( IBM_HashAlgo         p_hashAlgo,
                       const unsigned char* p_data,
                       size_t               p_dataLen,
@@ -66,7 +71,7 @@ private:
                            const IBM_HexBytes& p_dgstBytes,
                            IBM_HexBytes&       p_signBytes,
                            const std::string&  p_serverName,
-                           uint16_t            p_saPortNum );
+                           uint16_t            p_serverPort );
 
     virtual int doOpensslSign( const std::string&  p_privKeyFileName,
                                const IBM_HexBytes& p_dgstBytes,

@@ -110,6 +110,7 @@ AC_CONFIG_FILES([
    Makefile 
    src/Makefile
    src/signtool/Makefile
+   scripts/Makefile
 ])
 
 AC_OUTPUT

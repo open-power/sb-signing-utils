@@ -587,7 +587,8 @@ int main ( int argc, char** argv )
 
             //  Create the keypair and save them in the specfied
             //  files in PEM foramt
-            THROW_EXCEPTION( crypto.CreateKeyPair( s_privkeyOrProjName, s_pubkeyFileName ) == false );
+            crypto.CreateKeyPair( s_privkeyOrProjName,
+                                  s_pubkeyFileName );
         }
         else if (flags & s_CMD_GET_PUBLIC_KEY)
         {
@@ -604,9 +605,11 @@ int main ( int argc, char** argv )
                 THROW_EXCEPTION_STR( "missing --privkeyfile parameter." );
             }
 
-            //  Create the keypair and save them in the specfied
-            //  files in PEM foramt
-            THROW_EXCEPTION( crypto.CreateKeyPair( s_privkeyOrProjName, s_pubkeyFileName ) == false );
+            //  Get the public key assocaited with the project
+            crypto.GetPublicKey( s_privkeyOrProjName,
+                                 s_pubkeyFileName,
+                                 s_saHostName,
+                                 s_saPortNum );
         }
         else if (flags & s_CMD_CALCULATE_HASH)
         {
