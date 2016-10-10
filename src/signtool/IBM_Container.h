@@ -34,8 +34,82 @@
 
 #include "IBM_Utils.h"
 
+
+/*
+   The following paragraph describess the OpenPower container layout, it consists of 5 parts
+
+      * Contaner Header
+      * Prefix Header
+      * Prefix Data
+      * Software Header
+      * Software Signature
+
+   The total length of the container is 4k including padding bytes appended to the end after the
+   softwre signature. The container supports 3 Hardware keys and signature and for upto 3 software
+   keys and signature. Details about each header is described below.
+
+        |-----------------------------------------------------| 0x00000000
+        |                                                     |
+        |      Container Header (0x1AA or 426 bytes)          |
+        |                                                     |
+        |---------------------------|                         |
+        |                           |-------------------------| 0x000001AC   
+        |             Prefix Header (0x62 or 98 bytes)        |
+        |-----------------------------------------------------| 0x0000020C                           
+        |                                                     |            
+        |            Prefix Data (0x318 or 792 bytes)         |
+        |                                                     |
+        |-----------------------------------------------------| 0x00000524
+        |        Software Header (0x62 or 98 bytes)           |
+        |---------------------------|                         |
+        |                           |-------------------------| 0x00000588
+        |                                                     |
+        |       Software Signature (0x18C or 396 bytes)       |
+        |                                                     |
+        |-----------------------------------------------------| 0x00000712
+        |                                                     |
+        |                                                     |
+        |          padding (0x8EE or 2286 bytes)              |
+        |                                                     |
+        |                                                     |
+        |-----------------------------------------------------| 0x00000FFC
+*/
+
+
 struct ContainerHdr
 {
+    /*
+        |-----------------------------------------------------| 0x00000000
+        |            Magic Number (0x17082011)                |
+        |---------------------------|-------------------------| 0x00000004
+        |                           |     Version             |
+        |                           |-------------------------| 0x00000008
+        |              Container Size (8 Bytes)               |
+        |---------------------------|                         | 
+        |                           |-------------------------| 0x00000010
+        |                Target HRMOR (8 Bytes)               |
+        |---------------------------|                         | 
+        |                           |-------------------------| 0x00000018                    
+        |                Stack Pointer (8 Bytes)              |
+        |---------------------------|                         | 
+        |                           |-------------------------| 0x00000020
+        |                                                     |
+        |      Hardware Public Key-A (132 bytes)(8 Bytes)     |
+        |                                                     |
+        |---------------------------|                         | 
+        |                           |-------------------------| 0x000000A4
+        |                                                     |
+        |      Hardware Public Key-B (132 bytes)(8 Bytes)     |
+        |                                                     |
+        |---------------------------|                         | 
+        |                           |-------------------------| 0x00000128
+        |                                                     |
+        |      Hardware Public Key-B (132 bytes)(8 Bytes)     |
+        |                                                     |
+        |---------------------------|                         | 
+                                    |-------------------------| 0x000001AB
+    */
+
     uint32_t  m_magicNumber                = ROM_MAGIC_NUMBER;
     uint16_t  m_version                    = CONTAINER_VERSION;
     uint64_t  m_containerSize              = 0;
@@ -53,8 +127,36 @@ struct ContainerHdr
 }  __attribute__ ((packed));
 
 
+
 struct PrefixHdr
 {
+    /*
+        |---------------------------|                         | 0x000001A8
+        |      Version              |                         |   
+        |---------------------------|------------|------------| 0x000001AC                         
+        |                           | Sign Algo  | Hash Algo  |            
+        |                           |------------|------------| 0x000001B0
+        |                 Code Offset Start (8 bytes)         |
+        |---------------------------|                         |
+        |                           |-------------------------| 0x000001B8
+        |                  Reserved (8 bytes)                 |
+        |---------------------------|                         |
+        |         flags             |                         |
+        |-------------|-------------|-------------------------| 0x000001C0
+        |             |SW Key Count |       flags             | 
+        |             |-------------|-------------------------| 0x000001C4
+        |                                                     |
+        |               Payload Size (8 bytes)                |
+        |-------------|                                       |
+        |             |---------------------------------------| 0x000001CC
+        |                                                     |
+        |              Payload Hash (64 bytes)                |
+        |                                                     |
+        |-------------|                                       |
+        |ECID count=0 |                                       |
+        |-------------|---------------------------------------| 0x00000208
+    */
+
     uint16_t  m_version                         = HEADER_VERSION;
     uint8_t   m_hashAlg                         = HASH_ALG_SHA512;
     uint8_t   m_sigAlg                          = SIG_ALG_ECDSA521;
@@ -75,8 +177,37 @@ struct PrefixHdr
 } __attribute__ ((packed));
 
 
+
 struct PrefixData
 {
+    /*
+        |-----------------------------------------------------| 0x0000020C
+        |                                                     |
+        |           HW Signature-A (132 bytes)                |
+        |                                                     |
+        |-----------------------------------------------------| 0x00000290
+        |                                                     |
+        |           HW Signature-B (132 bytes)                |
+        |                                                     |
+        |-----------------------------------------------------| 0x00000314
+        |                                                     |
+        |           HW Signature-C (132 bytes)                |
+        |                                                     |
+        |-----------------------------------------------------| 0x00000398
+        |                                                     |
+        |           SW Public Key-P (132 bytes)               |
+        |                                                     |
+        |-----------------------------------------------------| 0x0000041C
+        |                                                     |
+        |           SW Public Key-Q (132 bytes) (Optional)    |
+        |                                                     | 
+        |-----------------------------------------------------| 0x000004A0
+        |                                                     |
+        |           SW Public Key-R (132 bytes) (Optional)    |
+        |                                                     |
+        |-----------------------------------------------------|
+    */
+
     uint8_t   m_hwSigA[ECDSA521_SIG_SIZE]  = {0};
     uint8_t   m_hwSigB[ECDSA521_SIG_SIZE]  = {0};
     uint8_t   m_hwSigC[ECDSA521_SIG_SIZE]  = {0};
@@ -93,8 +224,34 @@ struct PrefixData
 } __attribute__ ((packed));
 
 
+
 struct SoftwareHdr
 {
+    /*
+        |-------------|-------------|-------------------------| 0x00000524
+        |   reserved  |  Hash Algo  |        Version          |   
+        |-------------|-------------|-------------------------| 0x00000528                         
+        |                 Code Offset Start (8 bytes)         |
+        |                                                     |
+        |-----------------------------------------------------| 0x00000530
+        |                  Reserved (8 bytes)                 |
+        |                                                     |
+        |-----------------------------------------------------| 0x00000538
+        |                      flags (4 bytes)                | 
+        |----------------------------------------|------------| 0x0000053C
+        |                                        |  reserved  |
+        |               Payload Size (8 bytes)   |------------| 0x00000540
+        |                                                     |
+        |----------------------------------------|            |
+        |                                        |------------| 0x00000548
+        |                                                     |
+        |              Payload Hash (64 bytes)                |
+        |                                                     |
+        |---------------------------|------------|            |
+                                    |ECID count=0|            |
+                                    |------------|------------| 0x00000584
+    */
+
     uint16_t  m_version                         = HEADER_VERSION;
     uint8_t   m_hashAlg                         = HASH_ALG_SHA512;
     uint8_t   m_unused                          = 0;
@@ -115,8 +272,29 @@ struct SoftwareHdr
 } __attribute__ ((packed));
 
 
+
 struct SoftwareSig
 {
+    /*
+        |---------------------------|                           0x00000584
+        |                           |-------------------------| 0x00000588
+        |                                                     |
+        |           SW Signature-P (132 bytes)                |
+        |                                                     |
+        |---------------------------|                         |
+        |                           |-------------------------| 0x0000060C
+        |                                                     |
+        |           SW Signature-Q (132 bytes) (Optional)     |
+        |                                                     |
+        |---------------------------|                         |
+        |                           |-------------------------| 0x00000690
+        |                                                     |
+        |           SW Signature-R (132 bytes) (Optional)     |
+        |                                                     |
+        |---------------------------|                         |
+                                    |-------------------------| 0x00000710
+    */
+
     uint8_t   m_swSigP[ECDSA521_SIG_SIZE] = {0};
     uint8_t   m_swSigQ[ECDSA521_SIG_SIZE] = {0};
     uint8_t   m_swSigR[ECDSA521_SIG_SIZE] = {0};
@@ -131,13 +309,6 @@ struct SoftwareSig
 
 
 
-/* The Container Layout consists of the following 5 blocks 
- *   ContainerHdr
- *   PrefixHdr
- *   PrefixData
- *   SoftwareHdr
- *   SoftwareSig
- */
 class IBM_Container
 {
 public:

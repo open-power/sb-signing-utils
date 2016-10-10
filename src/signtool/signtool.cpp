@@ -526,7 +526,7 @@ int main ( int argc, char** argv )
 
             if (s_pubkeyFileName.size() == 0 )
             {
-                THROW_EXCEPTION( "missing --pubkeyfile parameter." );
+                THROW_EXCEPTION_STR( "missing --pubkeyfile parameter." );
             }
 
             if (s_shaDigest.size() == 0)

@@ -202,6 +202,7 @@ void IBM_Utils::GetPublicKeyBytes( const std::string& p_fileName,
         p_buffer.clear();
         std::copy( dgstBytes.begin(), dgstBytes.end(), std::back_inserter(p_buffer) );
     
+        EC_KEY_free(key);
         EVP_PKEY_free(pkey);
         OPENSSL_free(pubkey);
         fclose(fp);
