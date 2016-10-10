@@ -68,6 +68,10 @@ class IBM_Utils
 {
 public:
     ~IBM_Utils(); 
+
+    IBM_Utils( IBM_Utils& ) = delete;                    //!< disallow
+    IBM_Utils( IBM_Utils&& ) = delete;                   //!< disallow
+    IBM_Utils& operator = ( const IBM_Utils& ) = delete; //!< disallow
     
     static IBM_Utils* get(); 
     
@@ -93,10 +97,6 @@ public:
 
 private:
     IBM_Utils();
-
-    IBM_Utils( IBM_Utils& ) = delete;                    //!< disallow
-    IBM_Utils( IBM_Utils&& ) = delete;                   //!< disallow
-    IBM_Utils& operator = ( const IBM_Utils& ) = delete; //!< disallow
 }; 
 
 #endif //  __IBM_UTILS_H_

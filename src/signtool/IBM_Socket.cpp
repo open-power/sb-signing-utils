@@ -234,6 +234,7 @@ bool IBM_Socket::Bind( const std::string& p_listenAddr,
                   << p_listenPort << "failed" << std::endl;;
 
     }
+    free(servinfo);
  
     return retVal;   
 }

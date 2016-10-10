@@ -59,7 +59,7 @@ struct PrefixHdr
     uint8_t   m_hashAlg                         = HASH_ALG_SHA512;
     uint8_t   m_sigAlg                          = SIG_ALG_ECDSA521;
     uint64_t  m_codeStartOffset                 = 0;
-    uint8_t   m_reserved[8]                     = {0};;
+    uint8_t   m_reserved[8]                     = {0};
     uint32_t  m_flags                           = 0;
     uint8_t   m_swKeyCount                      = 0;
     uint64_t  m_payloadSize                     = 0 ;
@@ -199,6 +199,11 @@ public:
     // Given a stream of bytes, parse the data and constuct the container
     IBM_Container( uint8_t *p_rawData );
 
+    // Disallow Move Constructor, Copy Constructor and  Assignment Operator
+    IBM_Container( IBM_Container& ) = delete; 
+    IBM_Container( IBM_Container&& ) = delete;
+    IBM_Container operator = ( IBM_Container& ) = delete;
+    
     ~IBM_Container();
 
     int  Validate();
@@ -216,11 +221,6 @@ public:
                       std::string& p_digestStr );
 
 private:
-    // Disallow Move Constructor, Copy Constructor and  Assignment Operator
-    IBM_Container( IBM_Container& ) = delete; 
-    IBM_Container( IBM_Container&& ) = delete;
-    IBM_Container operator = ( IBM_Container& ) = delete;
-    
     void initializeMap();
 
     void ParseContainer( const std::vector<uint8_t>& p_rawData );
@@ -240,15 +240,14 @@ private:
 
     IBM_Mode     m_mode;
 
+
     typedef std::map<std::string, IBM_ContainerFld> ContainerFldMap;
-
-    typedef std::map<std::string, IBM_HdrFldType> HdrFldTypeMap;
-    typedef std::map<std::string, IBM_HashAlgo>   HashAlgoMap;
-
-    HashAlgoMap      m_hashAlgoMap;
-    HdrFldTypeMap    m_hdrFldTypeMap;
+    typedef std::map<std::string, IBM_HdrFldType>   HdrFldTypeMap;
+    typedef std::map<std::string, IBM_HashAlgo>     HashAlgoMap;
 
     ContainerFldMap  m_contFldMap;
+    HashAlgoMap      m_hashAlgoMap;
+    HdrFldTypeMap    m_hdrFldTypeMap;
 };
 
 #endif // __IBM_CONTAINER_H_

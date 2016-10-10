@@ -896,7 +896,7 @@ bool IBM_Container::Save( const std::string p_fileName )
 
 bool IBM_Container::UpdateField( const std::string p_fldName, const std::string p_value )
 {
-    ContainerFldMap::iterator itr = m_contFldMap.find(p_fldName);
+    auto itr = m_contFldMap.find(p_fldName);
     if (itr == m_contFldMap.end())
     {
         std::stringstream ss;
@@ -910,7 +910,7 @@ bool IBM_Container::UpdateField( const std::string p_fldName, const std::string 
 
     bool retVal = true;
 
-    IBM_ContainerFld eFldType = itr->second;
+    auto eFldType = itr->second;
     switch (eFldType)
     {
         case e_CONTAINER_VERSION:
@@ -1404,7 +1404,7 @@ bool IBM_Container::ComputeHash( std::string  p_hdrFldType,
                                  std::string& p_digestStr )
 {
     // check input fields
-    HdrFldTypeMap::iterator itr = m_hdrFldTypeMap.find(p_hdrFldType);
+    auto itr = m_hdrFldTypeMap.find(p_hdrFldType);
     if (itr == m_hdrFldTypeMap.end())
     {
         std::stringstream ss;
@@ -1416,7 +1416,7 @@ bool IBM_Container::ComputeHash( std::string  p_hdrFldType,
         THROW_EXCEPTION_STR(ss.str().c_str());
     }
 
-    HashAlgoMap::iterator itr1 = m_hashAlgoMap.find(p_hashAlgo);
+    auto itr1 = m_hashAlgoMap.find(p_hashAlgo);
     if (itr1 == m_hashAlgoMap.end())
     {
         std::stringstream ss;
@@ -1430,7 +1430,7 @@ bool IBM_Container::ComputeHash( std::string  p_hdrFldType,
 
     std::vector<uint8_t> data;
 
-    IBM_HdrFldType hdrFldType = itr->second;
+    auto hdrFldType = itr->second;
     switch (hdrFldType)
     {
         case e_FLD_PREFIX_HDR:

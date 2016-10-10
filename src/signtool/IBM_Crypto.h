@@ -36,6 +36,12 @@ class IBM_Crypto
 {
 public:
     IBM_Crypto( IBM_Mode p_mode );
+
+    // Disallow Move Constructor, Copy Constructor and  Assignment Operator
+    IBM_Crypto( IBM_Crypto& ) = delete; 
+    IBM_Crypto( IBM_Crypto&& ) = delete;
+    IBM_Crypto operator = ( IBM_Crypto& ) = delete;
+    
     virtual ~IBM_Crypto();
 
     bool Sign( const std::string& p_pKeyName,
@@ -62,11 +68,6 @@ public:
                       std::string&         p_digestStr );
 
 private:
-    // Disallow Move Constructor, Copy Constructor and  Assignment Operator
-    IBM_Crypto( IBM_Crypto& ) = delete; 
-    IBM_Crypto( IBM_Crypto&& ) = delete;
-    IBM_Crypto operator = ( IBM_Crypto& ) = delete;
-    
     virtual int doCcaSign( const std::string&  p_pKeyName,
                            const IBM_HexBytes& p_dgstBytes,
                            IBM_HexBytes&       p_signBytes,
