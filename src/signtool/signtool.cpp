@@ -497,7 +497,14 @@ int main ( int argc, char** argv )
 
             if (s_privkeyOrProjName.size() == 0 )
             {
-                THROW_EXCEPTION_STR( "missing --privkeyfile or --projname parameter." );
+                if (s_mode = e_MODE_IBM_PRODUCTION)
+                {
+                    THROW_EXCEPTION_STR( "missing --projname parameter." );
+                }
+                else
+                {
+                    THROW_EXCEPTION_STR( "missing --privkeyfile parameter." );
+                }
             }
 
             if (s_shaDigest.size() == 0)
@@ -602,7 +609,14 @@ int main ( int argc, char** argv )
 
             if (s_privkeyOrProjName.size() == 0 )
             {
-                THROW_EXCEPTION_STR( "missing --privkeyfile parameter." );
+                if (s_mode = e_MODE_IBM_PRODUCTION)
+                {
+                    THROW_EXCEPTION_STR( "missing --projname parameter." );
+                }
+                else
+                {
+                    THROW_EXCEPTION_STR( "missing --privkeyfile parameter." );
+                }
             }
 
             //  Get the public key assocaited with the project

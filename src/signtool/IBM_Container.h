@@ -94,17 +94,17 @@ struct ContainerHdr
         |---------------------------|                         | 
         |                           |-------------------------| 0x00000020
         |                                                     |
-        |      Hardware Public Key-A (132 bytes)(8 Bytes)     |
+        |            Hardware Public Key-A (132 bytes)        |
         |                                                     |
         |---------------------------|                         | 
         |                           |-------------------------| 0x000000A4
         |                                                     |
-        |      Hardware Public Key-B (132 bytes)(8 Bytes)     |
+        |            Hardware Public Key-B (132 bytes)        |
         |                                                     |
         |---------------------------|                         | 
         |                           |-------------------------| 0x00000128
         |                                                     |
-        |      Hardware Public Key-B (132 bytes)(8 Bytes)     |
+        |            Hardware Public Key-B (132 bytes)        |
         |                                                     |
         |---------------------------|                         | 
                                     |-------------------------| 0x000001AB
@@ -410,7 +410,6 @@ private:
     SoftwareSig  m_softwareSig;
 
     IBM_Mode     m_mode;
-
 
     typedef std::map<std::string, IBM_ContainerFld> ContainerFldMap;
     typedef std::map<std::string, IBM_HdrFldType>   HdrFldTypeMap;

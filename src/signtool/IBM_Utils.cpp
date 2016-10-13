@@ -148,16 +148,14 @@ bool IBM_Utils::WriteToFile( const std::string& p_fileName,
 
 
 void IBM_Utils::GetPublicKeyBytes( const std::string& p_fileName,
-                                   std::vector<byte>& p_buffer )
+                                   std::vector<byte>& p_buffer,
+                                   IBM_KeyFileType    p_keyFileType )
 {
     FILE *fp = fopen( p_fileName.c_str(), "r" );
     if (fp == NULL)
     {
         std::stringstream ss;
-        ss << "Failed to open private key file <"
-           << p_fileName
-           << ">"
-           << std::endl;
+        ss << p_fileName << " : " << strerror(errno);
 
         THROW_EXCEPTION_STR(ss.str().c_str());
     }
@@ -166,14 +164,39 @@ void IBM_Utils::GetPublicKeyBytes( const std::string& p_fileName,
 
     try
     {
-        pkey = PEM_read_PUBKEY( fp, NULL, NULL, NULL );
+        switch (p_keyFileType)
+        {
+            case e_KEY_FILE_PRIVATE:
+            {
+                pkey = PEM_read_PrivateKey( fp, NULL, NULL, NULL );
+                break;
+            }
+
+            case e_KEY_FILE_PUBLIC:
+            {
+                pkey = PEM_read_PUBKEY( fp, NULL, NULL, NULL );
+                break;
+            }
+
+            default:
+            {
+                std::stringstream ss;
+                ss << "*** Invalid value for key type" << std::endl
+                   << "--- Expecting <" << (int) e_KEY_FILE_PUBLIC
+                   << "> or <" << (int) e_KEY_FILE_PRIVATE << ">, got <"
+                   << p_keyFileType << ">" << std::endl;
+
+                THROW_EXCEPTION_STR(ss.str().c_str());
+            }
+        }
+
         if (pkey == NULL)
         {
+            char errBuf[256];
+            ERR_error_string_n( ERR_get_error(), errBuf, sizeof(errBuf) );
+
             std::stringstream ss;
-            ss << "Failed to read public key from file <"
-               << p_fileName
-               << ">"
-               << std::endl;
+            ss << "openssl error  : " << errBuf;
 
             THROW_EXCEPTION_STR(ss.str().c_str());
         }
@@ -195,9 +218,6 @@ void IBM_Utils::GetPublicKeyBytes( const std::string& p_fileName,
         IBM_HexString pubKeyHexString(pubkey);
 
         IBM_HexBytes dgstBytes = pubKeyHexString.getBinary();
-
-        // remove the first byte
-        dgstBytes.erase( dgstBytes.begin() );
 
         p_buffer.clear();
         std::copy( dgstBytes.begin(), dgstBytes.end(), std::back_inserter(p_buffer) );

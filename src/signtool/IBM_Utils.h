@@ -57,6 +57,13 @@ enum IBM_HashAlgo
 };
 
 
+enum IBM_KeyFileType
+{
+    e_KEY_FILE_PUBLIC  = 0,
+    e_KEY_FILE_PRIVATE = 1
+};
+
+
 enum IBM_Mode
 {
     e_MODE_IBM_PRODUCTION,
@@ -86,7 +93,8 @@ public:
                       std::vector<byte>& p_buffer );
 
     void GetPublicKeyBytes( const std::string& p_fileName,
-                            std::vector<byte>& p_buffer );
+                            std::vector<byte>& p_buffer,
+                            IBM_KeyFileType    p_keyFileType );
 
     void GetSignatureBytes( const std::string& p_fileName,
                             std::vector<byte>& p_buffer );

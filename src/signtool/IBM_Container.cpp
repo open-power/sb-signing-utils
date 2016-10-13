@@ -125,26 +125,12 @@ namespace
                                       p_buffer,
                                       ECDSA521_KEY_SIZE + 1 ); // since keyfile is 133 bytes with 0x04
                                                                // at the begining
-
-                if (p_buffer[0] != g_UNCOMPRESSED_PUBKEY_FORMAT)
-                {
-                    std::stringstream ss;
-                    ss << "File <" 
-                       << p_keyFileName 
-                       << "> is not a vaid p521 public key file"
-                       << std::endl;
-
-                    THROW_EXCEPTION_STR(ss.str().c_str());
-                }
-            
-                // public key file OK, delete the first byte
-                p_buffer.erase( p_buffer.begin() );
                 break;
             }
 
             case e_MODE_DEVELOPMENT:
             {
-                pUtils->GetPublicKeyBytes( p_keyFileName.c_str(), p_buffer );
+                pUtils->GetPublicKeyBytes( p_keyFileName.c_str(), p_buffer, e_KEY_FILE_PUBLIC );
                 break;
             }
             
@@ -159,6 +145,20 @@ namespace
                 THROW_EXCEPTION_STR(ss.str().c_str());
             }
         }
+
+        if (p_buffer[0] != g_UNCOMPRESSED_PUBKEY_FORMAT)
+        {
+            std::stringstream ss;
+            ss << "File <" 
+               << p_keyFileName 
+               << "> is not a vaid p521 public key file"
+               << std::endl;
+
+            THROW_EXCEPTION_STR(ss.str().c_str());
+        }
+            
+        // public key file OK, delete the first byte
+        p_buffer.erase( p_buffer.begin() );
 
         THROW_EXCEPTION(p_buffer.size() != ECDSA521_KEY_SIZE);
     }

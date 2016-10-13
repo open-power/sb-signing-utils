@@ -31,6 +31,7 @@
 #include <algorithm>
 
 #include <openssl/ec.h>
+#include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/ecdsa.h>
 #include <openssl/obj_mac.h>
@@ -266,13 +267,13 @@ int IBM_Crypto::Verify( const std::string& p_pubKeyFileName,
 
     switch (m_mode)
     {
-        case e_MODE_IBM_PRODUCTION:
+        case e_MODE_DEVELOPMENT:
         {
             rv = doOpensslVerify( p_pubKeyFileName, dgstBytes, p_signFileName );
             break;
         }
 
-        case e_MODE_DEVELOPMENT:
+        case e_MODE_IBM_PRODUCTION:
         {
             rv = doCcaVerify( p_pubKeyFileName, dgstBytes, p_signFileName );
             break;
@@ -335,105 +336,35 @@ bool IBM_Crypto::GetPublicKey( const std::string&  p_projName,
                                const std::string&  p_serverHost,
                                uint16_t            p_serverPort )
 {
-    /* fill in get public key request packet */
-    GetPublicKeyReq reqPkt;
+    // structure to receive public key bytes
+    IBM_HexBytes pubKeyBytes;
 
-    if (p_projName.length() >= sizeof(reqPkt.m_projectName))
+    bool rv = false;
+
+    switch (m_mode)
     {
-        std::stringstream ss;
-        ss << "*** Length of project name is too long for use with CCA" << std::endl
-           << "--- Passed in project name length is " << p_projName.length() 
-           << " bytes, must be <= 32 bytes." << std::endl;
+        case e_MODE_DEVELOPMENT:
+        {
+            rv = doGetOpensslPubKey( p_projName, pubKeyBytes, e_KEY_FILE_PRIVATE );
+            break;
+        }
 
-        THROW_EXCEPTION_STR(ss.str().c_str());
-    }
-    memcpy( reqPkt.m_projectName, p_projName.c_str(), p_projName.length() );
-
-    std::vector<uint8_t> rawReqData;
-    reqPkt.GetMessageBytes( rawReqData );
-
-    std::cout << "project name:" << p_projName << std::endl;
-
-    /* create a socket and connect to the signer */
-    IBM_Socket clientSocket;
-
-    std::cout << "Connecting to address " << p_serverHost << " port " << p_serverPort << std::endl;
-
-    if (!clientSocket.Initialize(IBM_Socket::TCP_CLIENT))
-    {
-        throw IBM_Exception("Failed to Initialize TCP Client socket");
-    }
-    
-    if (!clientSocket.Connect(p_serverHost.c_str(), p_serverPort))
-    {
-        std::stringstream ss;
-        ss << "*** Unable to connect to sign_agent" << std::endl
-           << "--- Socket connect to " << p_serverHost << "@" << p_serverPort
-           << " failed." << std::endl;
-
-        THROW_EXCEPTION_STR(ss.str().c_str());
-    }
-    clientSocket.SetLinger(true, 1);
-
-    uint32_t msgLen = rawReqData.size();
-    if (!clientSocket.WriteInt(msgLen))
-    {
-        THROW_EXCEPTION_STR("Unable to send data to sign_agent.\n");
+        case e_MODE_IBM_PRODUCTION:
+        {
+            rv = doGetCcaPubKey( p_projName, p_serverHost, p_serverPort, pubKeyBytes );
+            break;
+        }
     }
 
-    if (!clientSocket.Write((const char*) &rawReqData[0], rawReqData.size()))
-    {
-        THROW_EXCEPTION_STR("Unable to send data to sign_agent.\n");
-    }
+    std::cout << "Public Key :" << IBM_HexString(pubKeyBytes) << std::endl;
 
-    // first read 4 bytes to get the length of the response 
-    msgLen = 0;
-    if (!clientSocket.ReadInt(msgLen))
-    {
-        THROW_EXCEPTION_STR("Unable to read data from sign_agent.\n");
-    }
+    IBM_Utils* pUtils = IBM_Utils::get();
+    THROW_EXCEPTION(pUtils == NULL);
 
-    uint32_t command;
-    if (!clientSocket.ReadInt(command))
-    {
-        THROW_EXCEPTION_STR("Unable to read data from sign_agent.\n");
-    }
-    THROW_EXCEPTION( command != e_GET_PUBLIC_KEY_RSP );
+    pUtils->WriteToFile( p_pubKeyFileName, pubKeyBytes );
 
-    uint8_t buffer[msgLen - 4];
-    memset( buffer, 0, sizeof(buffer) );
-
-    size_t rspLen = sizeof(buffer);
-    if (!clientSocket.Read((char *)buffer, &rspLen))
-    {
-        THROW_EXCEPTION_STR("Unable to read data from sign_agent.\n");
-    }
-
-    std::vector<uint8_t> rawRspData;
-    rawRspData.assign( buffer, buffer + rspLen );
-
-    GetPublicKeyRsp rspPkt(rawRspData);
-    if (rspPkt.m_status == e_CMD_RSP_SUCCESS)
-    {
-        IBM_HexBytes publicKey;
-        publicKey.assign( rspPkt.m_publicKey, 
-                          rspPkt.m_publicKey + sizeof(rspPkt.m_publicKey) );
-
-        std::cout << "public key :" << IBM_HexString(publicKey) << std::endl;
-
-        IBM_Utils* pUtils = IBM_Utils::get();
-        THROW_EXCEPTION(pUtils == NULL);
-
-        pUtils->WriteToFile( p_pubKeyFileName, publicKey );
-    }
-    else
-    {
-        THROW_EXCEPTION_STR((char *) rspPkt.m_errorMsg );
-    }
-
-    return 0;
+    return true;
 }
-
 
 
 int IBM_Crypto::doCcaSign( const std::string&  p_pKeyName,
@@ -849,4 +780,113 @@ int IBM_Crypto::doOpensslVerify( const std::string&   p_pubKeyFileName,
     }
 
     return status;
+}
+
+
+bool IBM_Crypto::doGetCcaPubKey( const std::string&  p_projName,
+                                 const std::string&  p_serverHost,
+                                 uint16_t            p_serverPort,
+                                 IBM_HexBytes&       p_pubKeyBytes )
+{
+    /* fill in get public key request packet */
+    GetPublicKeyReq reqPkt;
+
+    if (p_projName.length() >= sizeof(reqPkt.m_projectName))
+    {
+        std::stringstream ss;
+        ss << "*** Length of project name is too long for use with CCA" << std::endl
+           << "--- Passed in project name length is " << p_projName.length() 
+           << " bytes, must be <= 32 bytes." << std::endl;
+
+        THROW_EXCEPTION_STR(ss.str().c_str());
+    }
+    memcpy( reqPkt.m_projectName, p_projName.c_str(), p_projName.length() );
+
+    std::vector<uint8_t> rawReqData;
+    reqPkt.GetMessageBytes( rawReqData );
+
+    std::cout << "project name:" << p_projName << std::endl;
+
+    /* create a socket and connect to the signer */
+    IBM_Socket clientSocket;
+
+    std::cout << "Connecting to address " << p_serverHost << " port " << p_serverPort << std::endl;
+
+    if (!clientSocket.Initialize(IBM_Socket::TCP_CLIENT))
+    {
+        throw IBM_Exception("Failed to Initialize TCP Client socket");
+    }
+    
+    if (!clientSocket.Connect(p_serverHost.c_str(), p_serverPort))
+    {
+        std::stringstream ss;
+        ss << "*** Unable to connect to sign_agent" << std::endl
+           << "--- Socket connect to " << p_serverHost << "@" << p_serverPort
+           << " failed." << std::endl;
+
+        THROW_EXCEPTION_STR(ss.str().c_str());
+    }
+    clientSocket.SetLinger(true, 1);
+
+    uint32_t msgLen = rawReqData.size();
+    if (!clientSocket.WriteInt(msgLen))
+    {
+        THROW_EXCEPTION_STR("Unable to send data to sign_agent.\n");
+    }
+
+    if (!clientSocket.Write((const char*) &rawReqData[0], rawReqData.size()))
+    {
+        THROW_EXCEPTION_STR("Unable to send data to sign_agent.\n");
+    }
+
+    // first read 4 bytes to get the length of the response 
+    msgLen = 0;
+    if (!clientSocket.ReadInt(msgLen))
+    {
+        THROW_EXCEPTION_STR("Unable to read data from sign_agent.\n");
+    }
+
+    uint32_t command;
+    if (!clientSocket.ReadInt(command))
+    {
+        THROW_EXCEPTION_STR("Unable to read data from sign_agent.\n");
+    }
+    THROW_EXCEPTION( command != e_GET_PUBLIC_KEY_RSP );
+
+    uint8_t buffer[msgLen - 4];
+    memset( buffer, 0, sizeof(buffer) );
+
+    size_t rspLen = sizeof(buffer);
+    if (!clientSocket.Read((char *)buffer, &rspLen))
+    {
+        THROW_EXCEPTION_STR("Unable to read data from sign_agent.\n");
+    }
+
+    std::vector<uint8_t> rawRspData;
+    rawRspData.assign( buffer, buffer + rspLen );
+
+    GetPublicKeyRsp rspPkt(rawRspData);
+    if (rspPkt.m_status == e_CMD_RSP_SUCCESS)
+    {
+        p_pubKeyBytes.clear();
+        p_pubKeyBytes.assign( rspPkt.m_publicKey, 
+                              rspPkt.m_publicKey + sizeof(rspPkt.m_publicKey) );
+    }
+    else
+    {
+        THROW_EXCEPTION_STR((char *) rspPkt.m_errorMsg );
+    }
+
+    return true;
+}
+
+
+bool IBM_Crypto::doGetOpensslPubKey( const std::string&  p_privKeyFileName,
+                                     IBM_HexBytes&       p_pubKeyBytes,
+                                     IBM_KeyFileType     p_keyFileType  )
+{
+    IBM_Utils* pUtils = IBM_Utils::get();
+    THROW_EXCEPTION(pUtils == NULL);
+
+    pUtils->GetPublicKeyBytes( p_privKeyFileName.c_str(), p_pubKeyBytes, p_keyFileType );
 }
