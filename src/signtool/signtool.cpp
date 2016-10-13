@@ -497,7 +497,7 @@ int main ( int argc, char** argv )
 
             if (s_privkeyOrProjName.size() == 0 )
             {
-                if (s_mode = e_MODE_IBM_PRODUCTION)
+                if (s_mode == e_MODE_IBM_PRODUCTION)
                 {
                     THROW_EXCEPTION_STR( "missing --projname parameter." );
                 }
@@ -609,7 +609,7 @@ int main ( int argc, char** argv )
 
             if (s_privkeyOrProjName.size() == 0 )
             {
-                if (s_mode = e_MODE_IBM_PRODUCTION)
+                if (s_mode == e_MODE_IBM_PRODUCTION)
                 {
                     THROW_EXCEPTION_STR( "missing --projname parameter." );
                 }
