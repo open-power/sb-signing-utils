@@ -263,12 +263,12 @@ void IBM_Utils::GetSignatureBytes( const std::string& p_fileName,
     memset( &sBuf, 0, sizeof(sBuf) );
 
     int rLen = BN_num_bytes(signature->r);
-    int rOff = (rLen == 66) ? 0 : 1;
+    int rOff = (66 - rLen);
 
     BN_bn2bin(signature->r, &sBuf[rOff]);
 
     int sLen = BN_num_bytes(signature->s);
-    int sOff = (sLen == 66) ? 66 : 67;
+    int sOff = 66 + (66 - sLen);
 
     BN_bn2bin(signature->s, &sBuf[sOff]);
 
