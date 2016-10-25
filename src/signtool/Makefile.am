@@ -26,6 +26,8 @@
 bin_PROGRAMS = signtool
 
 signtool_SOURCES = \
+        IBM_CfgFileReader.cpp \
+        IBM_CfgManager.cpp \
         IBM_Socket.cpp \
         IBM_SignAgentMessages.cpp \
         IBM_Container.cpp \

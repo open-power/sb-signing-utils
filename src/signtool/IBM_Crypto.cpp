@@ -168,8 +168,8 @@ bool IBM_Crypto::CreateKeyPair( const std::string& p_privKeyFileName,
 bool IBM_Crypto::Sign( const std::string& p_pKeyName,
                        const std::string& p_digest,
                        const std::string& p_signFileName,
-                       const std::string& p_saHostName,
-                       uint16_t           p_saPortNum )
+                       const std::string& p_serverName,
+                       const std::string& p_serverPort )
 {
     //  Make sure the signature is in upper case.
     std::string digest = p_digest;
@@ -217,7 +217,7 @@ bool IBM_Crypto::Sign( const std::string& p_pKeyName,
 
         case e_MODE_IBM_PRODUCTION:
         {
-            rv = doCcaSign( p_pKeyName, dgstBytes, signBytes, p_saHostName, p_saPortNum );
+            rv = doCcaSign( p_pKeyName, dgstBytes, signBytes, p_serverName, p_serverPort );
             break;
         }
     }
@@ -334,7 +334,7 @@ bool IBM_Crypto::ComputeHash( IBM_HashAlgo         p_hashAlgo,
 bool IBM_Crypto::GetPublicKey( const std::string&  p_projName,
                                const std::string&  p_pubKeyFileName,
                                const std::string&  p_serverHost,
-                               uint16_t            p_serverPort )
+                               const std::string&  p_serverPort )
 {
     // structure to receive public key bytes
     IBM_HexBytes pubKeyBytes;
@@ -371,7 +371,7 @@ int IBM_Crypto::doCcaSign( const std::string&  p_pKeyName,
                            const IBM_HexBytes& p_dgstBytes,
                            IBM_HexBytes&       p_signBytes,
                            const std::string&  p_serverHost,
-                           uint16_t            p_serverPort )
+                           const std::string&  p_serverPort )
 {
     /* fill in sign message request packet */
     SignMessageReq reqPkt;
@@ -785,7 +785,7 @@ int IBM_Crypto::doOpensslVerify( const std::string&   p_pubKeyFileName,
 
 bool IBM_Crypto::doGetCcaPubKey( const std::string&  p_projName,
                                  const std::string&  p_serverHost,
-                                 uint16_t            p_serverPort,
+                                 const std::string&  p_serverPort,
                                  IBM_HexBytes&       p_pubKeyBytes )
 {
     /* fill in get public key request packet */

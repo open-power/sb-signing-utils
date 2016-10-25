@@ -34,6 +34,7 @@
 #include <string>
 #include <algorithm>
 
+#include "IBM_CfgManager.h"
 #include "IBM_Crypto.h"
 #include "IBM_Exception.h"
 #include "IBM_Container.h"
@@ -53,6 +54,9 @@ namespace
     static std::string s_devMode = "development";
     static std::string s_ibmProdMode = "ibm-production";
 
+    static std::string s_configFileName;
+    static std::string s_projectToken;
+
     static std::string s_modeStr;
     static std::string s_output;
 
@@ -68,7 +72,7 @@ namespace
     static std::string s_saHostName = "127.0.0.1";
 
     // sign_agent listens on port 8001 by default
-    static int s_saPortNum = 8001;
+    static std::string s_saPortNum = "8001";
 
     static std::string s_fldName;
     static std::string s_fldValue;
@@ -82,6 +86,40 @@ namespace
     }
 
     static std::string  s_VERSION = "1.0.0";
+
+ 
+    int PrintVerifyStatus( int verStatus )
+    {
+        int retVal;
+
+        std::cout << "ECC Signature ";
+        switch (verStatus)
+        {
+            case s_SIGN_VERIFY_SUCCESS:
+            {
+                std::cout << "Verified OK";
+                retVal = 0;
+                break;
+            }
+
+            case s_SIGN_VERIFY_FAILURE:
+            {
+                std::cout << "Verification Failure";
+                retVal = 1;
+                break;
+            }
+
+            default:
+            {
+                std::cout << "encountered Openssl Error";
+                retVal = verStatus;
+                break;
+            }
+        }
+        std::cout << std::endl;
+
+        return retVal;
+    }
 
     std::string getAppVersion(bool version)
     {
@@ -195,6 +233,7 @@ namespace
             { "verify",                   no_argument,       NULL, 't' },
             { "create_key",               no_argument,       NULL, 'u' },
             { "get_pubkey",               no_argument,       NULL, 'g' },
+
             { "projname",                 required_argument, NULL, 'N' },
             { "sigfile",                  required_argument, NULL, 'S' },
             { "pubkeyfile",               required_argument, NULL, 'K' },
@@ -202,6 +241,9 @@ namespace
             { "digest",                   required_argument, NULL, 'D' },
             { "sa_hostname",              required_argument, NULL, 'H' },
             { "sa_portnum",               required_argument, NULL, 'P' },
+
+            { "config-file",              required_argument, NULL, 'C' },
+            { "projtoken",                required_argument, NULL, 'E' },
 
             { "create-container",         no_argument,       NULL, 'c' },
             { "print-container",          no_argument,       NULL, 'p' },
@@ -260,6 +302,18 @@ namespace
                     break;
                 }
 
+                case 'C':
+                {
+                    s_configFileName = std::string(optarg);
+                    break;
+                }
+
+                case 'E':
+                {
+                    s_projectToken = std::string(optarg);
+                    break;
+                }
+
                 case 'N':   // Signing Project Name
                 case 'L':   // key filename for signing/verifying/create key operations
                 {
@@ -293,7 +347,7 @@ namespace
 
                 case 'P':   // Portnum of sign_agent
                 {
-                    s_saPortNum = atoi( optarg );
+                    s_saPortNum = std::string( optarg );
                     break;
                 }
 
@@ -495,87 +549,109 @@ int main ( int argc, char** argv )
             // construct the Crypto Object
             IBM_Crypto crypto(s_mode);
 
-            if (s_privkeyOrProjName.size() == 0 )
-            {
-                if (s_mode == e_MODE_IBM_PRODUCTION)
-                {
-                    THROW_EXCEPTION_STR( "missing --projname parameter." );
-                }
-                else
-                {
-                    THROW_EXCEPTION_STR( "missing --privkeyfile parameter." );
-                }
-            }
-
-            if (s_shaDigest.size() == 0)
+            // digest parameter is common to both invocations
+            if (s_shaDigest.empty())
             {
                 THROW_EXCEPTION_STR( "missing --digest parameter." );
             }
 
-            if (s_signFileName.size() == 0)
+            // check if we are given a config file, if so use that
+            if (s_configFileName.empty())
             {
-                THROW_EXCEPTION_STR( "missing --sigfile paramater." );
-            }
+                if (s_privkeyOrProjName.empty())
+                {
+                    if (s_mode == e_MODE_IBM_PRODUCTION)
+                    {
+                        THROW_EXCEPTION_STR( "missing --projname parameter." );
+                    }
+                    else
+                    {
+                        THROW_EXCEPTION_STR( "missing --privkeyfile parameter." );
+                    }
+                }
 
-            //  send the request to sign and save the signature
-            //  in the specified filename
-            bool retVal = crypto.Sign( s_privkeyOrProjName,
-                                       s_shaDigest,
-                                       s_signFileName,
-                                       s_saHostName,
-                                       s_saPortNum );
-            THROW_EXCEPTION(retVal == false );
+                if (s_signFileName.empty())
+                {
+                    THROW_EXCEPTION_STR( "missing --sigfile paramater." );
+                }
+
+                //  send the request to sign and save the signature
+                //  in the specified filename
+                bool retVal = crypto.Sign( s_privkeyOrProjName,
+                                           s_shaDigest,
+                                           s_signFileName,
+                                           s_saHostName,
+                                           s_saPortNum );
+                THROW_EXCEPTION(retVal == false );
+            }
+            else
+            {
+                IBM_CfgManager cfgManager(s_configFileName);
+
+                std::vector<ProjInfo> projInfoList;
+                cfgManager.GetProjectInfoList( s_projectToken, projInfoList );
+
+                for (auto itr : projInfoList)
+                {
+                    //  send the request to sign and save the signature
+                    //  in the specified filename
+                    bool retVal = crypto.Sign( itr.m_projectName,
+                                               s_shaDigest,
+                                               itr.m_signFileName,
+                                               cfgManager.GetSignAgentHost(),
+                                               cfgManager.GetSignAgentPort() );
+                    THROW_EXCEPTION(retVal == false );
+                }
+            }
         }
         else if (flags & s_CMD_VERIFY)
         {
             // construct the Crypto Object
             IBM_Crypto crypto(s_mode);
 
-            if (s_pubkeyFileName.size() == 0 )
-            {
-                THROW_EXCEPTION_STR( "missing --pubkeyfile parameter." );
-            }
-
+            // digest parameter is common to both invocations
             if (s_shaDigest.size() == 0)
             {
                 THROW_EXCEPTION_STR( "missing --digest parameter." );
             }
 
-            if (s_signFileName.size() == 0)
+            // check if we are given a config file, if so use that
+            if (s_configFileName.empty())
             {
-                THROW_EXCEPTION_STR( "missing --sigfile paramater." );
+                if (s_pubkeyFileName.size() == 0 )
+                {
+                    THROW_EXCEPTION_STR( "missing --pubkeyfile parameter." );
+                }
+
+                if (s_signFileName.size() == 0)
+                {
+                    THROW_EXCEPTION_STR( "missing --sigfile paramater." );
+                }
+
+                //  Verify the signature
+                int status = crypto.Verify( s_pubkeyFileName,
+                                            s_shaDigest,
+                                            s_signFileName );
+
+                rc = PrintVerifyStatus( status );
             }
-
-            //  Verify the signature
-            int status = crypto.Verify( s_pubkeyFileName,
-                                        s_shaDigest,
-                                        s_signFileName );
-
-            std::cout << "ECC Signature ";
-            switch (status)
+            else
             {
-                case s_SIGN_VERIFY_SUCCESS:
-                {
-                    std::cout << "Verified OK";
-                    rc = 0;
-                    break;
-                }
+                IBM_CfgManager cfgManager(s_configFileName);
 
-                case s_SIGN_VERIFY_FAILURE:
-                {
-                    std::cout << "Verification Failure";
-                    rc = 1;
-                    break;
-                }
+                std::vector<ProjInfo> projInfoList;
+                cfgManager.GetProjectInfoList( s_projectToken, projInfoList );
 
-                default:
+                for (auto itr : projInfoList)
                 {
-                    std::cout << "encountered Openssl Error";
-                    rc = status;
-                    break;
+                    //  send the request to sign and save the signature
+                    //  in the specified filename
+                    int status = crypto.Verify( itr.m_projectName,
+                                                s_shaDigest,
+                                                itr.m_pubkeyFileName );
+                    rc = PrintVerifyStatus( status );
                 }
             }
-            std::cout << std::endl;
         }
         else if (flags & s_CMD_CREATE_KEY)
         {
@@ -602,28 +678,49 @@ int main ( int argc, char** argv )
             // construct the Crypto Object
             IBM_Crypto crypto(s_mode);
 
-            if (s_pubkeyFileName.size() == 0 )
+            // check if we are given a config file, if so use that
+            if (s_configFileName.empty())
             {
-                THROW_EXCEPTION_STR( "missing --pubkeyfile parameter." );
-            }
+                if (s_pubkeyFileName.size() == 0 )
+                {
+                    THROW_EXCEPTION_STR( "missing --pubkeyfile parameter." );
+                }
 
-            if (s_privkeyOrProjName.size() == 0 )
+                if (s_privkeyOrProjName.size() == 0 )
+                {
+                    if (s_mode == e_MODE_IBM_PRODUCTION)
+                    {
+                        THROW_EXCEPTION_STR( "missing --projname parameter." );
+                    }
+                    else
+                    {
+                        THROW_EXCEPTION_STR( "missing --privkeyfile parameter." );
+                    }
+                }
+
+                //  Get the public key assocaited with the project
+                crypto.GetPublicKey( s_privkeyOrProjName,
+                                     s_pubkeyFileName,
+                                     s_saHostName,
+                                     s_saPortNum );
+            }
+            else
             {
-                if (s_mode == e_MODE_IBM_PRODUCTION)
+                IBM_CfgManager cfgManager(s_configFileName);
+
+                std::vector<ProjInfo> projInfoList;
+                cfgManager.GetProjectInfoList( s_projectToken, projInfoList );
+
+                for (auto itr : projInfoList)
                 {
-                    THROW_EXCEPTION_STR( "missing --projname parameter." );
-                }
-                else
-                {
-                    THROW_EXCEPTION_STR( "missing --privkeyfile parameter." );
+                    //  send the request to get the public key and save it
+                    //  in the specified filename
+                    crypto.GetPublicKey( itr.m_projectName,
+                                         itr.m_pubkeyFileName,
+                                         cfgManager.GetSignAgentHost(),
+                                         cfgManager.GetSignAgentPort() );
                 }
             }
-
-            //  Get the public key assocaited with the project
-            crypto.GetPublicKey( s_privkeyOrProjName,
-                                 s_pubkeyFileName,
-                                 s_saHostName,
-                                 s_saPortNum );
         }
         else if (flags & s_CMD_CALCULATE_HASH)
         {

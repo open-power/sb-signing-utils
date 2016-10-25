@@ -40,7 +40,8 @@ public:
     bool     Accept( IBM_Socket* p_pNewSocket );
     bool     Bind( const std::string& p_listenAddr,
                    const std::string& p_listenPort );
-    bool     Connect( const char* p_pHostName, uint16_t p_port );
+    bool     Connect( const std::string& p_hostName, 
+                      const std::string& p_port );
     bool     Listen( int p_connections = 1 );
 
     bool     SetLinger( bool p_on, int time );

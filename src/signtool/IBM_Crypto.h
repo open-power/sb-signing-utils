@@ -47,8 +47,8 @@ public:
     bool Sign( const std::string& p_pKeyName,
                const std::string& p_digest,
                const std::string& p_signFileName,
-               const std::string& p_saHostName,
-               uint16_t           p_saPortNum );
+               const std::string& p_serverName,
+               const std::string& p_serverPort );
 
     int Verify( const std::string& p_pubKeyFileName,
                 const std::string& p_digest,
@@ -60,7 +60,7 @@ public:
     bool GetPublicKey( const std::string&  p_projName,
                        const std::string&  p_pubKeyFileName,
                        const std::string&  p_serverHost,
-                       uint16_t            p_serverPort );
+                       const std::string&  p_serverPort );
 
     bool ComputeHash( IBM_HashAlgo         p_hashAlgo,
                       const unsigned char* p_data,
@@ -70,7 +70,7 @@ public:
 private:
     virtual bool doGetCcaPubKey( const std::string&  p_projName,
                                  const std::string&  p_serverName,
-                                 uint16_t            p_serverPort,
+                                 const std::string&  p_serverPort,
                                  IBM_HexBytes&       p_pubKeyBytes );
 
     virtual bool doGetOpensslPubKey( const std::string&  p_privKeyFileName,
@@ -81,7 +81,7 @@ private:
                            const IBM_HexBytes& p_dgstBytes,
                            IBM_HexBytes&       p_signBytes,
                            const std::string&  p_serverName,
-                           uint16_t            p_serverPort );
+                           const std::string&  p_serverPort );
 
     virtual int doOpensslSign( const std::string&  p_privKeyFileName,
                                const IBM_HexBytes& p_dgstBytes,

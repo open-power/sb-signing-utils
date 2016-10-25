@@ -7,6 +7,7 @@
 #include <cerrno>
 #include <cstring>
 #include <iostream>
+#include <sstream>
 
 #include "IBM_Socket.h"
 #include "IBM_Exception.h"
@@ -253,7 +254,8 @@ bool IBM_Socket::Bind( const std::string& p_listenAddr,
  *
  * @return true if the operation succeeded, false otherwise
  */
-bool IBM_Socket::Connect( const char* p_pHostName, uint16_t p_port )
+bool IBM_Socket::Connect( const std::string& p_hostName,
+                          const std::string& p_port )
 {
     bool retVal = true;
 
@@ -267,15 +269,23 @@ bool IBM_Socket::Connect( const char* p_pHostName, uint16_t p_port )
         return false;
     }
 
-    struct hostent *hostInfo = gethostbyname( p_pHostName );
+    struct hostent *hostInfo = gethostbyname( p_hostName.c_str() );
     if (hostInfo == NULL) 
     {
         return false;
     }
 
+    uint16_t portNum;
+
+    std::stringstream ss(p_port);
+    if (!(ss >> portNum))
+    {
+        throw IBM_Exception("Invalid port number specified");
+    }
+
     // Connect to server.
     m_sockAddress.sin_family = hostInfo->h_addrtype;
-    m_sockAddress.sin_port   = htons( p_port );
+    m_sockAddress.sin_port   = htons( portNum );
 
     memcpy( (char *) &m_sockAddress.sin_addr.s_addr,
              hostInfo->h_addr_list[0], 
