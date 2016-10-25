@@ -61,7 +61,7 @@ void IBM_CfgManager::GetProjectInfoList( const std::string&      p_projectToken,
     std::vector<std::string> projInfoList;
 
     m_cfgReader.GetValue( p_projectToken,
-                          s_KEY_NAME_SIGN,
+                          s_KEY_NAME_DETAILS,
                           projInfoList );
 
     for (auto itr : projInfoList)
@@ -69,7 +69,7 @@ void IBM_CfgManager::GetProjectInfoList( const std::string&      p_projectToken,
         std::vector<std::string> infoList;
         IBM_Tokenizer<IsComma>::Tokenize( infoList, itr, IsComma());
 
-        THROW_EXCEPTION( infoList.size() != 2 );
+        THROW_EXCEPTION( infoList.size() != 3 );
         
         ProjInfo projInfo = { infoList[0], infoList[1], infoList[2] };
 

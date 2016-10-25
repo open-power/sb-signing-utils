@@ -27,10 +27,9 @@
 constexpr char s_SECTION_NAME_GLOBAL[]  = "GLOBAL";
 constexpr char s_SECTION_NAME_PROJECT[] = "PROJECT";
 
-constexpr char s_KEY_NAME_HOST[]   = "host";
-constexpr char s_KEY_NAME_PORT[]   = "port";
-constexpr char s_KEY_NAME_SIGN[]   = "sign";
-constexpr char s_KEY_NAME_PUBKEY[] = "pubkey";
+constexpr char s_KEY_NAME_HOST[]    = "host";
+constexpr char s_KEY_NAME_PORT[]    = "port";
+constexpr char s_KEY_NAME_DETAILS[] = "details";
 
 
 struct ProjInfo
