@@ -158,7 +158,7 @@ namespace
                   << std::endl << std::endl;
         std::cout << "   --mode                    Signing mode 'production' or 'development'"
                   << std::endl;
-        std::cout << "   --little-endian           Assume data storage is Little Endian."
+        std::cout << "   --get_pubkey              Get public key from specified private key or project name."
                   << std::endl << std::endl;
         std::cout << "   --sign                    Sign the input data."
                   << std::endl;
@@ -180,6 +180,10 @@ namespace
                   << std::endl;
         std::cout << "   --sa_portnum              Port number of sign_agent."
                   << std::endl << std::endl;
+        std::cout << "   --configfile              Config file to use for sign and getting public key."
+                  << std::endl;
+        std::cout << "   --projecttoken            Specify project to operate in the given config file."
+                  << std::endl;
         std::cout << "   --calchash                Calculate hash for the specified field type."
                   << std::endl;
         std::cout << "   --fldtype                 Field type, must be one of prefix_hdr or software_hdr."
@@ -242,8 +246,8 @@ namespace
             { "sa_hostname",              required_argument, NULL, 'H' },
             { "sa_portnum",               required_argument, NULL, 'P' },
 
-            { "config-file",              required_argument, NULL, 'C' },
-            { "projtoken",                required_argument, NULL, 'E' },
+            { "configfile",               required_argument, NULL, 'C' },
+            { "projecttoken",             required_argument, NULL, 'E' },
 
             { "create-container",         no_argument,       NULL, 'c' },
             { "print-container",          no_argument,       NULL, 'p' },

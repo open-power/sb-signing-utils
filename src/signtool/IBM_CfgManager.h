@@ -35,8 +35,8 @@ constexpr char s_KEY_NAME_DETAILS[] = "details";
 struct ProjInfo
 {
     std::string  m_projectName;
-    std::string  m_pubkeyFileName;
     std::string  m_signFileName;
+    std::string  m_pubkeyFileName;
 };
 
 
