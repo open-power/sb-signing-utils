@@ -56,22 +56,33 @@ const std::string& IBM_CfgManager::GetSignAgentPort()
 
 
 void IBM_CfgManager::GetProjectInfoList( const std::string&      p_projectToken,
+                                         const std::string&      p_keyName,
                                          std::vector<ProjInfo>&  p_projInfoList )
 {
-    std::vector<std::string> projInfoList;
+    std::string sectionName = s_SECTION_NAME_DEFAULTS;
 
-    m_cfgReader.GetValue( p_projectToken,
-                          s_KEY_NAME_DETAILS,
-                          projInfoList );
-
-    for (auto itr : projInfoList)
+    if ( (m_cfgReader.IsSectionPresent( p_projectToken )) &&
+         (m_cfgReader.IsKeyPresent( p_projectToken, p_keyName )) )
     {
-        std::vector<std::string> infoList;
-        IBM_Tokenizer<IsComma>::Tokenize( infoList, itr, IsComma());
+        sectionName = p_projectToken;
+    }
 
-        THROW_EXCEPTION( infoList.size() != 3 );
+    std::string keyList;
+
+    m_cfgReader.GetValue( sectionName,
+                          p_keyName,
+                          keyList );
+
+    std::vector<std::string> keyListItems;
+    IBM_Tokenizer<IsComma>::Tokenize( keyListItems, keyList, IsComma());
+
+    for (auto itr : keyListItems)
+    {
+        std::string  projName     = itr;
+        std::string  signFileName = p_projectToken + "_" + itr + ".sign";
+        std::string  pkeyFileName = p_projectToken + "_" + itr + ".pub";
         
-        ProjInfo projInfo = { infoList[0], infoList[1], infoList[2] };
+        ProjInfo projInfo = { projName, signFileName, pkeyFileName };
 
         p_projInfoList.push_back( projInfo );
     }
@@ -112,4 +123,14 @@ void IBM_CfgManager::parse()
         THROW_EXCEPTION_STR(ss.str().c_str()); 
     }
     m_cfgReader.GetValue( s_SECTION_NAME_GLOBAL, s_KEY_NAME_PORT, m_signAgentPort );
+
+    // check if the section [DEFAULTS] is present
+    if (!m_cfgReader.IsSectionPresent( s_SECTION_NAME_DEFAULTS ))
+    {
+        std::stringstream ss;
+        ss << "section <" << s_SECTION_NAME_DEFAULTS << "> is missing from config file " 
+           << m_configFileName;
+
+        THROW_EXCEPTION_STR(ss.str().c_str()); 
+    }
 }

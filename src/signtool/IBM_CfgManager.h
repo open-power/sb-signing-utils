@@ -24,12 +24,11 @@
 #include "IBM_CfgFileReader.h"
 
 
-constexpr char s_SECTION_NAME_GLOBAL[]  = "GLOBAL";
-constexpr char s_SECTION_NAME_PROJECT[] = "PROJECT";
+constexpr char s_SECTION_NAME_GLOBAL[]   = "GLOBAL";
+constexpr char s_SECTION_NAME_DEFAULTS[] = "DEFAULTS";
 
-constexpr char s_KEY_NAME_HOST[]    = "host";
-constexpr char s_KEY_NAME_PORT[]    = "port";
-constexpr char s_KEY_NAME_DETAILS[] = "details";
+constexpr char s_KEY_NAME_HOST[]  = "host";
+constexpr char s_KEY_NAME_PORT[]  = "port";
 
 
 struct ProjInfo
@@ -56,6 +55,7 @@ public:
     const std::string&  GetSignAgentPort();
 
     void GetProjectInfoList( const std::string&      p_projectToken,
+                             const std::string&      p_keyName,
                              std::vector<ProjInfo>&  p_projInfoList );
 
 private:

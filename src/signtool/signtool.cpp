@@ -56,6 +56,7 @@ namespace
 
     static std::string s_configFileName;
     static std::string s_projectToken;
+    static std::string s_keyType;
 
     static std::string s_modeStr;
     static std::string s_output;
@@ -184,6 +185,8 @@ namespace
                   << std::endl;
         std::cout << "   --projecttoken            Specify project to operate in the given config file."
                   << std::endl;
+        std::cout << "   --keyType                 Specify key type (HW or SW) to be used."
+                  << std::endl;
         std::cout << "   --calchash                Calculate hash for the specified field type."
                   << std::endl;
         std::cout << "   --fldtype                 Field type, must be one of prefix_hdr or software_hdr."
@@ -248,6 +251,7 @@ namespace
 
             { "configfile",               required_argument, NULL, 'C' },
             { "projecttoken",             required_argument, NULL, 'E' },
+            { "keytype",                  required_argument, NULL, 'J' },
 
             { "create-container",         no_argument,       NULL, 'c' },
             { "print-container",          no_argument,       NULL, 'p' },
@@ -315,6 +319,12 @@ namespace
                 case 'E':
                 {
                     s_projectToken = std::string(optarg);
+                    break;
+                }
+
+                case 'J':
+                {
+                    s_keyType = std::string(optarg);
                     break;
                 }
 
@@ -590,10 +600,20 @@ int main ( int argc, char** argv )
             }
             else
             {
+                if (s_projectToken.empty())
+                {
+                    THROW_EXCEPTION_STR( "missing --projecttoken paramater." );
+                }
+
+                if (s_keyType.empty())
+                {
+                    THROW_EXCEPTION_STR( "missing --keytype paramater." );
+                }
+
                 IBM_CfgManager cfgManager(s_configFileName);
 
                 std::vector<ProjInfo> projInfoList;
-                cfgManager.GetProjectInfoList( s_projectToken, projInfoList );
+                cfgManager.GetProjectInfoList( s_projectToken, s_keyType, projInfoList );
 
                 for (auto itr : projInfoList)
                 {
@@ -641,10 +661,20 @@ int main ( int argc, char** argv )
             }
             else
             {
+                if (s_projectToken.empty())
+                {
+                    THROW_EXCEPTION_STR( "missing --projecttoken paramater." );
+                }
+
+                if (s_keyType.empty())
+                {
+                    THROW_EXCEPTION_STR( "missing --keytype paramater." );
+                }
+
                 IBM_CfgManager cfgManager(s_configFileName);
 
                 std::vector<ProjInfo> projInfoList;
-                cfgManager.GetProjectInfoList( s_projectToken, projInfoList );
+                cfgManager.GetProjectInfoList( s_projectToken, s_keyType, projInfoList );
 
                 for (auto itr : projInfoList)
                 {
@@ -710,10 +740,20 @@ int main ( int argc, char** argv )
             }
             else
             {
+                if (s_projectToken.empty())
+                {
+                    THROW_EXCEPTION_STR( "missing --projecttoken paramater." );
+                }
+
+                if (s_keyType.empty())
+                {
+                    THROW_EXCEPTION_STR( "missing --keytype paramater." );
+                }
+
                 IBM_CfgManager cfgManager(s_configFileName);
 
                 std::vector<ProjInfo> projInfoList;
-                cfgManager.GetProjectInfoList( s_projectToken, projInfoList );
+                cfgManager.GetProjectInfoList( s_projectToken, s_keyType, projInfoList );
 
                 for (auto itr : projInfoList)
                 {
