@@ -680,9 +680,9 @@ int main ( int argc, char** argv )
                 {
                     //  send the request to sign and save the signature
                     //  in the specified filename
-                    int status = crypto.Verify( itr.m_projectName,
+                    int status = crypto.Verify( itr.m_pubkeyFileName,
                                                 s_shaDigest,
-                                                itr.m_pubkeyFileName );
+                                                itr.m_signFileName );
                     rc = PrintVerifyStatus( status );
                 }
             }
