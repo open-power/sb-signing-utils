@@ -76,11 +76,28 @@ void IBM_CfgManager::GetProjectInfoList( const std::string&      p_projectToken,
     std::vector<std::string> keyListItems;
     IBM_Tokenizer<IsComma>::Tokenize( keyListItems, keyList, IsComma());
 
+    char key;
+    if (p_keyName == s_KEY_NAME_HW)
+    {
+        key = 'a';
+    }
+    else if (p_keyName == s_KEY_NAME_SW)
+    {
+        key = 'p';
+    }
+    else
+    {
+        key = 0;
+    }
+   
     for (auto itr : keyListItems)
     {
-        std::string  projName     = itr;
-        std::string  signFileName = p_projectToken + "_" + itr + ".sign";
-        std::string  pkeyFileName = p_projectToken + "_" + itr + ".pub";
+        std::string  keyName = (key == 0) ? itr : std::string(1, key++);
+
+        std::string  projName = itr;
+
+        std::string  signFileName = p_projectToken + "_" + keyName + ".sign";
+        std::string  pkeyFileName = p_projectToken + "_" + keyName + ".pub";
         
         ProjInfo projInfo = { projName, signFileName, pkeyFileName };
 

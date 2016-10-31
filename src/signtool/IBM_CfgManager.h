@@ -29,6 +29,8 @@ constexpr char s_SECTION_NAME_DEFAULTS[] = "DEFAULTS";
 
 constexpr char s_KEY_NAME_HOST[]  = "host";
 constexpr char s_KEY_NAME_PORT[]  = "port";
+constexpr char s_KEY_NAME_HW[]    = "HW";
+constexpr char s_KEY_NAME_SW[]    = "SW";
 
 
 struct ProjInfo
