@@ -52,7 +52,7 @@ IBM_Crypto::IBM_Crypto( IBM_Mode p_mode )
 {
     switch (m_mode)
     {
-        case e_MODE_IBM_PRODUCTION:
+        case e_MODE_PRODUCTION:
         case e_MODE_DEVELOPMENT:
         {
             // supported modes
@@ -63,7 +63,7 @@ IBM_Crypto::IBM_Crypto( IBM_Mode p_mode )
         {
             std::stringstream ss;
             ss << "*** Invalid value for mode" << std::endl
-               << "--- Expecting <" << (int) e_MODE_IBM_PRODUCTION 
+               << "--- Expecting <" << (int) e_MODE_PRODUCTION 
                << "> or <" << (int) e_MODE_DEVELOPMENT << ">, got <"
                << m_mode << ">" << std::endl;
 
@@ -215,7 +215,7 @@ bool IBM_Crypto::Sign( const std::string& p_pKeyName,
             break;
         }
 
-        case e_MODE_IBM_PRODUCTION:
+        case e_MODE_PRODUCTION:
         {
             rv = doCcaSign( p_pKeyName, dgstBytes, signBytes, p_serverName, p_serverPort );
             break;
@@ -273,7 +273,7 @@ int IBM_Crypto::Verify( const std::string& p_pubKeyFileName,
             break;
         }
 
-        case e_MODE_IBM_PRODUCTION:
+        case e_MODE_PRODUCTION:
         {
             rv = doCcaVerify( p_pubKeyFileName, dgstBytes, p_signFileName );
             break;
@@ -349,7 +349,7 @@ bool IBM_Crypto::GetPublicKey( const std::string&  p_projName,
             break;
         }
 
-        case e_MODE_IBM_PRODUCTION:
+        case e_MODE_PRODUCTION:
         {
             rv = doGetCcaPubKey( p_projName, p_serverHost, p_serverPort, pubKeyBytes );
             break;

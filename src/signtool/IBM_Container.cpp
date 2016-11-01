@@ -119,7 +119,7 @@ namespace
 
         switch (p_mode)
         {
-            case e_MODE_IBM_PRODUCTION:
+            case e_MODE_PRODUCTION:
             {
                 pUtils->ReadFromFile( p_keyFileName,
                                       p_buffer,
@@ -138,7 +138,7 @@ namespace
             {
                 std::stringstream ss;
                 ss << "*** Invalid value for mode" << std::endl
-                   << "--- Expecting <" << (int) e_MODE_IBM_PRODUCTION
+                   << "--- Expecting <" << (int) e_MODE_PRODUCTION
                    << "> or <" << (int) e_MODE_DEVELOPMENT << ">, got <"
                    << p_mode << ">" << std::endl;
 
@@ -173,7 +173,7 @@ namespace
 
         switch (p_mode)
         {
-            case e_MODE_IBM_PRODUCTION:
+            case e_MODE_PRODUCTION:
             {
                 pUtils->ReadFromFile( p_sigFileName, p_buffer, ECDSA521_SIG_SIZE );
                 break;
@@ -189,7 +189,7 @@ namespace
             {
                 std::stringstream ss;
                 ss << "*** Invalid value for mode" << std::endl
-                   << "--- Expecting <" << (int) e_MODE_IBM_PRODUCTION
+                   << "--- Expecting <" << (int) e_MODE_PRODUCTION
                    << "> or <" << (int) e_MODE_DEVELOPMENT << ">, got <"
                    << p_mode << ">" << std::endl;
 
@@ -736,7 +736,7 @@ IBM_Container::IBM_Container( IBM_Mode p_mode )
 {
     switch (m_mode)
     {
-        case e_MODE_IBM_PRODUCTION:
+        case e_MODE_PRODUCTION:
         case e_MODE_DEVELOPMENT:
         {
             // supported modes
@@ -747,7 +747,7 @@ IBM_Container::IBM_Container( IBM_Mode p_mode )
         {
             std::stringstream ss;
             ss << "*** Invalid value for mode" << std::endl
-               << "--- Expecting <" << (int) e_MODE_IBM_PRODUCTION 
+               << "--- Expecting <" << (int) e_MODE_PRODUCTION 
                << "> or <" << (int) e_MODE_DEVELOPMENT << ">, got <"
                << m_mode << ">" << std::endl;
            
@@ -772,7 +772,7 @@ IBM_Container::IBM_Container( IBM_Mode    p_mode,
 {
     switch (m_mode)
     {
-        case e_MODE_IBM_PRODUCTION:
+        case e_MODE_PRODUCTION:
         case e_MODE_DEVELOPMENT:
         {
             // supported modes
@@ -783,7 +783,7 @@ IBM_Container::IBM_Container( IBM_Mode    p_mode,
         {
             std::stringstream ss;
             ss << "*** Invalid value for mode" << std::endl
-               << "--- Expecting <" << (int) e_MODE_IBM_PRODUCTION 
+               << "--- Expecting <" << (int) e_MODE_PRODUCTION 
                << "> or <" << (int) e_MODE_DEVELOPMENT << ">, got <"
                << m_mode << ">" << std::endl;
            

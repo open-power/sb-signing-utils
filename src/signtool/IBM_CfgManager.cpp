@@ -43,6 +43,12 @@ void IBM_CfgManager::PrintItems()
 }
 
 
+const std::string& IBM_CfgManager::GetModeString()
+{
+    return m_modeString;
+}
+
+
 const std::string& IBM_CfgManager::GetSignAgentHost()
 {
     return m_signAgentHost;
@@ -140,6 +146,12 @@ void IBM_CfgManager::parse()
         THROW_EXCEPTION_STR(ss.str().c_str()); 
     }
     m_cfgReader.GetValue( s_SECTION_NAME_GLOBAL, s_KEY_NAME_PORT, m_signAgentPort );
+
+    // check if the optional keyname <mode> is present
+    if (m_cfgReader.IsKeyPresent( s_SECTION_NAME_GLOBAL, s_KEY_NAME_MODE ))
+    {
+        m_cfgReader.GetValue( s_SECTION_NAME_GLOBAL, s_KEY_NAME_MODE, m_modeString );
+    }
 
     // check if the section [DEFAULTS] is present
     if (!m_cfgReader.IsSectionPresent( s_SECTION_NAME_DEFAULTS ))

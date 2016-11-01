@@ -51,8 +51,8 @@ namespace
     // assume "development" build by default
     static IBM_Mode s_mode = e_MODE_DEVELOPMENT;
 
-    static std::string s_devMode = "development";
-    static std::string s_ibmProdMode = "ibm-production";
+    static std::string s_devMode  = "development";
+    static std::string s_prodMode = "production";
 
     static std::string s_configFileName;
     static std::string s_projectToken;
@@ -490,25 +490,38 @@ int main ( int argc, char** argv )
     try
     {
         // check what mode we are asked to use
-        if (!s_modeStr.empty())
+        if (s_modeStr.empty() && s_configFileName.empty())
         {
-            if (s_modeStr == s_ibmProdMode)
-            {
-                s_mode = e_MODE_IBM_PRODUCTION;
-            }
-            else if (s_modeStr == s_devMode)
-            {
-                s_mode = e_MODE_DEVELOPMENT;
-            }
-            else
-            {
-                std::stringstream ss;
-                ss << "*** Invalid value for mode" << std::endl
-                   << "--- Expecting <" << s_ibmProdMode << "> or <" << s_devMode
-                   << ">, got <" << s_modeStr << ">" << std::endl;
+            // mode not specified either on command line or a 
+            // config file is specified, choose development 
+            // mode as default
+            s_modeStr = s_devMode;
+        }
 
-                THROW_EXCEPTION_STR(ss.str().c_str());
-            }
+        // command line takes precedence over config file
+        if (s_modeStr.empty() && (!s_configFileName.empty()))
+        {
+            IBM_CfgManager cfgManager(s_configFileName);
+            s_modeStr = cfgManager.GetModeString();
+        }
+
+        // validate mode
+        if (s_modeStr == s_prodMode)
+        {
+            s_mode = e_MODE_PRODUCTION;
+        }
+        else if (s_modeStr == s_devMode)
+        {
+            s_mode = e_MODE_DEVELOPMENT;
+        }
+        else
+        {
+            std::stringstream ss;
+            ss << "*** Invalid value for mode" << std::endl
+               << "--- Expecting <" << s_prodMode << "> or <" << s_devMode
+               << ">, got <" << s_modeStr << ">" << std::endl;
+
+            THROW_EXCEPTION_STR(ss.str().c_str());
         }
 
         if (flags & s_CMD_CREATE_CONTAINER)
@@ -574,7 +587,7 @@ int main ( int argc, char** argv )
             {
                 if (s_privkeyOrProjName.empty())
                 {
-                    if (s_mode == e_MODE_IBM_PRODUCTION)
+                    if (s_mode == e_MODE_PRODUCTION)
                     {
                         THROW_EXCEPTION_STR( "missing --projname parameter." );
                     }
@@ -722,7 +735,7 @@ int main ( int argc, char** argv )
 
                 if (s_privkeyOrProjName.size() == 0 )
                 {
-                    if (s_mode == e_MODE_IBM_PRODUCTION)
+                    if (s_mode == e_MODE_PRODUCTION)
                     {
                         THROW_EXCEPTION_STR( "missing --projname parameter." );
                     }

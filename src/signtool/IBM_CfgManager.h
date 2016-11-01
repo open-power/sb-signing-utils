@@ -29,6 +29,7 @@ constexpr char s_SECTION_NAME_DEFAULTS[] = "DEFAULTS";
 
 constexpr char s_KEY_NAME_HOST[]  = "host";
 constexpr char s_KEY_NAME_PORT[]  = "port";
+constexpr char s_KEY_NAME_MODE[]  = "mode";
 constexpr char s_KEY_NAME_HW[]    = "HW";
 constexpr char s_KEY_NAME_SW[]    = "SW";
 
@@ -53,6 +54,7 @@ public:
 
     void PrintItems();
 
+    const std::string&  GetModeString();
     const std::string&  GetSignAgentHost();
     const std::string&  GetSignAgentPort();
 
@@ -63,6 +65,7 @@ public:
 private:
     void parse();
 
+    std::string  m_modeString;
     std::string  m_signAgentHost;
     std::string  m_signAgentPort;
     std::string  m_configFileName;

@@ -66,7 +66,7 @@ enum IBM_KeyFileType
 
 enum IBM_Mode
 {
-    e_MODE_IBM_PRODUCTION,
+    e_MODE_PRODUCTION,
     e_MODE_DEVELOPMENT
 };
 
