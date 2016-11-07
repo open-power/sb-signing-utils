@@ -1,4 +1,5 @@
-#!/usr/bin/perl
+#!/usr/bin/env perl
+#
 # IBM_PROLOG_BEGIN_TAG
 # This is an automatically generated prolog.
 #
@@ -6,7 +7,7 @@
 #
 # OpenPOWER sb-signing-utils Project
 #
-# Contributors Listed Below - COPYRIGHT 2016
+# Contributors Listed Below - COPYRIGHT 2016S
 # [+] International Business Machines Corp.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,11 +27,8 @@
 #
 #############################################################
 #
-# This script supports development mode only at this point.
-#
-# It will allow the caller to either
-# - create a valid FW key pair via openssl (in
-#    development mode)
+# This script will allow the caller to either
+# - create a valid FW key pair via openssl
 #
 # OR
 #  - create a signed container
@@ -40,10 +38,10 @@
 use strict;
 use Carp;
 use Cwd;
+use Fatal;
 use Pod::Usage;
 use IO::File;
 use POSIX qw(strftime);
-use File::Temp qw/ tempfile tempdir /;
 use Getopt::Long qw(GetOptions);
 use Digest::SHA qw(sha512_hex);
 
@@ -52,68 +50,70 @@ use Digest::SHA qw(sha512_hex);
 # Constants
 #
 ############
-# Algorithm to use when calculating the digest value for the
-# binary to be signed
-#
-use constant hexBytesPerHash      => 64;
-use constant asciiCharPerHexByte  => 2;
-use constant expectedHexPubKeyLen => 132;
-use constant hexBytesPerSignature => 132;
-use constant dec4k                => 4096;
+use constant HEX_BYTES_PER_HASH       => 64;
+use constant ASCII_CHAR_PER_HEX_BYTE  => 2;
+use constant EXPECTED_HEX_PUB_KEY_LEN => 132;
+use constant HEX_BYTES_PER_SIGNATURE  => 132;
+use constant DEC4K                    => 4096;
+use constant MIN_FW_KEYS              => 1;
+use constant MAX_KEYS                 => 3;
+
+# pre-defined values used to interact with the sign utility.
+# There should always be, at least, a DEFAULTS section in
+# the production config file that defines the hardware and
+# firmware key projects for the HW and SW key types.
+use constant FWtype         => "SW";
+use constant HWtype         => "HW";
+use constant PRODUCTION     => "production";
+use constant DEVELOPMENT    => "development";
+
+# tmp files created on calls to the sign utility
+# will be created with these extensions
+use constant SIGN_FILE_EXTENSION => ".sign";
+use constant PUB_FILE_EXTENSION  => ".pub";
+
+# hardware and firmware key ids
+use constant HW_KEY_IDS => qw(a b c);
+use constant FW_KEY_IDS => qw(p q r);
 
 ############
 #
 # Variables
 #
 ############
+my @g_hwKeyIDs = (HW_KEY_IDS)[0..2];
+my @g_fwKeyIDs = (FW_KEY_IDS)[0..2];
 
 my $HASH_ALG  = "sha512sum";
 my $HASH_FUNC = \&sha512_hex;
 
-
-# This temporary directory is used to store the
-# signatures that are generated,etc during this
-# processing. It should be cleaned up at the end.
-my $g_tmpdir = "";
+my %g_HWprivKey = ();
+my %g_FWprivKey = ();
 
 my %g_var;
-$g_var{signing_mode}      = "development"; # or 'production'
+$g_var{signing_mode}      = DEVELOPMENT;
 
 # only used when creating a key pair
 $g_var{createAkeyPair}    = 0;
-$g_var{createContainer}   = 1;   # create the container on each call
+$g_var{createContainer}   = 1; # create container on each call
 $g_var{verbose}           = 0;
-
-my $g_pathPrefix          = "";
-my $g_ldLibPathPrefix     = "";
 
 # By default, the protected payload (and unprotected
 # payload, if specified) is attached to the end of
 # container object.
 $g_var{attachPayloads} = 1;
 
-# path to the sign tool/utility to call
-# (used to validate that the Linux
-# OS-supplied binary in /usr/bin is not
+# path to the sign tool/utility to call (used to validate
+# that the Linux OS-supplied binary in /usr/bin is not
 # at the top of the caller's $PATH)
 $g_var{signutility} = `which signtool`;
 chomp($g_var{signutility});
 
-
-# The hardware keys are used to sign a digest of a
-# structure containing the digest of the FW public keys.
-# The signatures are stored in these binaries.
-my ($g_hwsignA, $g_hwsignB, $g_hwsignC) = "";
-
-my ($g_HWpubKeyA, $g_HWpubKeyB, $g_HWpubKeyC) = "";
-
-# These are the FW public keys that are stored
-# as a protected payload in the prefix key header.
-my ($g_SWpubKeyP, $g_SWpubKeyQ, $g_SWpubKeyR) = "";
-
-# Signatures that were generated associated with the FW
-# public keys
-my ($g_SWsignP, $g_SWsignQ, $g_SWsignR) = "";
+# Hashes to contain the names of the tmp files used
+# in retrieving public keys and creating signatures
+my %g_signatureTmpFiles  = ();
+my %g_pubkeyFiles        = ();
+my %g_devModeShortPubkey = ();
 
 my $g_cfgHelp = 0;
 my $g_cfgMan  = 0;
@@ -136,13 +136,16 @@ GetOptions (
   'unprotectedPayload:s' => \$g_var{unprotected_payload},
   'out:s'                => \$g_var{signed_container_name},
 
-  'hwPrivKeyA:s'         => \$g_var{HWprivKeyA},
-  'hwPrivKeyB:s'         => \$g_var{HWprivKeyB},
-  'hwPrivKeyC:s'         => \$g_var{HWprivKeyC},
+  'hwPrivKeyA:s'         => \$g_HWprivKey{a},
+  'hwPrivKeyB:s'         => \$g_HWprivKey{b},
+  'hwPrivKeyC:s'         => \$g_HWprivKey{c},
 
-  'swPrivKeyP:s'         => \$g_var{SWprivKeyP},
-  'swPrivKeyQ:s'         => \$g_var{SWprivKeyQ},
-  'swPrivKeyR:s'         => \$g_var{SWprivKeyR},
+  'swPrivKeyP:s'         => \$g_FWprivKey{p},
+  'swPrivKeyQ:s'         => \$g_FWprivKey{q},
+  'swPrivKeyR:s'         => \$g_FWprivKey{r},
+
+  'sign-project-FW-token:s' => \$g_var{sign_project_token},
+  'sign-project-config:s'=> \$g_var{sign_project_config},
 
   'mode:s'               => \$g_var{signing_mode},
 
@@ -151,8 +154,6 @@ GetOptions (
   'cont-size:s'         => \$g_var{input_final_cont_size},
   'target-HRMOR:s'      => \$g_var{target_HRMOR},
   'inst-start:s'        => \$g_var{inst_start},
-
-  'tempdir:s'           => \$g_var{inputTempDir},
 
   'update'              => sub { $g_var{createContainer} = 0},
   'noattach'            => sub { $g_var{attachPayloads} = 0},
@@ -164,35 +165,24 @@ GetOptions (
 pod2usage(-verbose => 1) if $g_cfgHelp;
 pod2usage(-verbose => 2) if $g_cfgMan;
 
-# for our intermediate files, put them in a space
-# the caller defines
-if ($g_var{inputTempDir}) {
-    $g_tmpdir = $g_var{inputTempDir};
-    if (!(-e "$g_tmpdir")) {
-       system("mkdir -p $g_tmpdir");
-       if ($?) {
-          die "ERROR: could not create $g_tmpdir";
-       }
-    }
-} else {
-   # get a temp dir, mark it for clean up upon exit
-   $g_tmpdir = tempdir(CLEANUP => 1);
-}
+# Trap all interrupts. Exit through subroutine to
+# clean up temp files.
+$SIG{'INT'}     = 'cleanExit';
+$SIG{'HUP'}     = 'cleanExit';
+$SIG{'ABRT'}    = 'cleanExit';
+$SIG{'QUIT'}    = 'cleanExit';
+$SIG{'TRAP'}    = 'cleanExit';
+$SIG{'STOP'}    = 'cleanExit';
+$SIG{'__DIE__'} = 'cleanExit';
+
 
 ############################################################
-
-
-########################
-#
-#  (Optionally) load parameters from the input
-#    parameter file.
 #
 #  Verify all the parameters.
 #
 ########################
 
 verifyParms();
-
 
 #######################
 #
@@ -238,51 +228,28 @@ if ($g_var{createAkeyPair}) {
     }
 }
 
-# The public keys all are added to the signed container
-# header(s), so do this one call to extract them from
-# the private key files that the caller passed in
-# (this step applicable to development mode only)
-extractPubKeysFromPriv(
-            mode   => $g_var{signing_mode},
-            hwkeya => $g_var{HWprivKeyA},
-            hwkeyb => $g_var{HWprivKeyB},
-            hwkeyc => $g_var{HWprivKeyC},
-            swkeyp => $g_var{SWprivKeyP},
-            swkeyq => $g_var{SWprivKeyQ},
-            swkeyr => $g_var{SWprivKeyR}
-            );
+defineTempFileNames(mode => $g_var{signing_mode});
 
-# Concatenate the FW keys into one blob so their size
+my ($hdrPayloadSize, $hdrPayloadHash, $hdrHashLen) = "";
+
+# Prepare the public keys to be added to the signed
+# container header(s)
+extractPubKeysFromPriv( mode => $g_var{signing_mode} );
+
+# Concatenate the FW keys into one string so their size
 # and hash can be calculated
 if ($g_var{verbose}) {
-    print "\n##########################################################################\n";
-    print "### --------  Concat FW keys, get size and hash of that blob  -------- ###\n";
+  print "\n###################################################################\n";
+  print "### --------  Concat FW keys, get size and hash of it  -------- ###\n";
 }
-my ($hdrPayloadSize, $hdrPayloadHash, $hdrHashLen) = prepFWkeyBlob();
+($hdrPayloadSize, $hdrPayloadHash, $hdrHashLen) = prepFWkeyBlob();
 
 if ($g_var{verbose}) {
-    print "*************************** Calculated FW key info:\n";
-    print "FW key hash size  : $hdrPayloadSize\n";
-    print "FW key hash       : $hdrPayloadHash\n";
-    print "FW key(s) hash len: $hdrHashLen\n";
+  print "*************************** Calculated FW key info:\n";
+  print "FW key hash size  : $hdrPayloadSize\n";
+  print "FW key hash       : $hdrPayloadHash\n";
+  print "FW key(s) hash len: $hdrHashLen\n";
 }
-
-#########
-#
-# Create an EC 521 Curve Keypair :
-#   <sign utility> --mode development --create_key --privkeyfile ecpriv.pem --pubkeyfile ecpub.pem
-#
-# Sign a sha-512 digest using openssl keys created above
-# echo "this is a test message" > /tmp/message.txt
-# SHA512_SUM=`sha512sum /tmp/message.txt | awk '{print $1}'`
-# <sign utility> --mode development --sign --projname ecpriv.pem --sigfile message.sig --digest $SHA512_SUM
-#
-# Verify a sha-512 digest signed by openssl keys
-# echo "this is a test message" > /tmp/message.txt
-# SHA512_SUM=`sha512sum /tmp/message.txt | awk '{print $1}'`
-# <sign utility> --mode development --verify --pubkeyfile ecpub.pem --sigfile message.sig --digest $SHA512_SUM
-#
-##########
 
 if ($g_var{createContainer}) {
     if ($g_var{verbose}) {
@@ -307,8 +274,6 @@ if ($g_var{createContainer}) {
 if ($g_var{verbose}) {
     print "\n###########################################################\n";
     print "### ----  Start updating fields in the container ----- ####\n";
-
-    print "\nNow updating some of the base fields in the container\n";
 }
 
 ######################
@@ -344,38 +309,43 @@ if ($g_var{flags_fw_key_ind}) {
 }
 
 if ($g_var{verbose}) {
-    print "Now update the prefix key header's protected payload size in the container\n";
+    print "Now update the prefix key header's protected payload size ($hdrPayloadSize) in the container\n";
 }
 # header's protected payload size must be the hex represenation of:
-#  # bytes * number of FW public keys
-my $verifySize = expectedHexPubKeyLen * $g_var{in_swKeyCount};
-my $hexSize = convertValueToHexStr($verifySize);
-if ($hexSize != $hdrPayloadSize) {
-    die "ERROR: Expected size for the 'header payload size'is $hexSize (decimal size, $verifySize). Actual size is $hdrPayloadSize. ";
+#  key length in bytes * number of FW public keys
+if ($hdrPayloadSize) {
+  if ( ($g_var{fwKeyCount} < MIN_FW_KEYS) or
+       ($g_var{fwKeyCount} > MAX_KEYS)) {
+    die "ERROR: The number of firmware keys should be between 1 and 3, actual number is $g_var{fwKeyCount}.";
+  }
+  my $verifySize = EXPECTED_HEX_PUB_KEY_LEN * $g_var{fwKeyCount};
+  my $hexSize = convertValueToHexStr($verifySize);
+  if ($hexSize != $hdrPayloadSize) {
+    die "ERROR: Expected size for the 'header payload size'is $hexSize (decimal size, $verifySize). Actual size is $hdrPayloadSize. (Number of firmware keys: $g_var{fwKeyCount})";
+  }
+  $g_cmdParms = "--fldname hdr-payload-size --fldvalue $hdrPayloadSize";
+  updateContainer($g_cmdParms);
+} else {
+  die "ERROR: Invalid header payload size.\n";
 }
-$g_cmdParms = "--fldname hdr-payload-size --fldvalue $hdrPayloadSize";
-updateContainer($g_cmdParms);
 
-my $verifyHashLen   = length($hdrPayloadHash);
-my $hashShouldBeLen = hexBytesPerHash * asciiCharPerHexByte;
-if ($verifyHashLen != $hashShouldBeLen) {
+if ($hdrPayloadHash) {
+  my $verifyHashLen   = length($hdrPayloadHash);
+  my $hashShouldBeLen = HEX_BYTES_PER_HASH * ASCII_CHAR_PER_HEX_BYTE;
+  if ($verifyHashLen != $hashShouldBeLen) {
     die "ERROR: The length of the header payload hash' should be $hashShouldBeLen. Actual value is $verifyHashLen";
+  }
+
+  print "\n*****  Update the 'hash of protected payload' value in the prefix key header\n" if $g_var{verbose};
+  $g_cmdParms = "--fldname hdr-payload-hash --fldvalue $hdrPayloadHash ";
+  updateContainer($g_cmdParms);
+} else {
+  die "ERROR: Invalid header payload hash value.\n";
 }
-
-print "\n*****  Update the 'hash of protected payload' value in the prefix key header\n" if $g_var{verbose};
-$g_cmdParms = "--fldname hdr-payload-hash --fldvalue $hdrPayloadHash ";
-updateContainer($g_cmdParms);
-
 # Update the FW public keys into the container
-#   (Need to do this here so the FW public key count is valid in the
-#  hardware header before the payload is hashed and signed)
-SWkeys();
+FWkeys();
 
 ###############
-#
-# call <sign utility> to compute a signature over the digest
-# of the hardware prefix header (digest excludes HW signatures
-# and FW public keys)
 #
 # Get the digest of the hardware prefix header (digest excludes
 # HW signatures and FW public keys)
@@ -388,22 +358,18 @@ chomp($hwPrefixHdrDigest);
 print "Hardware prefix header digest: $hwPrefixHdrDigest\n" if $g_var{verbose};
 
 #
-# Sign that digest using each of the hardware private keys to
-# get the hdw signatures
+# Sign that digest using each of the hardware private keys
 signPrefixKeyHeaderDigest(digestToSign => $hwPrefixHdrDigest);
 
-# Update the hardware keys and signatures into the
-# container
+# Update the hardware keys and signatures into the container
 HWkeyInfo();
-
 
 ###############
 #
 #   Software header
 #
 
-# Calculate the size of the binary that we are to sign and
-# get the associated hash value.
+# Calculate the size and hash of the binary that we are to sign
 if ($g_var{verbose}) {
   print "\n#################################################################\n";
   print "### ------  Calc size and hash of protected payload ------ ###\n";
@@ -418,9 +384,8 @@ if ($g_var{verbose}) {
 
 # code start offset is specified as "x(hex value)"
 if ($g_var{code_start_offset}) {
-  # normalize values back to decimal (since the
-  # caller can pass in '0xZZZ' or 'ZZZ') to allow
-  # for an easier comparison
+  # normalize values back to decimal (since the caller can
+  # pass in '0xZZZ' or 'ZZZ') to allow for an easier comparison
   my $dec_code_start = hex($g_var{code_start_offset});
   my $dec_payloadlen = hex($sfwPayloadSize);
   if ($dec_code_start >= $dec_payloadlen) {
@@ -445,9 +410,8 @@ updateContainer($g_cmdParms);
 
 ###############
 #
-# call <sign utility> to get a signature over the digest
-#  of the software header (excluding software signatures
-#  and padding)
+# call <sign utility> to get a signature over the digest of the
+# software header (excluding software signatures and padding)
 #
 
 $g_CMD = "$g_var{signutility} --imagefile $g_var{signed_container_name} --calchash --fldtype software_hdr";
@@ -464,16 +428,13 @@ signSoftwareHeaderDigest(hashToSign => $sfwHeaderDigest);
 
 #########
 #
-# Finish up by updating the FW signatures, and
-# (optionally) attaching the protected and
-# unprotected payloads.
+# Finish up by updating the FW signatures, and (optionally)
+# attaching the protected and unprotected payloads.
 
-# Update the software signatures into the container
-SWsigns();
+FWsigns();
 
-# Attach the binary that we just created a signature for
-# to make a temporary object so we can get what will be
-# the size of the final container object.
+# Attach the binary that we just created a signature for to make a temporary
+# object so we can get what will be the size of the final container object.
 my $tmpFinalContainer = "";
 my $prc = 0;
 my $decSz         = 0;
@@ -490,40 +451,35 @@ if ($g_var{attachPayloads}) {
 
     print "\nCalculate the size of the interim final container\n" if $g_var{verbose};
     ($decSz, $containerSize, $containerHash, $contHashLen) = getSizeAndHash($tmpFinalContainer);
-    if ($decSz <= dec4k) {
-       # make sure final container will be > 4k
-       # ie, the payload is actually greater
-       # than 0 bytes long
+    if ($decSz <= DEC4K) {
+       # make sure final container will be > 4k ie, the payload
+       # is actually greater than 0 bytes long
        die "ERROR: container size for $tmpFinalContainer is less than or equal to 4k";
     }
 } else {
     # get the size of the container (the header) alone
     ($decSz, $containerSize, $containerHash, $contHashLen) = getSizeAndHash($g_var{signed_container_name});
-    if ($decSz != dec4k) {
-       # make sure the header is 4k
+    if ($decSz != DEC4K) {
        die "ERROR: $g_var{signed_container_name} is not 4k in length";
     }
 }
 
-# Have to calculate what the final size WOULD BE once the payload
-# (the binary to be signed) is attached, then update the header
-# with that size.
-#    THEN, attach the binary to the signed container later. Trying
-# to update the size in the container after that payload binary
-# is attached will remove the attached binary.
+# Have to calculate what the final size WOULD BE once the payload is
+# attached, then update the header with that size. Updating the size
+# in the container after the payload is attached will remove it.
 if ($g_var{input_final_cont_size}) {
   if ($g_var{verbose}) {
       print "Total container size, $g_var{input_final_cont_size} was passed in. It will be updated into the header\n";
   }
   $g_cmdParms = "--fldname container-size --fldvalue $g_var{input_final_cont_size}";
 } else {
-  # go with the size that we calculated
+  # no final size passed in by the caller
   $g_cmdParms = "--fldname container-size --fldvalue $containerSize";
 }
 updateContainer($g_cmdParms);
 
 if ($g_var{attachPayloads}) {
-    # NOW really attach the binary to the final header
+    # attach the payload(s) to the final header
     attachBinaryToContainer(finalContainer => $g_var{signed_container_name},
                             protected      => $g_var{protected_payload},
                             unprotected    => $g_var{unprotected_payload},
@@ -537,8 +493,8 @@ if ($?) {
     die "ERROR: Could not retrieve time stamp on $g_var{signed_container_name}";
 }
 print "Create time: $timest\n" if $g_var{verbose};
+cleanExit();
 
-exit 0;
 
 #############################################################
 #
@@ -548,15 +504,11 @@ exit 0;
 
 #
 # Verify the existence and relationships of the input parameters.
-#  This should do verification of only the things that the
-# signtool doesn't (and likely, shouldn't do), such as making
-# sure we have the right number of keys.
-#
 sub verifyParms {
 
     if ($g_var{signing_mode} and
-        ( ($g_var{signing_mode} eq "development") or
-          ($g_var{signing_mode} eq "production")) ) {
+        ( ($g_var{signing_mode} eq DEVELOPMENT) or
+          ($g_var{signing_mode} eq PRODUCTION)) ) {
        # then ok
     } else {
         die "-mode must be 'production' or 'development'\n";
@@ -583,52 +535,50 @@ sub verifyParms {
     }
 
     if ($g_var{createContainer}) {
+     if ($g_var{signing_mode} eq DEVELOPMENT) {
       # 3 hardware private keys are required
-      if (!$g_var{HWprivKeyA}) {
-        die "Hardware private key A required\n";
-      } elsif  (!(-e $g_var{HWprivKeyA})) {
-        die "Hardware signing key A, $g_var{HWprivKeyA}, not found\n";
-      }
-      if (!$g_var{HWprivKeyB}) {
-        die "Hardware private key B required\n";
-      } elsif  (!(-e $g_var{HWprivKeyB})) {
-        die "Hardware signing key B, $g_var{HWprivKeyB}, not found\n";
-      }
-      if (!$g_var{HWprivKeyC}) {
-        die "Hardware private key C required\n";
-      } elsif  (!(-e $g_var{HWprivKeyC})) {
-        die "Hardware signing key C, $g_var{HWprivKeyC}, not found\n";
+      foreach my $id (@g_hwKeyIDs) {
+        if (!$g_HWprivKey{$id}) {
+          die "Hardware private key $id required\n";
+        } elsif  (!(-e $g_HWprivKey{$id})) {
+          die "Hardware signing key $id, $g_HWprivKey{$id}, not found\n";
+        }
       }
       # 1 software private key is required
-      if (!$g_var{SWprivKeyP}) {
-        die "Software private key P required\n";
-      } elsif  (!(-e $g_var{SWprivKeyP})) {
-        die "Software signing key P,$g_var{SWprivKeyP}, not found\n";
-      } else {
-        $g_var{in_swKeyCount}++;
+      foreach my $id (@g_fwKeyIDs) {
+        if ($id eq "p") {
+          if (!$g_FWprivKey{$id}) {
+            die "Firmware private key $id required\n";
+          }
+        }
+        if ($g_FWprivKey{$id}) {
+           if (!(-e "$g_FWprivKey{$id}")) {
+             die "'$g_FWprivKey{$id}' was not found\n";
+           } else {
+             $g_var{fwKeyCount}++;
+           }
+        }
       }
+     } else {
+       # production mode
 
-      # Validate the existence of the optional keys, Q and R, if
-        # specified
-      if ($g_var{SWprivKeyQ}) {
-        $g_var{in_swKeyCount}++;
-        if (!(-e $g_var{SWprivKeyQ})) {
-          die "FW signing key Q,$g_var{SWprivKeyQ}, not found\n";
-        }
-      }
-      if ($g_var{SWprivKeyR}) {
-        $g_var{in_swKeyCount}++;
-        if (!(-e $g_var{SWprivKeyR})) {
-          die "FW signing key R,$g_var{SWprivKeyR}, not found\n";
-        }
+       # token name to use for signing required
+       if (!(exists($g_var{sign_project_token}))) {
+          die "Signing project firmware token required\n";
+       }
+       # project config file required
+       if (!(exists($g_var{sign_project_config}))) {
+          die "Signing project configuration file required\n";
+       } elsif (!(-e $g_var{sign_project_config})) {
+         die "Signing project config file, $g_var{sign_project_config}, not found\n";
+       }
       }
     }
     if ($g_var{unprotected_payload}) {
-        if (!(-e "$g_var{unprotected_payload}")) {
-            die "$g_var{unprotected_payload} not found\n";
-        }
+      if (!(-e "$g_var{unprotected_payload}")) {
+         die "$g_var{unprotected_payload} not found\n";
+      }
     }
-
     # outfile is required
     if (!$g_var{signed_container_name}) {
         die "Output file (-out) is required\n";
@@ -683,7 +633,7 @@ sub convertValueToHexStr {
    return sprintf("%x", $invalue);
 }
 #
-# Validate that all chars in the string are
+# Verify that all chars in the string are
 # valid hex chars
 sub validHexCharStr {
     my $inhexstr = shift;
@@ -692,6 +642,36 @@ sub validHexCharStr {
     } else {
         return 0;
     }
+}
+
+# Populate our internal hashes with the names of the signature
+# and public key files that we expect to get back from our
+# calls to signtool
+sub defineTempFileNames {
+    my %data = @_;
+    my $mode = $data{mode}        || confess "mode is required";
+
+    my $tmpFilePrefix = "devTempFile";
+    if ($g_var{sign_project_token}) {
+       $tmpFilePrefix = $g_var{sign_project_token};
+    }
+
+    my @keychars = @g_hwKeyIDs;
+    push(@keychars, @g_fwKeyIDs);
+    foreach my $id (@keychars) {
+      $g_signatureTmpFiles{$id}  = $tmpFilePrefix;
+      $g_signatureTmpFiles{$id} .= "_" . $id . SIGN_FILE_EXTENSION;
+
+      $g_pubkeyFiles{$id}        = $tmpFilePrefix;
+      $g_pubkeyFiles{$id}        .= "_" . $id . PUB_FILE_EXTENSION;
+
+     if ($mode eq DEVELOPMENT) {
+        $g_devModeShortPubkey{$id}  = "HW_" . $id . "_shortPub_";
+        $g_devModeShortPubkey{$id} .= $id . PUB_FILE_EXTENSION;
+      }
+    }
+    # clean up any temp files that might be left from a prior run
+    removeTmpFiles();
 }
 
 sub getSizeAndHash {
@@ -729,7 +709,7 @@ sub getSizeAndHash {
     } else {
       $hashValue = $HASH_FUNC->($binaryPathOrStr);
       $hashLen   = length($hashValue);
-      print "Hash of string: '$hashValue'\n" if $g_var{verbose};
+      print "Hash of string: $hashValue\n" if $g_var{verbose};
     }
     if ($g_var{verbose}) {
       print "getSizeAndHash returning:\n Size:$hexSize\n Hash:'$hashValue'\nHash value length:$hashLen\n";
@@ -743,31 +723,48 @@ sub getSizeAndHash {
 # use to do the signing and an outfile that is to receive the
 # signature.
 sub generateSignature {
-    my %data           = @_;
+    my %data             = @_;
     my $digestToBeSigned = $data{digestToSign} || confess "digest required";
-    my $keyToUse         = $data{keyToUse}     || confess "key for signing the digest is required";
-    my $tmp_sig_file     = $data{sigfile}      || confess "sigfile required";
+    my $keyOrProj        = $data{keyOrProj}    || confess "either a key or a production project name is required";
+    my $tmp_sig_file     = $data{sigfile}      || "";
+    my $signType         = $data{hdwOrFW}      || FWtype;
     my $verbose          = $data{verbose}      || 0;
 
-    ### TODO (production mode): Prod needs name of a project with
-    ### associated key, dev could point to any key and dev users
-    ### would not have a notion of a project.
-    $g_var{projname_or_key} = "--projname $keyToUse";
-
+    if ( ($g_var{signing_mode} eq DEVELOPMENT) and
+         (!$tmp_sig_file) ) {
+       confess "In development mode, a file must be defined to accept the generated signature\n";
+    }
     # basic validation - valid hex chars in the string?
     if (!(validHexCharStr($digestToBeSigned))) {
         die "ERROR: generateSignature received a digest containing non-hex characters (digest: '$digestToBeSigned')";
     }
     # length what we expect?
     my $actualLen = length($digestToBeSigned);
-    my $expectedDigestLength = hexBytesPerHash * asciiCharPerHexByte;
+    my $expectedDigestLength = HEX_BYTES_PER_HASH * ASCII_CHAR_PER_HEX_BYTE;
     if ($actualLen != $expectedDigestLength) {
         die "ERROR: generateSignature expected a digest length of $expectedDigestLength, actual length is $actualLen for $digestToBeSigned";
     }
-    # Sign the hash (digest) passed in and save the signature
-    # value into the sigfile
-    print  "generateSignature: Signing the digest \n" if $verbose;
-    $g_CMD = "$g_var{signutility} --mode $g_var{signing_mode} --sign $g_var{projname_or_key} --sigfile $tmp_sig_file --digest $digestToBeSigned";
+    # Sign the hash (digest) passed in
+    $g_CMD = "$g_var{signutility} --mode $g_var{signing_mode} --sign";
+
+    if ($g_var{signing_mode} eq PRODUCTION) {
+       #  To sign with the FW keys, the token defines which set of
+       # projects/keys will be used to sign the digest. The keytype
+       # must be set to HW or SW to indicate to the sign utility
+       # what kind of keys to work with (HW or FW/SW)
+       $g_CMD .= " --configfile $g_var{sign_project_config}";
+       $g_CMD .= " --digest $digestToBeSigned";
+       $g_CMD .= " --project $keyOrProj";
+       $g_CMD .= " --keytype $signType";
+       print "generateSignature: Signing the digest with $signType / $keyOrProj\n" if $verbose;
+
+    } else {
+      # development mode, pass the key to sign with
+      $g_CMD .= " --projname $keyOrProj --sigfile $tmp_sig_file";
+      $g_CMD .= " --digest $digestToBeSigned";
+      print "generateSignature: Signing the digest with $keyOrProj\n" if $verbose;
+    }
+    print "\n$g_CMD\n" if $verbose;
     system($g_CMD);
     if ($?) {
         die "ERROR: Signing the digest failed";
@@ -780,14 +777,15 @@ sub generateSignature {
 sub updateContainer {
   my $parms   = shift;
 
-  my $utilCmd = "$g_var{signutility} --mode $g_var{signing_mode} --imagefile $g_var{signed_container_name}  ";
+  my $utilCmd  = "$g_var{signutility} --mode $g_var{signing_mode}";
+     $utilCmd .= " --imagefile $g_var{signed_container_name} ";
   $utilCmd .= $parms;
   if ($g_var{verbose}) { print "$utilCmd\n"; }
   system($utilCmd);
   if ($?)  {
     die ( "'$utilCmd' failed to execute: $!\n" );
   } else {
-      print "\nCommand:\n$utilCmd\nCompletion : OK\n" if ($g_var{verbose});
+      print "\nCompletion : OK\n\n" if ($g_var{verbose});
   }
 }
 
@@ -807,7 +805,7 @@ sub getNowTime {
 
 #
 # The hash value here is calculated over the prefix key
-# header (excluding HW signatures and SW public keys) and
+# header (excluding HW signatures and FW public keys) and
 # signed by the hardware private keys.
 sub signPrefixKeyHeaderDigest  {
     my %data = @_;
@@ -818,37 +816,32 @@ sub signPrefixKeyHeaderDigest  {
       print "### -------  Sign prefix key header   -------- ###\n\n";
     }
 
-    print "digest to sign passed in: $digestToSign\n" if $g_var{verbose};
+    print "Digest to sign passed in: $digestToSign\n" if $g_var{verbose};
 
     # Sign the digest over the prefix key header (excluding HW
     # signatures and FW public keys) with the three hardware keys.
-    my $hwsignA_tmp = "$g_tmpdir/hwsignA.bin";
+    if ($g_var{signing_mode} eq PRODUCTION) {
+      # just need to call once to sign with each key
+      generateSignature(digestToSign => $digestToSign,
+                        keyOrProj    => $g_var{sign_project_token},
+                        hdwOrFW      => HWtype,
+                        verbose      => $g_var{verbose});
 
-    generateSignature(digestToSign => $digestToSign,
-                  keyToUse     => $g_var{HWprivKeyA},
-                  sigfile      => $hwsignA_tmp,
-                  verbose      => $g_var{verbose});
-    $g_hwsignA = $hwsignA_tmp;
-
-    my $hwsignB_tmp = "$g_tmpdir/hwsignB.bin";
-    generateSignature(digestToSign => $digestToSign,
-                   keyToUse     => $g_var{HWprivKeyB},
-                   sigfile      => $hwsignB_tmp,
-                   verbose      => $g_var{verbose});
-    $g_hwsignB = $hwsignB_tmp;
-
-    my $hwsignC_tmp = "$g_tmpdir/hwsignC.bin";
-    generateSignature(digestToSign => $digestToSign,
-                   keyToUse     => $g_var{HWprivKeyC},
-                   sigfile      => $hwsignC_tmp,
-                   verbose      => $g_var{verbose});
-    $g_hwsignC = $hwsignC_tmp;
+    } else {
+      # need to call once/key in dev mode
+      foreach my $id (@g_hwKeyIDs) {
+        generateSignature(digestToSign => $digestToSign,
+                          keyOrProj    => $g_HWprivKey{$id},
+                          hdwOrFW      => HWtype,
+                          sigfile      => $g_signatureTmpFiles{$id},
+                          verbose      => $g_var{verbose});
+      }
+    }
 }
-
 
 #
 # The hash value for this routine is calculated over the
-# software header (excluding SW signatures).
+# software header (excluding FW signatures).
 sub signSoftwareHeaderDigest {
     my %data = @_;
     my $binaryHash = $data{hashToSign} || confess "hash required";
@@ -859,30 +852,24 @@ sub signSoftwareHeaderDigest {
     }
     # Sign the digest using each of the FW private
     # keys (up to 3 keys may be specified)
-    my $SWsignP_tmp = "$g_tmpdir/swsignP.bin";
-
-    generateSignature(digestToSign => $binaryHash,
-                  keyToUse     => $g_var{SWprivKeyP},
-                  sigfile      => $SWsignP_tmp,
-                  verbose      => $g_var{verbose});
-    $g_SWsignP = $SWsignP_tmp;
-
-    if ($g_var{SWprivKeyQ}) {
-        my $SWsignQ_tmp = "$g_tmpdir/swsignQ.bin";
+    if ($g_var{signing_mode} eq PRODUCTION) {
+        # only need to call once to get all the signatures for
+        # a set of projects/keys
         generateSignature(digestToSign => $binaryHash,
-                   keyToUse     => $g_var{SWprivKeyQ},
-                   sigfile      => $SWsignQ_tmp,
-                   verbose      => $g_var{verbose});
-        $g_SWsignQ = $SWsignQ_tmp;
-    }
-
-    if ($g_var{SWprivKeyR}) {
-        my $SWsignR_tmp = "$g_tmpdir/swsignR.bin";
-        generateSignature(digestToSign => $binaryHash,
-                   keyToUse     => $g_var{SWprivKeyR},
-                   sigfile      => $SWsignR_tmp,
-                   verbose      => $g_var{verbose});
-        $g_SWsignR = $SWsignR_tmp;
+                          keyOrProj    => $g_var{sign_project_token},
+                          hdwOrFW      => FWtype,
+                          verbose      => $g_var{verbose});
+    } else {
+       # need to call once / key in dev mode
+       foreach my $id (@g_fwKeyIDs) {
+         if (exists($g_FWprivKey{$id}) and (-e "$g_FWprivKey{$id}")) {
+           generateSignature(digestToSign => $binaryHash,
+                           keyOrProj      => $g_FWprivKey{$id},
+                           hdwOrFW        => FWtype,
+                           sigfile        => $g_signatureTmpFiles{$id},
+                           verbose        => $g_var{verbose});
+         }
+        }
     }
 }
 
@@ -894,81 +881,46 @@ sub HWkeyInfo {
       print "\n#########################################################\n";
       print "### --  Add hardware public key data to container  -- ###\n\n";
     }
+    foreach my $hwk (@g_hwKeyIDs) {
+       print "Updating the hdw key $hwk \n" if $g_var{verbose};
+       my $fldname = "hw-key" . $hwk;
+       updateContainer("--fldname $fldname --fldvalue $g_pubkeyFiles{$hwk}");
 
-    # Set up the hardware key and signature fields
-    print "Updating the hdw key A \n" if $g_var{verbose};
-    updateContainer("--fldname hw-keya --fldvalue $g_HWpubKeyA");
+       print "Updating the hdw signature $hwk \n" if $g_var{verbose};
+       my $fldname = "hw-sign" . $hwk;
+       updateContainer("--fldname $fldname --fldvalue $g_signatureTmpFiles{$hwk}");
 
-    print "Updating the hdw key A signature\n" if $g_var{verbose};
-    updateContainer("--fldname hw-signa --fldvalue $g_hwsignA");
-
-    print "Updating the hdw key B \n" if $g_var{verbose};
-    updateContainer("--fldname hw-keyb --fldvalue $g_var{HWpubKeyB}");
-
-    print "Updating the hdw key B signature\n" if $g_var{verbose};
-    updateContainer("--fldname hw-signb --fldvalue $g_hwsignB");
-
-    print "Updating the hdw key C \n" if $g_var{verbose};
-    updateContainer("--fldname hw-keyc --fldvalue $g_var{HWpubKeyC}");
-
-    print "Updating the hdw key C signature\n" if $g_var{verbose};
-    updateContainer("--fldname hw-signc --fldvalue $g_hwsignC");
+    }
 }
 #
 # Update the FW public keys in the container
-sub SWkeys {
+sub FWkeys {
     if ($g_var{verbose}) {
       print "\n#############################################################\n";
       print "### -------  Add FW public key data to container  -------- ###\n\n";
     }
-    my$sw_key_count = 0;
-
-    ## There should always be at least one FW public key - key P
-    print "Updating the FW key P \n" if $g_var{verbose};
-    updateContainer("--fldname sw-keyp --fldvalue $g_SWpubKeyP");
-    $sw_key_count = 1;
-
-    print "\n$g_var{signed_container_name} first set of fields updated\n" if $g_var{verbose};
-
-    # Now set up the optional fields (the 2nd and 3rd FW public keys)
-    print "\nUpdating the secondary FW public keys and signatures in the container\n" if $g_var{verbose};
-
-    if ($g_var{SWprivKeyQ}) {
-        print "Updating the FW key Q \n" if $g_var{verbose};
-        updateContainer("--fldname sw-keyq --fldvalue $g_SWpubKeyQ");
-        $sw_key_count++;
-    }
-    if ($g_var{SWprivKeyR}) {
-        print "Updating the FW key R \n" if $g_var{verbose};
-        updateContainer("--fldname sw-keyr --fldvalue $g_SWpubKeyR");
-        $sw_key_count++;
-    }
-    if ( ($sw_key_count < 1) or ($sw_key_count > 3) ) {
-        die "ERROR: Count of FW public keys must be between 1-3\n";
+    foreach my $fwk (@g_fwKeyIDs) {
+       if (-e "$g_pubkeyFiles{$fwk}") {
+         print "Updating the fw key $fwk \n" if $g_var{verbose};
+         my $fldname = "sw-key" . $fwk;
+         updateContainer("--fldname $fldname --fldvalue $g_pubkeyFiles{$fwk}");
+      }
     }
 }
 
 #
 # Update the FW signatures in the container
-sub SWsigns {
+sub FWsigns {
     if ($g_var{verbose}) {
       print "\n#############################################################\n";
       print "### -------  Update FW signatures into container  -------- ###\n\n";
     }
-    print "Updating the FW signature P signature\n" if $g_var{verbose};
-    updateContainer("--fldname sw-signp --fldvalue $g_SWsignP");
-
-    print "\n$g_var{signed_container_name} first set of fields updated\n" if $g_var{verbose};
-
-    # Now set up the optional fields (the 2nd and 3rd FW keys)
-    print "\nUpdating the secondary FW keys and signatures in the container\n" if $g_var{verbose};
-    if ($g_var{SWprivKeyQ}) {
-        print "Updating the FW signature Q data\n" if $g_var{verbose};
-        updateContainer("--fldname sw-signq --fldvalue $g_SWsignQ");
-    }
-    if ($g_var{SWprivKeyR}) {
-        print "Updating the FW signature R signature\n" if $g_var{verbose};
-        updateContainer("--fldname sw-signr --fldvalue $g_SWsignR");
+    foreach my $fwk (@g_fwKeyIDs) {
+       if (-e "$g_signatureTmpFiles{$fwk}") {
+         print "Updating the FW signature $fwk signature\n" if $g_var{verbose};
+         my $fldname = "sw-sign" . $fwk;
+         updateContainer("--fldname $fldname --fldvalue $g_signatureTmpFiles{$fwk}");
+       }
     }
 }
 
@@ -977,168 +929,138 @@ sub SWsigns {
 # get the hash and size and return to caller
 #
 sub prepFWkeyBlob {
-    #
-    #  In the prefix key header, there is a field for hash
-    # of protected payload - that is the digest
-    # generated over the concatenation of the fw public
-    # keys.
     my ($fwPubKeysSize, $fwKeysHash, $fwHashLen);
 
-    # In development mode, manually pull out the
-    # pub: key string from the public key(s) extracted
-    # from the private key(s), chop off the first byte
-    # (indicates the type of data coming afterwards
-    #  and is typically x04), concatenate all those
-    # bits and get a hash of the result.
-    my $tmpPkey = "";
-
-    # Start with P first, since there should always be
-    # the one key sfw key P
-    $tmpPkey = parseCharPubKeyToGetPubKeyStringToHash(
-                 fwPrivKey  => $g_var{SWprivKeyP} );
-
-    my $concatedKeyStr = $tmpPkey;
-
-    # else we are ok, set up a temp file name, just in case
-    # we have 2 more keys to process
-    my $concatedPubKeyFilesToHash = "$g_tmpdir/concatedFwKeysToHash";
-
-    my $tmpQkey = "";
-    if ($g_var{SWprivKeyQ}) {
-        $tmpQkey = parseCharPubKeyToGetPubKeyStringToHash(
-                                fwPrivKey  => $g_var{SWprivKeyQ} );
-        $concatedKeyStr .= $tmpQkey;
-    }
-    my $tmpRkey = "";
-    if ($g_var{SWprivKeyR}) {
-        $tmpRkey = parseCharPubKeyToGetPubKeyStringToHash(
-                                fwPrivKey  => $g_var{SWprivKeyR} );
-        $concatedKeyStr .= $tmpRkey;
+    # In development mode, extract the public key string, chop off the
+    # first byte (indicates the type of data coming afterwards and is
+    # typically x04), concatenate the keys, get a hash of the result.
+    my $concatedKeyStr = "";
+    foreach my $fwID (@g_fwKeyIDs) {
+      my $extractedPubkey = $g_pubkeyFiles{$fwID};
+      if ($g_var{signing_mode} eq DEVELOPMENT) {
+         $extractedPubkey = $g_devModeShortPubkey{$fwID};
+      }
+      # strip off first byte (x40) to get 132 char string
+      if (-e "$extractedPubkey") {
+        my $shortkeystr = getCharPubKey($extractedPubkey);
+        $concatedKeyStr .= $shortkeystr;
+      }
     }
     (my $decSz, $fwPubKeysSize, $fwKeysHash, $fwHashLen) = getSizeAndHash($concatedKeyStr);
 
-    print "prepFWkeyBlob: Returning fw public key(s) size: $fwPubKeysSize\n  hash: $fwKeysHash\nhash len: $fwHashLen\n" if $g_var{verbose};
+    print "prepFWkeyBlob: Returning fw public key(s) size: $fwPubKeysSize\nDecimal size:$decSz\n  hash: $fwKeysHash\nhash len: $fwHashLen\n" if $g_var{verbose};
     return $fwPubKeysSize, $fwKeysHash, $fwHashLen;
 }
+# Get the 132-byte fw public key used in the concat/hash/sign of the
+# digest of the protected payload (fw public keys)
+sub getCharPubKey {
+  my $publicKeyFile = shift;
 
-# Given a FW private key:
-#   dump it as text to a file
-#   parse that text file, looking for the character representation
-#     of the public key (the strings x:y:z... follow 'pub:')
-#   lump all those xyz... values into one char string
-#   strip off the '04' at the start (to get 132 bytes)
-#   convert the resulting string to binary
-#   write it to a file
-#
-# There SHOULD be a better way to do this - via some
-# magic openssl command...but we need to make progress...
-# so need to revisit this once things are working...
-sub parseCharPubKeyToGetPubKeyStringToHash {
-    my %data = @_;
-    my $fwPrivKey = $data{fwPrivKey}  || confess "FW private key file required";
+  my $charKey = "";
+  open(FILE, "<$publicKeyFile") or die "ERROR: cannot open $publicKeyFile";
+  local $/;
+  $charKey = <FILE>;
+  close(FILE);
 
-    my $l_cmd = "openssl ec -in $fwPrivKey -text";
-    print "\n*** Dump the fw private key $fwPrivKey as text: $l_cmd\n" if $g_var{verbose};
-    my $keyText = `$l_cmd`;
-    if ($?) {
-        die "ERROR: parseCharPubKeyToGetPubKeyStringToHash failed on the call to openssl";
-    }
-    # Parse out the char key string that follows 'pub:' and
-    # dump it to the hashablepubkey var (this will be the
-    # format of the fw public key that we need to
-    # hash (or concat and hash) and sign to come up with
-    # the magic signature that matches what the ROM code
-    # will validate against.
-    my $hashAblePubKey = parsePubKeyTextOut($keyText);
-    my $pubKeyLen = length($hashAblePubKey);
-
-    if ($pubKeyLen != expectedHexPubKeyLen) {
-       die "parseCharPubKeyToGetPubKeyStringToHash: ERROR: public key length, $pubKeyLen, is not the expected length";
-    }
-    return $hashAblePubKey;
+  return substr($charKey, 1);
 }
-
-# The container header contains the hardware public keys
-# and software public keys. We need to get these public
-# keys from the private keys that were passed in (in
-# development mode, at least..)
+# Retrieve the public key(s) in the format required for follow-on processing.
 sub extractPubKey {
    my %data = @_;
-   my $mode          = $data{mode}    || confess "production or development mode required";
-   my $privKeyFile   = $data{keyfile} || confess "key file required";
-   my $tmpPubKeyFile = $data{outfile} || confess "output file required";
+   my $mode          = $data{mode}     || confess "signing mode required";
+   my $privKeyFile   = $data{keyfile}  || "";
+   my $keyProjName   = $data{keyproj}  || "";
+   my $tmpPubKeyFile = $data{outfile}  || confess "output file required";
+   my $shortKeyStrFile = $data{pubKeyStrFile} || "";
 
-   my $cm = "";
-   if ($mode eq "development") {
-       # this returns something that can be sent to signtool to put into
-       # the container...but the output file is huge
-       $cm = "openssl ec -in $privKeyFile -pubout -out $tmpPubKeyFile";
+   if ($mode eq DEVELOPMENT) {
+     if (!$privKeyFile) {  confess "private key file required"; }
 
-       my $openssl = `which openssl`;
+     # dump the public key to a file to pass to the signtool to
+     # update the *w_public_key_* fields in the container header
+     my $cm = "openssl pkey -in $privKeyFile -pubout -out $tmpPubKeyFile";
+     my $openssl = `which openssl`;
+     if ($?) {
+       die "ERROR: Could not find command, openssl";
+     }
+     chomp($openssl);
+     print "--- extractPubKey using $openssl\n" if $g_var{verbose};
+     print "$cm\n" if $g_var{verbose};
+     system($cm);
+     if ($?) {
+       die "$openssl failed \n";
+     } elsif ($g_var{verbose}) {
+      print "public key extracted to $tmpPubKeyFile\n" if $g_var{verbose};
+     }
+
+     # Get the fw public key in a format that can be processed to
+     # concat/hash/sign the digest of the fw key blob.
+     if ($shortKeyStrFile and (-e "$privKeyFile")) {
+       $g_CMD  = "$g_var{signutility} --get_pubkey --mode $mode";
+       $g_CMD .= " --privkeyfile $privKeyFile --pubkeyfile $shortKeyStrFile ";
+       print "\n\nRetrieve pub key command: $g_CMD\n" if $g_var{verbose};
+       system($g_CMD);
        if ($?) {
-          die "ERROR: Could not find command, openssl";
+         die "ERROR: Failed to retrieve the public key from $privKeyFile\n";
        }
-       chomp($openssl);
-       print "extractPubKey using $openssl\n" if $g_var{verbose};
-       system($cm);
-       if ($?) {
-         die "$openssl failed \n";
-       } elsif ($g_var{verbose}) {
-        print "public key extracted to $tmpPubKeyFile\n" if $g_var{verbose};
-       }
-   } else {
-       # in production mode, call the signtool to extract the public
-       # key
+      }
    }
 }
 
-# One subroutine to do all the public key extraction
-# calls in one place
+# One subroutine to do all the public key extraction calls in one place
 sub extractPubKeysFromPriv {
     my %data = @_;
-    my $mode = $data{mode}  || confess "mode is required";
-    my $hwA = $data{hwkeya} || confess "Hardware private key A required";
-    my $hwB = $data{hwkeyb} || confess "Hardware private key B required";
-    my $hwC = $data{hwkeyc} || confess "Hardware private key C required";
+    my $mode = $data{mode} || confess "mode is required";
 
-    my $swP = $data{swkeyp} || confess "Software private key P required";
-    my $swQ = $data{swkeyq} || "";
-    my $swR = $data{swkeyr} || "";
+    if ($mode eq DEVELOPMENT) {
+      #  hardware keys
+      foreach my $id (@g_hwKeyIDs) {
+        extractPubKey(mode    => $mode,
+                      keyfile => $g_HWprivKey{$id},
+                      outfile => $g_pubkeyFiles{$id});
+      }
+      # firmware keys
+      foreach my $id (@g_fwKeyIDs) {
+         if ($g_FWprivKey{$id}) {
+             extractPubKey(mode          => $mode,
+                           keyfile       => $g_FWprivKey{$id},
+                           outfile       => $g_pubkeyFiles{$id},
+                           pubKeyStrFile => $g_devModeShortPubkey{$id}
+                        );
+         } 
+       }
+    } else {
 
-    # In development mode, use openssl to extract the
-    # public key from the private.
-    extractPubKey(  mode    => $mode,
-                    keyfile => $hwA,
-                    outfile => "$g_tmpdir/hwpubkeya");
-    $g_HWpubKeyA = "$g_tmpdir/hwpubkeya";
+      # call the sign utility to extract the public key(s)
+      $g_CMD  = "$g_var{signutility} --get_pubkey --mode $g_var{signing_mode} ";
+      $g_CMD .= "--keytype HW ";
+      $g_CMD .= "--projecttoken $g_var{sign_project_token} ";
+      $g_CMD .= "--configfile $g_var{sign_project_config} ";
 
-    extractPubKey(  mode    => $mode,
-                    keyfile => $hwB,
-                    outfile => "$g_tmpdir/hwpubkeyb");
-    $g_var{HWpubKeyB} = "$g_tmpdir/hwpubkeyb";
+      print "\n\nRetrieve pub key command: $g_CMD\n" if $g_var{verbose};
+      system($g_CMD);
+      if ($?) {
+         die "ERROR: Failed to retrieve the HW public keys for $g_var{sign_project_token}\n";
+      }
+      $g_CMD  = "$g_var{signutility} --get_pubkey --mode $g_var{signing_mode} ";
+      $g_CMD .= "--keytype SW ";
+      $g_CMD .= "--projecttoken $g_var{sign_project_token} ";
+      $g_CMD .= "--configfile $g_var{sign_project_config} ";
 
-    extractPubKey(  mode    => $mode,
-                    keyfile => $hwC,
-                    outfile => "$g_tmpdir/hwpubkeyc");
-    $g_var{HWpubKeyC} = "$g_tmpdir/hwpubkeyc";
 
-    extractPubKey(  mode    => $mode,
-                    keyfile => $swP,
-                    outfile => "$g_tmpdir/swpubkeyp");
-    $g_SWpubKeyP = "$g_tmpdir/swpubkeyp";
+      print "\n\nRetrieve pub key command: $g_CMD\n" if $g_var{verbose};
+      system($g_CMD);
+      if ($?) {
+         die "ERROR: Failed to retrieve the FW public keys for $g_var{sign_project_token}\n";
+      }
 
-    if ($g_var{SWprivKeyQ}) {
-        extractPubKey(  mode    => $mode,
-                        keyfile => $swQ,
-                        outfile => "$g_tmpdir/swpubkeyq");
-        $g_SWpubKeyQ = "$g_tmpdir/swpubkeyq";
-    }
-    if ($g_var{SWprivKeyR}) {
-        extractPubKey(  mode    => $mode,
-                        keyfile => $swR,
-                        outfile => "$g_tmpdir/swpubkeyr");
-                        $g_SWpubKeyR = "$g_tmpdir/swpubkeyr";
-    }
+      # since the keys are all defined via projects in the config
+      # file, there needs to be a count of what pub key files
+      # are created via the call to the sign utility
+      foreach my $id (@g_fwKeyIDs) {
+        if (-e "$g_pubkeyFiles{$id}") { $g_var{fwKeyCount}++; }
+      }
+   }
 }
 
 # To create a full signed container, the binary that we
@@ -1173,32 +1095,69 @@ sub attachBinaryToContainer {
     }
 }
 
-sub parsePubKeyTextOut {
-   my $keyTextVar = shift;
-
-   my $keystring = "";
-   print "parsePubKeyTextOut: parse the public key from the dump of the private\n" if $g_var{verbose};
-   $keyTextVar =~ s%[\n, ]%%g;
-   if ($keyTextVar =~ /pub:/ ) {
-      $keyTextVar =~ /pub:(.*)ASN1/;
-      $keystring = $1;
-      $keystring =~ s%:%%g;
-   }
-   # strip off the first 2 chars ('04')
-   my $len = length($keystring) - 1;
-   if ($len <= 1) {
-      die "ERROR: length of our parsed key is <= 1, this is invalid";
-   }
-   $keystring = substr($keystring, 2, $len);
-   if ($len <= 1) {
-      die "ERROR: length of our parsed key is <= 1, this is invalid";
-   }
-   print "parsePubKeyTextOut: converting my new string with the first 04 string stripped off ($keystring) to binary\n" if $g_var{verbose};
-   my $binaryPublicKey = pack ("H*",$keystring);
-
-   return $binaryPublicKey;
+#
+# clean up temp files (if any are left from a prior run)
+sub removeTmpFiles {
+    foreach my $f (keys %g_signatureTmpFiles) {
+       if (-e "$g_signatureTmpFiles{$f}") {
+          system("rm -rf $g_signatureTmpFiles{$f}");
+          if ($?) {
+             print "ERROR on rm of $g_signatureTmpFiles{$f}\n";
+          }
+          print "Removing $g_signatureTmpFiles{$f}\n" if $g_var{verbose};
+       }
+    }
+    foreach my $f (keys %g_pubkeyFiles) {
+       if (-e "$g_pubkeyFiles{$f}") {
+          system("rm -rf $g_pubkeyFiles{$f}");
+          if ($?) {
+             print "ERROR on rm of $g_pubkeyFiles{$f}\n";
+          }
+          print "Removing $g_pubkeyFiles{$f}\n" if $g_var{verbose};
+       }
+    }
+    foreach my $f (keys %g_devModeShortPubkey) {
+       if (-e "$g_devModeShortPubkey{$f}") {
+          system("rm -rf $g_devModeShortPubkey{$f}");
+          if ($?) {
+             print "ERROR on rm of $g_devModeShortPubkey{$f}\n";
+          }
+          print "Removing $g_devModeShortPubkey{$f}\n" if $g_var{verbose};
+       }
+    }
 }
 
+#
+# clean up temp files and exit
+sub cleanExit {
+    my $exitCode = $_[0];
+
+    # If we got to this function by an interrupt/signal, then
+    # exitCode will be set to a string value for the interrupt
+    # Disable Interrupts.
+    $SIG{'INT'}  = 'IGNORE';
+    $SIG{'STOP'} = 'IGNORE';
+    $SIG{'HUP'}  = 'IGNORE';
+    $SIG{'ABRT'} = 'IGNORE';
+    $SIG{'QUIT'} = 'IGNORE';
+    $SIG{'TRAP'} = 'IGNORE';
+
+    removeTmpFiles();
+
+    if ($exitCode and
+        $exitCode !~ m/^(INT|STOP|HUP|ABRT|QUIT|TRAP)$/) {
+        print STDERR "\n\n$0 ended abnormally.\n";
+        print STDERR "Reason:\n $exitCode\n";
+        exit 1;
+    } else {
+        if ($exitCode) {
+          print "\nNow Exiting on: $exitCode\n";
+        } else {
+          $exitCode = 0;
+        }
+    }
+    exit $exitCode;
+}
 
 __END__
 
@@ -1248,39 +1207,57 @@ Fully-qualified path to binary to be signed
 
 Path to signed container to be created
 
+
+=item B<--sign-project-token>
+
+Sign project token (required in production mode)
+
+=item B<--sign-project-config>
+
+Fully-qualified path to configuration file
+defining the sign server location, 'tokens' and
+associated project names to be used for signing
+(required in production mode).
+
+
 =item B<--hwPrivKeyA>
 
-Fully-qualified path to hardware private key A (required in development mode)
+Fully-qualified path to hardware private key A (required
+in development mode)
 
 =item B<--hwPrivKeyB>
 
-Fully-qualified path to hardware private key B (required in development mode))
+Fully-qualified path to hardware private key B (required
+in development mode)
 
 =item B<--hwPrivKeyC>
 
-Fully-qualified path to hardware private key C (required in development mode))
+Fully-qualified path to hardware private key C (required
+in development mode)
 
 =item B<--swPrivKeyP>
 
-Fully-qualified path to firmware private key P (required in development mode))
+Fully-qualified path to firmware private key P (required
+in development mode)
 
-
-=item B<--update>
 
 Update the existing container
 
 =item B<--mode>
 
 development or production
-   (Only development mode supported initially)
+
 
 =item B<--swPrivKeyQ>
 
 Fully-qualified path to firmware private key Q
+(optional and only allowed in development mode)
 
 =item B<--swPrivKeyR>
 
 Fully-qualified path to firmware private key R
+(optional and only allowed in development mode)
+
 
 =item B<--flags_fw_key_ind>
 
@@ -1317,13 +1294,6 @@ File containing the unprotected payload
 Do NOT attach the -protectedPayload <binary>
   (and optional -unprotectedPayload <binary>)
   to the end of the signed container
-
-
-=item B<--tempdir>=DIRECTORY
-
-Temporary workspace used only when signing a
-  binary (files in this directory will not
-  be removed upon exit).
 
 
 =item B<--verbose>
@@ -1370,7 +1340,7 @@ the associated value to be inserted into the binary. So,
 for the multiple field/value combinations that must be
 updated into the final signed container, it must be
 called multiple times (once for each of the HW keys
-and associated signatures, once for each of the SFW
+and associated signatures, once for each of the FW
 keys and associated signatures, etc).
 
 As part of the container, there are headers that consist
@@ -1383,8 +1353,7 @@ of 3 Hardware public Keys
       * HW-SigB - Hardware Signature B
       * HW-SigC - Hardware Signature C
 
-and 1 to 3 FW Keys (the number of keys used/required
-depends on the settings for each 'project')
+and 1 to 3 FW Keys (FW Public Key P is required)
       * SW-KeyP - FW Public Key P
       * SW-KeyQ - FW Public Key Q
       * SW-KeyR - FW Public Key R
