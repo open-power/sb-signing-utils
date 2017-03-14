@@ -126,6 +126,9 @@ static void write_header(char *payload,
 	else
 		memset(pd->sw_pkey_r, 0, sizeof(ecc_key_t));
 
+	// FIXME: Compute ph payload hash!
+	// FIXME: Store hw signatures
+
 	ph->payload_size = cpu_to_be64(sizeof(ecc_signature_t)*3 + ph->sw_key_count * sizeof(ecc_key_t));
 
 	swh = (ROM_sw_header_raw*)(((void*)pd) + be64_to_cpu(ph->payload_size));
@@ -152,6 +155,8 @@ static void write_header(char *payload,
 	EVP_DigestFinal_ex(mdctx, swh->payload_hash, &sz);
 	assert(sz == SHA512_DIGEST_LENGTH);
 	EVP_MD_CTX_destroy(mdctx);
+
+	// FIXME: Write software signatures
 
 	r = write(fdout, container, SECURE_BOOT_HEADERS_SIZE);
 	assert(r == 4096);

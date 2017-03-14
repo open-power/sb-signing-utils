@@ -113,6 +113,8 @@ static int create_software_container(char* software_signature_files[],
 	assert(sz == SHA512_DIGEST_LENGTH);
 	EVP_MD_CTX_destroy(mdctx);
 
+	// FIXME: Write software signatures
+
 	r = write(fdout, container, containersz);
 	assert(r == containersz);
 
