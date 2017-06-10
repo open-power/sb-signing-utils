@@ -31,6 +31,7 @@
 #include <sys/mman.h>
 #include <fcntl.h>
 #include <sysexits.h>
+#include <regex.h>
 
 #include <openssl/ec.h>
 #include <openssl/ecdsa.h>
@@ -204,6 +205,34 @@ void writeHdr(void *hdr, const char *outFile, int hdr_type)
 
 	close(fdout);
 	return;
+}
+
+int isValidHex(char *input, int len) {
+	int r;
+	size_t maxlen = 512; // sane limit
+	regex_t regexpr;
+	char pattern[48];
+	char multiplier[8];
+	bool result = false;
+
+	if (strnlen(input, maxlen) >= maxlen)
+		die(EX_DATAERR, "input exceeded max length: %lu", maxlen);
+
+	if (len > 0)
+		sprintf(multiplier, "{%d}", len);
+	else
+		sprintf(multiplier, "+");
+
+	sprintf(pattern, "^(0x|0X)?[a-fA-F0-9]%s$", multiplier);
+
+	if ((r = regcomp(&regexpr, pattern, REG_EXTENDED | REG_NOSUB)))
+		die(EX_SOFTWARE, "%s", "failure to compile regex");
+
+	if (!(r = regexec(&regexpr, input, 0, NULL, 0)))
+		result = true;
+
+	regfree(&regexpr);
+	return result;
 }
 
 __attribute__((__noreturn__)) void usage (int status)
@@ -465,20 +494,25 @@ int main(int argc, char* argv[])
 	ph->ver_alg.hash_alg = 1;
 	ph->ver_alg.sig_alg = 1;
 	if (params.hw_cs_offset) {
-		// TODO Validate input..
+		if (!isValidHex(params.hw_cs_offset, 8))
+			die(EX_DATAERR, "%s",
+					"Invalid input for hw-cs-offset, expecting a 4 byte hexadecimal value");
 		uint64_t data;
 		sscanf(params.hw_cs_offset, "%lx", &data);
 		ph->code_start_offset = cpu_to_be64(data);
-		verbose_msg("hw-cs-offset = %08lx", data);
+		verbose_msg("hw-cs-offset = %#010lx", data);
 	} else {
 		ph->code_start_offset = 0;
 	}
 	ph->reserved = 0;
 	if (params.hw_flags) {
+		if (!isValidHex(params.hw_flags, 8))
+			die(EX_DATAERR, "%s",
+					"Invalid input for hw-flags, expecting a 4 byte hexadecimal value");
 		uint32_t data;
 		sscanf(params.hw_flags, "%x", &data);
-		verbose_msg("hw-flags = %08x", data);
 		ph->flags = cpu_to_be32(data);
+		verbose_msg("hw-flags = %#010x", data);
 	} else {
 		ph->flags = cpu_to_be32(0x80000000);
 	}
@@ -542,19 +576,25 @@ int main(int argc, char* argv[])
 	swh->ver_alg.hash_alg = 1;
 	swh->ver_alg.sig_alg = 1;
 	if (params.sw_cs_offset) {
+		if (!isValidHex(params.sw_cs_offset, 8))
+			die(EX_DATAERR, "%s",
+					"Invalid input for sw-cs-offset, expecting a 4 byte hexadecimal value");
 		uint64_t data;
 		sscanf(params.sw_cs_offset, "%lx", &data);
 		swh->code_start_offset = cpu_to_be64(data);
-		verbose_msg("sw-cs-offset = %08lx", data);
+		verbose_msg("sw-cs-offset = %#010lx", data);
 	} else {
 		swh->code_start_offset = 0;
 	}
 	swh->reserved = 0;
 	if (params.sw_flags) {
+		if (!isValidHex(params.sw_flags, 8))
+			die(EX_DATAERR, "%s",
+					"Invalid input for sw-flags, expecting a 4 byte hexadecimal value");
 		uint32_t data;
 		sscanf(params.sw_flags, "%x", &data);
 		swh->flags = cpu_to_be32(data);
-		verbose_msg("sw-flags = %08x", data);
+		verbose_msg("sw-flags = %#010x", data);
 	} else {
 		swh->flags = cpu_to_be32(0x00000000);
 	}
