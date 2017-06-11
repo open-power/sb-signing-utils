@@ -34,6 +34,7 @@
 
 char *progname;
 
+bool print_stats;
 bool verbose, debug;
 int wrap = 100;
 
@@ -170,6 +171,40 @@ static void display_rom_container_raw(const ROM_container_raw *rcr)
 	print_bytes((char *) "hw_pkey_c: ", (uint8_t *) rcr->hw_pkey_c, sizeof(rcr->hw_pkey_c));
 }
 
+static void display_container_stats(const struct parsed_stb_container *c)
+{
+	unsigned int size, offset;
+
+	printf("Container stats:\n");
+	size = (uint8_t*) c->ph - (uint8_t *) c->c;
+	offset = (uint8_t*) c->c - (uint8_t *) c->buf;
+	printf("  HW header size        = %4u (%#06x) at offset %4u (%#06x)\n",
+			size, size, offset, offset);
+	size = (uint8_t*) c->pd - (uint8_t *) c->ph;
+	offset = (uint8_t*) c->ph - (uint8_t *) c->buf;
+	printf("  Prefix header size    = %4u (%#06x) at offset %4u (%#06x)\n",
+			size, size, offset, offset);
+	size = (uint8_t*) c->sh - (uint8_t *) c->pd;
+	offset = (uint8_t*) c->pd - (uint8_t *) c->buf;
+	printf("  Prefix data size      = %4u (%#06x) at offset %4u (%#06x)\n",
+			size, size, offset, offset);
+	size = (uint8_t*) c->ssig - (uint8_t *) c->sh;
+	offset = (uint8_t*) c->sh - (uint8_t *) c->buf;
+	printf("  SW header size        = %4u (%#06x) at offset %4u (%#06x)\n",
+			size, size, offset, offset);
+	size = sizeof(ecc_key_t) * c->ph->sw_key_count;
+	offset = (uint8_t*) c->ssig - (uint8_t *) c->buf;
+	printf("  SW signature size     = %4u (%#06x) at offset %4u (%#06x)\n",
+			size, size, offset, offset);
+
+	printf("  TOTAL HEADER SIZE     = %4lu (%#0lx)\n", c->bufsz, c->bufsz);
+	printf("  PAYLOAD SIZE          = %4lu (%#0lx)\n",
+			be64_to_cpu(c->sh->payload_size), be64_to_cpu(c->sh->payload_size));
+	printf("  TOTAL CONTAINER SIZE  = %4lu (%#0lx)\n",
+			be64_to_cpu(c->c->container_size),
+			be64_to_cpu(c->c->container_size));
+}
+
 static void display_container(char* f)
 {
 	int fd = open(f, O_RDONLY);
@@ -212,6 +247,10 @@ static void display_container(char* f)
 	printf("\n");
 
 	display_sw_sig(c.ssig);
+	printf("\n");
+
+	if (print_stats)
+	display_container_stats(&c);
 
 	free(container);
 	close(fd);
@@ -231,6 +270,7 @@ __attribute__((__noreturn__)) void usage (int status)
 			" -v, --verbose           show verbose output\n"
 			" -d, --debug             show additional debug output\n"
 			" -w, --wrap              column at which to wrap long output (wrap=0 => unlimited)\n"
+			" -s, --stats             additionally print container stats\n"
 			" -I, --imagefile         containerized image to display (input)\n"
 			"\n");
 	};
@@ -242,6 +282,7 @@ static struct option const opts[] = {
 	{ "verbose",          no_argument,       0,  'v' },
 	{ "debug",            no_argument,       0,  'd' },
 	{ "wrap",             required_argument, 0,  'w' },
+	{ "stats",            no_argument,       0,  's' },
 	{ "imagefile",        required_argument, 0,  'I' },
 	{}
 };
@@ -263,7 +304,7 @@ int main(int argc, char* argv[])
 
 	while (1) {
 		int opt;
-		opt = getopt_long(argc, argv, "hvdw:I:", opts, &indexptr);
+		opt = getopt_long(argc, argv, "hvdw:sI:", opts, &indexptr);
 		if (opt == -1)
 			break;
 
@@ -280,6 +321,9 @@ int main(int argc, char* argv[])
 			break;
 		case 'w':
 			wrap = atoi(optarg);
+			break;
+		case 's':
+			print_stats = true;
 			break;
 		case 'I':
 			params.imagefn = optarg;

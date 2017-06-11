@@ -330,10 +330,10 @@ int main(int argc, char* argv[])
 {
 	int fdin, fdout;
 	int indexptr;
-	unsigned int offset;
+	unsigned int size, offset;
 	void *container = malloc(SECURE_BOOT_HEADERS_SIZE);
 	struct stat s;
-	char *buf = malloc(4096);
+	char *buf = malloc(SECURE_BOOT_HEADERS_SIZE);
 	off_t l;
 	void *infile;
 	int r;
@@ -629,14 +629,33 @@ int main(int argc, char* argv[])
 		memcpy(ssig->sw_sig_r, sigraw, sizeof(ecc_key_t));
 	}
 
+	size = (uint8_t*) ph - (uint8_t *) c;
+	offset = (uint8_t*) c - (uint8_t *) c;
+	verbose_msg("HW header size        = %4u (%#06x) at offset %4u (%#06x)",
+			size, size, offset, offset);
+	size = (uint8_t*) pd - (uint8_t *) ph;
 	offset = (uint8_t*) ph - (uint8_t *) c;
-	verbose_msg("Prefix header offset = %4u (%#0x)", offset, offset);
+	verbose_msg("Prefix header size    = %4u (%#06x) at offset %4u (%#06x)",
+			size, size, offset, offset);
+	size = (uint8_t*) swh - (uint8_t *) pd;
 	offset = (uint8_t*) pd - (uint8_t *) c;
-	verbose_msg("Prefix data offset   = %4u (%#0x)", offset, offset);
+	verbose_msg("Prefix data size      = %4u (%#06x) at offset %4u (%#06x)",
+			size, size, offset, offset);
+	size = (uint8_t*) ssig - (uint8_t *) swh;
 	offset = (uint8_t*) swh - (uint8_t *) c;
-	verbose_msg("SW header offset     = %4u (%#0x)", offset, offset);
+	verbose_msg("SW header size        = %4u (%#06x) at offset %4u (%#06x)",
+			size, size, offset, offset);
+	size = sizeof(ecc_key_t) * ph->sw_key_count;
 	offset = (uint8_t*) ssig - (uint8_t *) c;
-	verbose_msg("SW signature offset  = %4u (%#0x)", offset, offset);
+	verbose_msg("SW signature size     = %4u (%#06x) at offset %4u (%#06x)",
+			size, size, offset, offset);
+
+	verbose_msg("TOTAL HEADER SIZE     = %4u (%#0x)", SECURE_BOOT_HEADERS_SIZE,
+			SECURE_BOOT_HEADERS_SIZE);
+	verbose_msg("PAYLOAD SIZE          = %4lu (%#0lx)",
+			be64_to_cpu(swh->payload_size), be64_to_cpu(swh->payload_size));
+	verbose_msg("TOTAL CONTAINER SIZE  = %4lu (%#0lx)",
+			be64_to_cpu(c->container_size), be64_to_cpu(c->container_size));
 
 	// Write container.
 	r = write(fdout, container, SECURE_BOOT_HEADERS_SIZE);
