@@ -262,7 +262,7 @@ __attribute__((__noreturn__)) void usage (int status)
 			" -Q, --sw_sig_q          file containing SW key Q signature in DER format\n"
 			" -R, --sw_sig_r          file containing SW key R signature in DER format\n"
 			" -L, --payload           file containing the payload to be signed\n"
-			" -I, --imagefile         file to write containerized payload (output)\n"
+			" -I, --imagefile         file to write containerized image (output)\n"
 			" -o, --hw-cs-offset      code start offset for prefix header in hex\n"
 			" -O, --sw-cs-offset      code start offset for software header in hex\n"
 			" -f, --hw-flags          prefix header flags in hex\n"

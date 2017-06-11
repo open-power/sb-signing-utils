@@ -25,6 +25,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
+#include <limits.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -32,23 +33,28 @@
 #include <sysexits.h>
 
 char *progname;
-int debug;
+
+bool verbose, debug;
+int wrap = 100;
 
 void usage(int status);
 
-void printBytes(char *lead, unsigned char *buffer, size_t buflen, int wrap)
+void print_bytes(char *lead, uint8_t *buffer, size_t buflen)
 {
 	unsigned int i;
+	unsigned int width;
 	unsigned int leadbytes = strlen(lead);
 	leadbytes = leadbytes > 30 ? 30 : leadbytes;
+	width = (wrap - leadbytes) / 2;
+	width = (width < 1) ? INT_MAX : width;
 
-	fprintf (stderr, "%s", lead);
+	fprintf(stdout, "%s", lead);
 	for (i = 1; i < buflen + 1; i++) {
-		fprintf (stderr, "%02x", buffer[i - 1]);
-		if (((i % wrap) == 0) && (i < buflen))
-			fprintf (stderr, "\n%*c", leadbytes, ' ');
+		fprintf(stdout, "%02x", buffer[i - 1]);
+		if (((i % width) == 0) && (i < buflen))
+			fprintf(stdout, "\n%*c", leadbytes, ' ');
 	}
-	fprintf (stderr, "\n");
+	fprintf(stdout, "\n");
 }
 
 bool stb_is_container(const void *buf, size_t size)
@@ -58,7 +64,7 @@ bool stb_is_container(const void *buf, size_t size)
 	c = (ROM_container_raw*) buf;
 	if (!buf || size < SECURE_BOOT_HEADERS_SIZE)
 		return false;
-	if (be32_to_cpu(c->magic_number) != ROM_MAGIC_NUMBER )
+	if (be32_to_cpu(c->magic_number) != ROM_MAGIC_NUMBER)
 		return false;
 	return true;
 }
@@ -86,35 +92,23 @@ static void display_version_raw(const ROM_version_raw v)
 	printf("  sig_alg:  %02x (%s)\n", v.sig_alg, (v.sig_alg == 1) ? "SHA512/ECDSA-521" : "UNKNOWN");
 }
 
-static void display_sha2_hash_t(const sha2_hash_t h)
-{
-	int i;
-	for(i=0; i<SHA512_DIGEST_LENGTH; i++)
-		printf("%02x", h[i]);
-}
-
-static void display_ecid(const uint8_t *ecid)
-{
-	for(int i=0; i<ECID_SIZE; i++)
-		printf("%02x", ecid[i]);
-}
-
 static void display_prefix_header(const ROM_prefix_header_raw *p)
 {
 	printf("Prefix Header:\n");
 	display_version_raw(p->ver_alg);
 	printf("code_start_offset: %08lx\n", be64_to_cpu(p->code_start_offset));
 	printf("reserved:          %08lx\n", be64_to_cpu(p->reserved));
-	printf("flags:             %08x\n",  be32_to_cpu(p->flags));
+	printf("flags:             %08x\n", be32_to_cpu(p->flags));
 	printf("sw_key_count:      %02x\n", p->sw_key_count);
 	printf("payload_size:      %08lx\n", be64_to_cpu(p->payload_size));
-	printf("payloah_hash:      ");
-	display_sha2_hash_t(p->payload_hash);
-	printf("\n");
+	print_bytes((char *) "payload_hash:      ", (uint8_t *) p->payload_hash,
+			sizeof(p->payload_hash));
 	printf("ecid_count:        %02x\n", p->ecid_count);
-	for(int i=0; i< p->ecid_count; i++) {
+
+	for (int i = 0; i < p->ecid_count; i++) {
 		printf("ecid:              ");
-		display_ecid(p->ecid[i].ecid);
+		print_bytes((char *) "ecid:              ", (uint8_t *) p->ecid[i].ecid,
+				sizeof(p->ecid[i].ecid));
 		printf("\n");
 	}
 }
@@ -127,48 +121,40 @@ static void display_sw_header(const ROM_sw_header_raw *swh)
 	printf("reserved:          %08lx\n", be64_to_cpu(swh->reserved));
 	printf("flags:             %08x\n", be32_to_cpu(swh->flags));
 	printf("reserved_0:        %02x\n", swh->reserved_0);
-	printf("payload_size:      %08lx (%lu)\n", be64_to_cpu(swh->payload_size), be64_to_cpu(swh->payload_size));
-	printf("payloah_hash:      ");
-	display_sha2_hash_t(swh->payload_hash);
-	printf("\n");
+	printf("payload_size:      %08lx (%lu)\n", be64_to_cpu(swh->payload_size),
+			be64_to_cpu(swh->payload_size));
+	print_bytes((char *) "payload_hash:      ", (uint8_t *) swh->payload_hash,
+			sizeof(swh->payload_hash));
 	printf("ecid_count:        %02x\n", swh->ecid_count);
 
-	for(int i=0; i< swh->ecid_count; i++) {
+	for (int i = 0; i < swh->ecid_count; i++) {
 		printf("ecid:              ");
-		display_ecid(swh->ecid[i].ecid);
+		print_bytes((char *) "ecid:              ",
+				(uint8_t *) swh->ecid[i].ecid, sizeof(swh->ecid[i].ecid));
 		printf("\n");
 	}
-}
-
-static void display_ec_coord(const uint8_t *e)
-{
-	for(int i=0; i<EC_COORDBYTES*2; i++)
-		printf("%02x", e[i]);
 }
 
 static void display_prefix_data(const int sw_key_count, const ROM_prefix_data_raw *pd)
 {
 	printf("Prefix Data:\n");
-	printf("hw_sig_a:  "); display_ec_coord(pd->hw_sig_a); printf("\n");
-	printf("hw_sig_b:  "); display_ec_coord(pd->hw_sig_b); printf("\n");
-	printf("hw_sig_c:  "); display_ec_coord(pd->hw_sig_c); printf("\n");
-	if (sw_key_count >=1) {
-		printf("sw_pkey_p: "); display_ec_coord(pd->sw_pkey_p); printf("\n");
-	}
-	if (sw_key_count >=2) {
-		printf("sw_pkey_q: "); display_ec_coord(pd->sw_pkey_q); printf("\n");
-	}
-	if (sw_key_count >=3) {
-		printf("sw_pkey_r: "); display_ec_coord(pd->sw_pkey_r); printf("\n");
-	}
+	print_bytes((char *) "hw_sig_a:  ", (uint8_t *) pd->hw_sig_a, sizeof(pd->hw_sig_a));
+	print_bytes((char *) "hw_sig_b:  ", (uint8_t *) pd->hw_sig_b, sizeof(pd->hw_sig_b));
+	print_bytes((char *) "hw_sig_c:  ", (uint8_t *) pd->hw_sig_c, sizeof(pd->hw_sig_c));
+	if (sw_key_count >=1)
+		print_bytes((char *) "sw_pkey_p: ", (uint8_t *) pd->sw_pkey_p, sizeof(pd->sw_pkey_p));
+	if (sw_key_count >=2)
+		print_bytes((char *) "sw_pkey_q: ", (uint8_t *) pd->sw_pkey_q, sizeof(pd->sw_pkey_q));
+	if (sw_key_count >=3)
+		print_bytes((char *) "sw_pkey_r: ", (uint8_t *) pd->sw_pkey_r, sizeof(pd->sw_pkey_r));
 }
 
 static void display_sw_sig(const ROM_sw_sig_raw *s)
 {
 	printf("Software Signatures:\n");
-	printf("sw_sig_p: "); display_ec_coord(s->sw_sig_p); printf("\n");
-	printf("sw_sig_q: "); display_ec_coord(s->sw_sig_q); printf("\n");
-	printf("sw_sig_r: "); display_ec_coord(s->sw_sig_r); printf("\n");
+	print_bytes((char *) "sw_sig_p:  ", (uint8_t *) s->sw_sig_p, sizeof(s->sw_sig_p));
+	print_bytes((char *) "sw_sig_q:  ", (uint8_t *) s->sw_sig_q, sizeof(s->sw_sig_q));
+	print_bytes((char *) "sw_sig_r:  ", (uint8_t *) s->sw_sig_r, sizeof(s->sw_sig_r));
 }
 
 static void display_rom_container_raw(const ROM_container_raw *rcr)
@@ -179,18 +165,9 @@ static void display_rom_container_raw(const ROM_container_raw *rcr)
 	printf("container_size: 0x%08lx (%lu)\n", be64_to_cpu(rcr->container_size), be64_to_cpu(rcr->container_size));
 	printf("target_hrmor:   0x%08lx\n", be64_to_cpu(rcr->target_hrmor));
 	printf("stack_pointer:  0x%08lx\n", be64_to_cpu(rcr->stack_pointer));
-	printf("hw_pkey_a: ");
-	for(int i=0; i < EC_COORDBYTES*2; i++)
-		printf("%02x", rcr->hw_pkey_a[i]);
-	printf("\n");
-	printf("hw_pkey_b: ");
-	for(int i=0; i < EC_COORDBYTES*2; i++)
-		printf("%02x", rcr->hw_pkey_b[i]);
-	printf("\n");
-	printf("hw_pkey_c: ");
-	for(int i=0; i < EC_COORDBYTES*2; i++)
-		printf("%02x", rcr->hw_pkey_c[i]);
-	printf("\n");
+	print_bytes((char *) "hw_pkey_a: ", (uint8_t *) rcr->hw_pkey_a, sizeof(rcr->hw_pkey_a));
+	print_bytes((char *) "hw_pkey_b: ", (uint8_t *) rcr->hw_pkey_b, sizeof(rcr->hw_pkey_b));
+	print_bytes((char *) "hw_pkey_c: ", (uint8_t *) rcr->hw_pkey_c, sizeof(rcr->hw_pkey_c));
 }
 
 static void display_container(char* f)
@@ -250,17 +227,21 @@ __attribute__((__noreturn__)) void usage (int status)
 		printf(
 			"\n"
 			"Options:\n"
-			" -d, --debug             show additional debug info\n"
 			" -h, --help              display this message and exit\n"
-			" -I, --imagefile         file to write containerized payload (output)\n"
+			" -v, --verbose           show verbose output\n"
+			" -d, --debug             show additional debug output\n"
+			" -w, --wrap              column at which to wrap long output (wrap=0 => unlimited)\n"
+			" -I, --imagefile         containerized image to display (input)\n"
 			"\n");
 	};
 	exit(status);
 }
 
 static struct option const opts[] = {
-	{ "debug",            no_argument,       0,  'd' },
 	{ "help",             no_argument,       0,  'h' },
+	{ "verbose",          no_argument,       0,  'v' },
+	{ "debug",            no_argument,       0,  'd' },
+	{ "wrap",             required_argument, 0,  'w' },
 	{ "imagefile",        required_argument, 0,  'I' },
 	{}
 };
@@ -282,7 +263,7 @@ int main(int argc, char* argv[])
 
 	while (1) {
 		int opt;
-		opt = getopt_long(argc, argv, "I:dh", opts, &indexptr);
+		opt = getopt_long(argc, argv, "hvdw:I:", opts, &indexptr);
 		if (opt == -1)
 			break;
 
@@ -291,8 +272,14 @@ int main(int argc, char* argv[])
 		case '?':
 			usage(EX_OK);
 			break;
+		case 'v':
+			verbose = true;
+			break;
 		case 'd':
-			debug = 1;
+			debug = true;
+			break;
+		case 'w':
+			wrap = atoi(optarg);
 			break;
 		case 'I':
 			params.imagefn = optarg;
