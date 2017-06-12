@@ -93,6 +93,9 @@ void getPublicKeyRaw(ecc_key_t *pubkeyraw, char *inFile)
 	unsigned char pubkeyData[1 + 2 * EC_COORDBYTES];
 
 	FILE *fp = fopen(inFile, "r");
+	if (!fp)
+		die(EX_NOINPUT, "Cannot open key file: %s: %s", inFile, strerror(errno));
+
 	if ((pkey = PEM_read_PrivateKey(fp, NULL, NULL, NULL))) {
 		debug_msg("File \"%s\" is private key", inFile);
 	} else {
@@ -124,6 +127,7 @@ void getPublicKeyRaw(ecc_key_t *pubkeyraw, char *inFile)
 
 	memcpy(*pubkeyraw, &pubkeyData[1], sizeof(ecc_key_t));
 
+	BN_free(pubkeyBN);
 	EC_KEY_free(key);
 	EVP_PKEY_free(pkey);
 	fclose(fp);
@@ -141,11 +145,11 @@ void getSigRaw(ecc_signature_t *sigraw, char *inFile)
 
 	fdin = open(inFile, O_RDONLY);
 	if (fdin <= 0)
-		die(EX_NOINPUT, "Cannot open signature file: %s", inFile);
+		die(EX_NOINPUT, "Cannot open sig file: %s: %s", inFile, strerror(errno));
 
 	r = fstat(fdin, &s);
 	if (r != 0)
-		die(EX_NOINPUT, "Cannot stat signature file: %s", inFile);
+		die(EX_NOINPUT, "Cannot stat sig file: %s", inFile);
 
 	infile = mmap(NULL, s.st_size, PROT_READ, MAP_PRIVATE, fdin, 0);
 	if (!infile)
