@@ -154,7 +154,7 @@ to add it to the container, and it can do so with either the public key
 or private key as input.)
 
 The script reuses HW key A as SW key P, as a shortcut. Normally the
-hardware and firmware keys would be different. Also, the script only use
+hardware and firmware keys would be different. Also, the script only uses
 one software key. The use of 1-3 software keys is supported by secure
 boot. However, for every software public key provided in the container
 header, a corresponding signature must be present. In the case of the
