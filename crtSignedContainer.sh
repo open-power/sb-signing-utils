@@ -35,6 +35,49 @@ die () {
     exit 1
 }
 
+is_private_key () {
+    openssl ec -pubout -in $1 &>/dev/null
+}
+
+is_public_key () {
+    openssl ec -pubin -pubout -in $1 &>/dev/null
+}
+
+checkKey () {
+    # The variable name
+    KEY_NAME=$1
+    # The filename holding the key
+    K=${!KEY_NAME}
+    KEYS=0
+    PUBKEYS=0
+
+    if [ -n "$K" ]; then
+        if [ -f $K ]; then
+            if is_private_key $K; then
+                KEYS=1
+            elif is_public_key $K; then
+                KEYS=1
+                PUBKEYS=1
+            else
+                die "Key $KEY_NAME is neither a public nor private key"
+            fi
+        else
+            die "Can't open file: $K for $KEY_NAME"
+        fi
+    fi
+
+    # Increment key counts accordingly
+    if [[ $KEY_NAME =~ HW_KEY* ]]; then
+        HW_KEY_COUNT=$(expr $HW_KEY_COUNT + $KEYS)
+        HW_KEY_PUBKEY_COUNT=$(expr $HW_KEY_PUBKEY_COUNT + $PUBKEYS)
+    elif [[ $KEY_NAME =~ SW_KEY* ]]; then
+        SW_KEY_COUNT=$(expr $SW_KEY_COUNT + $KEYS)
+        SW_KEY_PUBKEY_COUNT=$(expr $SW_KEY_PUBKEY_COUNT + $PUBKEYS)
+    fi
+}
+
+# Main
+
 # Convert long options to short
 for arg in "$@"; do
   shift
@@ -79,18 +122,25 @@ do
 done
 
 # Check arguments
-[ -z "$PAYLOAD" ]  && die "Input payload required"
-[ -z "$OUTPUT" ]   && die "Destination imagefile required"
+[ -z "$PAYLOAD" ] && die "Input payload required"
+[ -z "$OUTPUT" ] && die "Destination imagefile required"
+[ ! -f "$PAYLOAD" ] && die "Can't open payload file: $PAYLOAD"
 
-[ ! -f $PAYLOAD ]  && die "Can't read input payload file: $PAYLOAD"
-[ -z "$HW_KEY_A" ] && [ ! -f $HW_KEY_A ] && die "Can't read HW key A file: $HW_KEY_A"
-[ -z "$HW_KEY_B" ] && [ ! -f $HW_KEY_B ] && die "Can't read HW key B file: $HW_KEY_B"
-[ -z "$HW_KEY_C" ] && [ ! -f $HW_KEY_C ] && die "Can't read HW key C file: $HW_KEY_C"
-[ -z "$SW_KEY_P" ] && [ ! -f $SW_KEY_P ] && die "Can't read SW key P file: $SW_KEY_P"
-[ -z "$SW_KEY_Q" ] && [ ! -f $SW_KEY_Q ] && die "Can't read SW key Q file: $SW_KEY_Q"
-[ -z "$SW_KEY_R" ] && [ ! -f $SW_KEY_R ] && die "Can't read SW key R file: $SW_KEY_R"
+# Check input keys
+HW_KEY_COUNT=0
+HW_KEY_PUBKEY_COUNT=0
+SW_KEY_COUNT=0
+SW_KEY_PUBKEY_COUNT=0
 
-# Set arguments for exection
+for KEY in HW_KEY_A HW_KEY_B HW_KEY_C; do
+    checkKey $KEY
+done
+
+for KEY in SW_KEY_P SW_KEY_Q SW_KEY_R; do
+    checkKey $KEY
+done
+
+# Set arguments for (program) execution
 HW_KEY_ARGS=""
 SW_KEY_ARGS=""
 HW_SIG_ARGS=""
@@ -117,36 +167,36 @@ create-container $HW_KEY_ARGS $SW_KEY_ARGS \
                  --dumpPrefixHdr $T/prefix_hdr --dumpSwHdr $T/software_hdr \
                  $ADDL_ARGS
 
-# Sign the Prefix header.
-if [ -n "$HW_KEY_A" -a -n "$HW_KEY_B" -a -n "$HW_KEY_C" ]
+# Sign the Prefix header (all 3 HW keys are required)
+if [ "$HW_KEY_COUNT" -eq "3" -a "$HW_KEY_PUBKEY_COUNT" -eq "0" ]
 then
-    echo "--> $P: Executing signing requests for HW keys A,B,C..."
+    echo "--> $P: Executing signing request for HW keys A,B,C..."
     openssl dgst -SHA512 -sign $HW_KEY_A $T/prefix_hdr > $T/hw_key_a.sig
     openssl dgst -SHA512 -sign $HW_KEY_B $T/prefix_hdr > $T/hw_key_b.sig
     openssl dgst -SHA512 -sign $HW_KEY_C $T/prefix_hdr > $T/hw_key_c.sig
     HW_SIG_ARGS="-A $T/hw_key_a.sig -B $T/hw_key_b.sig -C $T/hw_key_c.sig"
 fi
 
-# Sign the Software header.
-if [ -n "$SW_KEY_P" ]
+# Sign the Software header (at least one SW key is required)
+if [ "$SW_KEY_COUNT" -gt "0" -a "$SW_KEY_PUBKEY_COUNT" -eq "0" ]
 then
-    echo "--> $P: Executing signing requests for SW key P..."
-    openssl dgst -SHA512 -sign $SW_KEY_P $T/software_hdr > $T/sw_key_p.sig
-    SW_SIG_ARGS="$SW_SIG_ARGS -P $T/sw_key_p.sig"
-fi
+    if [ -n "$SW_KEY_P" ]; then
+        echo "--> $P: Executing signing request for SW key P..."
+        openssl dgst -SHA512 -sign $SW_KEY_P $T/software_hdr > $T/sw_key_p.sig
+        SW_SIG_ARGS="$SW_SIG_ARGS -P $T/sw_key_p.sig"
+    fi
 
-if [ -n "$SW_KEY_Q" ]
-then
-    echo "--> $P: Executing signing requests for SW key Q..."
-    openssl dgst -SHA512 -sign $SW_KEY_Q $T/software_hdr > $T/sw_key_q.sig
-    SW_SIG_ARGS="$SW_SIG_ARGS -Q $T/sw_key_q.sig"
-fi
+    if [ -n "$SW_KEY_Q" ]; then
+        echo "--> $P: Executing signing request for SW key Q..."
+        openssl dgst -SHA512 -sign $SW_KEY_Q $T/software_hdr > $T/sw_key_q.sig
+        SW_SIG_ARGS="$SW_SIG_ARGS -Q $T/sw_key_q.sig"
+    fi
 
-if [ -n "$SW_KEY_R" ]
-then
-    echo "--> $P: Executing signing requests for SW key R..."
-    openssl dgst -SHA512 -sign $SW_KEY_R $T/software_hdr > $T/sw_key_r.sig
-    SW_SIG_ARGS="$SW_SIG_ARGS -R $T/sw_key_r.sig"
+    if [ -n "$SW_KEY_R" ]; then
+        echo "--> $P: Executing signing request for SW key R..."
+        openssl dgst -SHA512 -sign $SW_KEY_R $T/software_hdr > $T/sw_key_r.sig
+        SW_SIG_ARGS="$SW_SIG_ARGS -R $T/sw_key_r.sig"
+    fi
 fi
 
 # Build the full container.
