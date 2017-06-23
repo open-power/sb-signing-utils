@@ -5,7 +5,7 @@
 #
 # OpenPOWER sb-signing-utils Project
 #
-# Contributors Listed Below - COPYRIGHT 2016
+# Contributors Listed Below - COPYRIGHT 2017
 # [+] International Business Machines Corp.
 #
 #
@@ -27,15 +27,20 @@ ACLOCAL_AMFLAGS = -I m4
 
 bin_PROGRAMS = create-container print-container
 
+dist_bin_SCRIPTS = crtSignedContainer.sh sign-with-local-keys.sh
+
+EXTRA_DIST = ccan
+
 create_container_SOURCES = \
-        create-container.c
+	container.h \
+	create-container.c
 
 create_container_CPPFLAGS = $(AM_CPPFLAGS) -I. -g3
 create_container_LDFLAGS =
 create_container_LDADD = -lssl -lcrypto
 
 print_container_SOURCES = \
-        print-container.c
+	print-container.c
 
 print_container_CPPFLAGS = $(AM_CPPFLAGS) -I. -g3
 print_container_LDFLAGS =

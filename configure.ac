@@ -2,7 +2,7 @@
 
 AC_PREREQ([2.65])
 AC_INIT(signtool, 1.0, hellerda@us.ibm.com)
-AM_INIT_AUTOMAKE
+AM_INIT_AUTOMAKE([foreign])
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_MACRO_DIR([m4])
 
@@ -10,13 +10,9 @@ AC_CANONICAL_HOST
 
 # Checks for programs.
 AC_PROG_CC
-#AM_PROG_CC_C_O
-#AC_PROG_CXX
 AC_PROG_CPP
 AC_PROG_INSTALL
-#AC_PROG_LIBTOOL
-#AC_PROG_LN_S
-#LT_INIT
+AC_PROG_LIBTOOL
 
 # Check for headers
 AC_HEADER_STDC
@@ -49,7 +45,7 @@ AC_DEFINE_UNQUOTED(HAVE_LITTLE_ENDIAN, $little_endian, [Little-endian system])
 AC_DEFINE_UNQUOTED(HAVE_BIG_ENDIAN, $big_endian, [Big-endian system])
 
 # Openssl checks
-PKG_CHECK_MODULES(OPENSSL, [ openssl >= 0.9.8 ])
+PKG_CHECK_MODULES(OPENSSL, [ openssl >= 1.0.1 ])
 AC_SUBST(OPENSSL_CFLAGS)
 AC_SUBST(OPENSSL_LIBS)
 AC_CHECK_HEADER(unistd.h)

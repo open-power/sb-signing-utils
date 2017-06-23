@@ -8,11 +8,7 @@ case "`echo $1 | tr A-Z a-z`" in
     make
     ;;
   gnu)
-    # required by automake
-    touch NEWS README AUTHORS ChangeLog
-    # required by aclocal
-    mkdir -p m4/
-    autoreconf -i && \
+    autoreconf -i -Wno-unsupported && \
     ./configure && \
     make
     ;;
