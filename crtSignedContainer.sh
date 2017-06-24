@@ -6,7 +6,6 @@ DEBUG=""
 WRAP=""
 
 P=${0##*/}
-T=`mktemp -d`
 
 # Functions
 usage () {
@@ -26,6 +25,7 @@ usage () {
     echo "	-i, --out               file to write containerized payload"
     echo "	-o, --code-start-offset code start offset for software header in hex"
     echo "	-f, --flags             prefix header flags in hex"
+    echo "	-e, --eyeCatch          name or identifier of the module being built"
     echo ""
     exit 1
 }
@@ -96,12 +96,13 @@ for arg in "$@"; do
     "--code-start-offset") set -- "$@" "-o" ;;
     "--protectedPayload")  set -- "$@" "-l" ;;
     "--out")        set -- "$@" "-i" ;;
-    *)             set -- "$@" "$arg"
+    "--eyeCatch")   set -- "$@" "-e" ;;
+    *)              set -- "$@" "$arg"
   esac
 done
 
 # Process command-line arguments
-while getopts ?dvw:a:b:c:p:q:r:f:o:l:i: opt
+while getopts ?dvw:a:b:c:p:q:r:f:o:l:i:e: opt
 do
   case "$opt" in
     v) VERBOSE="TRUE";;
@@ -117,14 +118,15 @@ do
     o) CS_OFFSET="`echo $OPTARG | tr A-Z a-z`";;
     l) PAYLOAD="`echo $OPTARG`";;
     i) OUTPUT="`echo $OPTARG`";;
+    e) eyeCatch="`echo $OPTARG`";;
     h|\?) usage;;
   esac
 done
 
 # Check arguments
-[ -z "$PAYLOAD" ] && die "Input payload required"
-[ -z "$OUTPUT" ] && die "Destination imagefile required"
-[ ! -f "$PAYLOAD" ] && die "Can't open payload file: $PAYLOAD"
+test -z "$PAYLOAD" && die "Input payload required"
+test -z "$OUTPUT" && die "Destination imagefile required"
+test ! -f "$PAYLOAD" && die "Can't open payload file: $PAYLOAD"
 
 # Check input keys
 HW_KEY_COUNT=0
@@ -139,6 +141,35 @@ done
 for KEY in SW_KEY_P SW_KEY_Q SW_KEY_R; do
     checkKey $KEY
 done
+
+# Set cache directory
+: ${TMPDIR:=/tmp}
+SCRATCH_DIR=$TMPDIR
+moniker="SIGNTOOL"
+KEEP_CACHE=true
+
+test -z "$eyeCatch" && KEEP_CACHE=false && eyeCatch="IMAGE"
+
+T=$(ls -1dt $SCRATCH_DIR/${moniker}_* 2>/dev/null | head -1)
+
+if [ -n "$T" ]; then
+    crtTime=$(date -d @$(basename $T | cut -d_ -f2))
+    echo "--> $P: Using existing cache dir: $T, created: $crtTime"
+else
+    buildID="${moniker}_$(date +%s)"
+    T=$SCRATCH_DIR/$buildID
+    echo "--> $P: Creating new cache dir: $T"
+    mkdir $T
+fi
+
+T=$T/$eyeCatch
+
+if [ -d "$T" ]; then
+    echo "--> $P: Using existing cache subdir: $T"
+else
+    echo "--> $P: Creating new cache subdir: $T"
+    mkdir $T
+fi
 
 # Set arguments for (program) execution
 HW_KEY_ARGS=""
@@ -160,8 +191,8 @@ ADDL_ARGS=""
 [ -n "$DEBUG" ] && ADDL_ARGS="$ADDL_ARGS -d"
 [ -n "$WRAP" ] && ADDL_ARGS="$ADDL_ARGS -w $WRAP"
 
-# Build enough of the container to create the Prefix and Software headers.
-echo "--> $P: Creating signing requests..."
+# Build enough of the container to create the Prefix and Software headers
+echo "--> $P: Generating signing requests..."
 create-container $HW_KEY_ARGS $SW_KEY_ARGS \
                  --payload $PAYLOAD --imagefile $OUTPUT \
                  --dumpPrefixHdr $T/prefix_hdr --dumpSwHdr $T/software_hdr \
@@ -174,7 +205,6 @@ then
     openssl dgst -SHA512 -sign $HW_KEY_A $T/prefix_hdr > $T/hw_key_a.sig
     openssl dgst -SHA512 -sign $HW_KEY_B $T/prefix_hdr > $T/hw_key_b.sig
     openssl dgst -SHA512 -sign $HW_KEY_C $T/prefix_hdr > $T/hw_key_c.sig
-    HW_SIG_ARGS="-A $T/hw_key_a.sig -B $T/hw_key_b.sig -C $T/hw_key_c.sig"
 fi
 
 # Sign the Software header (at least one SW key is required)
@@ -183,27 +213,73 @@ then
     if [ -n "$SW_KEY_P" ]; then
         echo "--> $P: Executing signing request for SW key P..."
         openssl dgst -SHA512 -sign $SW_KEY_P $T/software_hdr > $T/sw_key_p.sig
-        SW_SIG_ARGS="$SW_SIG_ARGS -P $T/sw_key_p.sig"
     fi
 
     if [ -n "$SW_KEY_Q" ]; then
         echo "--> $P: Executing signing request for SW key Q..."
         openssl dgst -SHA512 -sign $SW_KEY_Q $T/software_hdr > $T/sw_key_q.sig
-        SW_SIG_ARGS="$SW_SIG_ARGS -Q $T/sw_key_q.sig"
     fi
 
     if [ -n "$SW_KEY_R" ]; then
         echo "--> $P: Executing signing request for SW key R..."
         openssl dgst -SHA512 -sign $SW_KEY_R $T/software_hdr > $T/sw_key_r.sig
-        SW_SIG_ARGS="$SW_SIG_ARGS -R $T/sw_key_r.sig"
     fi
 fi
 
-# Build the full container.
-echo "--> $P: Creating container..."
-create-container $HW_KEY_ARGS $SW_KEY_ARGS \
-                 $HW_SIG_ARGS $SW_SIG_ARGS \
-                 --payload $PAYLOAD --imagefile $OUTPUT \
-                 $ADDL_ARGS
+# Find signatures
+FOUND=""
+if [ -f $T/hw_key_a.sig ]; then
+    FOUND="${FOUND}A,"
+    HW_SIG_ARGS="$HW_SIG_ARGS -A $T/hw_key_a.sig"
+fi
 
-rm -rf $T
+if [ -f $T/hw_key_b.sig ]; then
+    FOUND="${FOUND}B,"
+    HW_SIG_ARGS="$HW_SIG_ARGS -B $T/hw_key_b.sig"
+fi
+
+if [ -f $T/hw_key_c.sig ]; then
+    FOUND="${FOUND}C,"
+    HW_SIG_ARGS="$HW_SIG_ARGS -C $T/hw_key_c.sig"
+fi
+
+if [ -f $T/sw_key_p.sig ]; then
+    FOUND="${FOUND}P,"
+    SW_SIG_ARGS="$SW_SIG_ARGS -P $T/sw_key_p.sig"
+fi
+
+if [ -f $T/sw_key_q.sig ]; then
+    FOUND="${FOUND}Q,"
+    SW_SIG_ARGS="$SW_SIG_ARGS -Q $T/sw_key_q.sig"
+fi
+
+if [ -f $T/sw_key_r.sig ]; then
+    FOUND="${FOUND}R,"
+    SW_SIG_ARGS="$SW_SIG_ARGS -R $T/sw_key_r.sig"
+fi
+
+# Build the full container
+if [ -n "$HW_SIG_ARGS" -o -n "$SW_SIG_ARGS" ]; then
+    echo "--> $P: Have signatures for keys $FOUND adding to container..."
+    create-container $HW_KEY_ARGS $SW_KEY_ARGS \
+                     $HW_SIG_ARGS $SW_SIG_ARGS \
+                     --payload $PAYLOAD --imagefile $OUTPUT \
+                     $ADDL_ARGS
+else
+    echo "--> $P: No signatures available."
+fi
+
+echo "--> $P: Done."
+
+# Cleanup
+if [ $KEEP_CACHE == false ]; then
+    echo "--> $P: Removing cache subdir: $T"
+    rm -rf $T
+    T=$(dirname $T)
+
+    if rmdir $T; then
+        echo "--> $P: Removing cache dir: $T"
+    else
+        echo "--> $P: Not removing cache dir: $T"
+    fi
+fi
