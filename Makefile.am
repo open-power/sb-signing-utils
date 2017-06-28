@@ -35,13 +35,13 @@ create_container_SOURCES = \
 	container.h \
 	create-container.c
 
-create_container_CPPFLAGS = $(AM_CPPFLAGS) -I. -g3
+create_container_CPPFLAGS = $(AM_CPPFLAGS) -I. -g3 -std=gnu99
 create_container_LDFLAGS =
 create_container_LDADD = -lssl -lcrypto
 
 print_container_SOURCES = \
 	print-container.c
 
-print_container_CPPFLAGS = $(AM_CPPFLAGS) -I. -g3
+print_container_CPPFLAGS = $(AM_CPPFLAGS) -I. -g3 -std=gnu99
 print_container_LDFLAGS =
 print_container_LDADD = -lssl -lcrypto
