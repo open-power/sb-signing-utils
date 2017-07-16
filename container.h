@@ -23,6 +23,10 @@
 #include <ccan/endian/endian.h>
 #include <ccan/short_types/short_types.h>
 
+#define PASSED 1
+#define FAILED 0
+#define UNATTEMPTED -1
+
 #define SECURE_BOOT_HEADERS_SIZE	4096
 #define SHA256_DIGEST_LENGTH		32
 
@@ -132,23 +136,5 @@ struct parsed_stb_container {
 	const ROM_sw_header_raw *sh;
 	const ROM_sw_sig_raw *ssig;
 };
-
-/*
- * Helper functions
- */
-
-/* Get the container payload eyecatcher */
-uint32_t stb_payload_magic(const void *buf, size_t size);
-
-/* Check if buf is a secure boot container */
-bool stb_is_container(const void* buf, size_t size);
-
-/* Get the pointer for the sw-payload-hash field of the container header */
-const uint8_t* stb_sw_payload_hash(const void* buf, size_t size);
-uint64_t       stb_sw_payload_size(const void *buf, size_t size);
-
-int parse_stb_container(const void* data, size_t len, struct parsed_stb_container *c);
-
-void stb_print_data(const void *data, size_t len);
 
 #endif /* __STB_CONTAINER_H */
