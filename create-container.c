@@ -16,11 +16,12 @@
 
 #include <config.h>
 
-#include <stdbool.h>
+#include "container.c"
 #include "container.h"
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <getopt.h>
 #include <unistd.h>
 #include <string.h>
@@ -30,8 +31,8 @@
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <fcntl.h>
-#include <sysexits.h>
 #include <regex.h>
+#include <sysexits.h>
 
 #include <openssl/ec.h>
 #include <openssl/ecdsa.h>
@@ -47,41 +48,6 @@ bool verbose, debug;
 int wrap = 100;
 
 void usage(int status);
-
-#define die(status, msg, ...) \
-        { fprintf(stderr, "--> %s.%s() line %d: error: " msg "\n", progname, \
-        		__func__, __LINE__, __VA_ARGS__); exit(status); }
-
-#define debug_msg(msg, ...) \
-        if (debug) fprintf(stderr, "--> %s.%s(): " msg "\n", progname, \
-        		__func__, __VA_ARGS__);
-
-#define verbose_msg(msg, ...) \
-        if (verbose) fprintf(stderr, "--> %s: " msg "\n", progname, \
-        		__VA_ARGS__);
-
-void verbose_print(char *lead, unsigned char *buffer, size_t buflen)
-{
-	if (!verbose)
-		return;
-	unsigned int i, indent = 4;
-	char prelead[100];
-	snprintf(prelead, 100, "--> %s: ", progname);
-
-	char *pad = (((strlen(prelead) + strlen(lead)) % 2) == 0) ? "" : " ";
-	wrap = ((wrap % 2) == 0) ? wrap : wrap - 1;
-	indent = ((indent % 2) == 0) ? indent : indent - 1;
-	int col = fprintf(stderr, "%s%s%s", prelead, lead, pad);
-	for (i = 1; i < buflen + 1; i++) {
-		fprintf(stderr, "%02x", buffer[i - 1]);
-		col = col + 2;
-		if (((col % wrap) == 0) && (i < buflen)) {
-			fprintf(stderr, "\n%*c", indent, ' ');
-			col = indent;
-		}
-	}
-	fprintf(stderr, "\n");
-}
 
 void getPublicKeyRaw(ecc_key_t *pubkeyraw, char *inFile)
 {
@@ -111,15 +77,15 @@ void getPublicKeyRaw(ecc_key_t *pubkeyraw, char *inFile)
 
 	key = EVP_PKEY_get1_EC_KEY(pkey);
 	if (!key)
-		die(EX_SOFTWARE, "%s", "openssl error");
+		die(EX_SOFTWARE, "%s", "Cannot EVP_PKEY_get1_EC_KEY");
 
 	ecgrp = EC_KEY_get0_group(key);
 	if (!ecgrp)
-		die(EX_SOFTWARE, "%s", "openssl error");
+		die(EX_SOFTWARE, "%s", "Cannot EC_KEY_get0_group");
 
 	ecpoint = EC_KEY_get0_public_key(key);
 	if (!ecpoint)
-		die(EX_SOFTWARE, "%s", "openssl error");
+		die(EX_SOFTWARE, "%s", "Cannot EC_KEY_get0_public_key");
 
 	pubkeyBN = EC_POINT_point2bn(ecgrp, ecpoint, POINT_CONVERSION_UNCOMPRESSED,
 			NULL, NULL);
@@ -197,7 +163,7 @@ void writeHdr(void *hdr, const char *outFile, int hdr_type)
 	}
 	r = write(fdout, (const void *) hdr, hdr_sz);
 	if (r < hdr_sz)
-		die(EX_SOFTWARE, "Unable to write container (r = %d)", r);
+		die(EX_SOFTWARE, "Cannot write container (r = %d)", r);
 
 	debug_msg("Wrote %d bytes to %s", r, outFile);
 
@@ -209,34 +175,6 @@ void writeHdr(void *hdr, const char *outFile, int hdr_type)
 
 	close(fdout);
 	return;
-}
-
-int isValidHex(char *input, int len) {
-	int r;
-	size_t maxlen = 512; // sane limit
-	regex_t regexpr;
-	char pattern[48];
-	char multiplier[8];
-	bool result = false;
-
-	if (strnlen(input, maxlen) >= maxlen)
-		die(EX_DATAERR, "input exceeded max length: %lu", maxlen);
-
-	if (len > 0)
-		sprintf(multiplier, "{%d}", len);
-	else
-		sprintf(multiplier, "+");
-
-	sprintf(pattern, "^(0x|0X)?[a-fA-F0-9]%s$", multiplier);
-
-	if ((r = regcomp(&regexpr, pattern, REG_EXTENDED | REG_NOSUB)))
-		die(EX_SOFTWARE, "%s", "failure to compile regex");
-
-	if (!(r = regexec(&regexpr, input, 0, NULL, 0)))
-		result = true;
-
-	regfree(&regexpr);
-	return result;
 }
 
 __attribute__((__noreturn__)) void usage (int status)
@@ -336,8 +274,8 @@ int main(int argc, char* argv[])
 	int indexptr;
 	unsigned int size, offset;
 	void *container = malloc(SECURE_BOOT_HEADERS_SIZE);
-	struct stat s;
 	char *buf = malloc(SECURE_BOOT_HEADERS_SIZE);
+	struct stat payload_st;
 	off_t l;
 	void *infile;
 	int r;
@@ -451,11 +389,11 @@ int main(int argc, char* argv[])
 	if (fdin <= 0)
 		die(EX_NOINPUT, "Cannot open payload file: %s", params.payloadfn);
 
-	r = fstat(fdin, &s);
+	r = fstat(fdin, &payload_st);
 	if (r != 0)
 		die(EX_NOINPUT, "Cannot stat payload file: %s", params.payloadfn);
 
-	infile = mmap(NULL, s.st_size, PROT_READ, MAP_PRIVATE, fdin, 0);
+	infile = mmap(NULL, payload_st.st_size, PROT_READ, MAP_PRIVATE, fdin, 0);
 	if (!infile)
 		die(EX_OSERR, "%s", "Cannot mmap file");
 
@@ -467,7 +405,7 @@ int main(int argc, char* argv[])
 	// Container creation starts here.
 	c->magic_number = cpu_to_be32(ROM_MAGIC_NUMBER);
 	c->version = cpu_to_be16(1);
-	c->container_size = cpu_to_be64(SECURE_BOOT_HEADERS_SIZE + s.st_size);
+	c->container_size = cpu_to_be64(SECURE_BOOT_HEADERS_SIZE + payload_st.st_size);
 	c->target_hrmor = 0;
 	c->stack_pointer = 0;
 	memset(c->hw_pkey_a, 0, sizeof(ecc_key_t));
@@ -490,7 +428,7 @@ int main(int argc, char* argv[])
 	}
 	p = SHA512(c->hw_pkey_a, sizeof(ecc_key_t) * 3, md);
 	if (!p)
-		die(EX_SOFTWARE, "%s", "openssl error");
+		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
 	verbose_print((char *) "HW keys hash = ", md, sizeof(md));
 
 	ph = container + sizeof(ROM_container_raw);
@@ -498,7 +436,7 @@ int main(int argc, char* argv[])
 	ph->ver_alg.hash_alg = 1;
 	ph->ver_alg.sig_alg = 1;
 	if (params.hw_cs_offset) {
-		if (!isValidHex(params.hw_cs_offset, 8))
+		if (!isValidHex(params.hw_cs_offset, 4))
 			die(EX_DATAERR, "%s",
 					"Invalid input for hw-cs-offset, expecting a 4 byte hexadecimal value");
 		uint64_t data;
@@ -510,7 +448,7 @@ int main(int argc, char* argv[])
 	}
 	ph->reserved = 0;
 	if (params.hw_flags) {
-		if (!isValidHex(params.hw_flags, 8))
+		if (!isValidHex(params.hw_flags, 4))
 			die(EX_DATAERR, "%s",
 					"Invalid input for hw-flags, expecting a 4 byte hexadecimal value");
 		uint32_t data;
@@ -567,7 +505,7 @@ int main(int argc, char* argv[])
 	ph->payload_size = cpu_to_be64(ph->sw_key_count * sizeof(ecc_key_t));
 	p = SHA512(pd->sw_pkey_p, sizeof(ecc_key_t) * ph->sw_key_count, md);
 	if (!p)
-		die(EX_SOFTWARE, "%s", "openssl error");
+		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
 	memcpy(ph->payload_hash, md, sizeof(sha2_hash_t));
 	verbose_print((char *) "SW keys hash = ", md, sizeof(md));
 
@@ -580,7 +518,7 @@ int main(int argc, char* argv[])
 	swh->ver_alg.hash_alg = 1;
 	swh->ver_alg.sig_alg = 1;
 	if (params.sw_cs_offset) {
-		if (!isValidHex(params.sw_cs_offset, 8))
+		if (!isValidHex(params.sw_cs_offset, 4))
 			die(EX_DATAERR, "%s",
 					"Invalid input for sw-cs-offset, expecting a 4 byte hexadecimal value");
 		uint64_t data;
@@ -592,7 +530,7 @@ int main(int argc, char* argv[])
 	}
 	swh->reserved = 0;
 	if (params.sw_flags) {
-		if (!isValidHex(params.sw_flags, 8))
+		if (!isValidHex(params.sw_flags, 4))
 			die(EX_DATAERR, "%s",
 					"Invalid input for sw-flags, expecting a 4 byte hexadecimal value");
 		uint32_t data;
@@ -603,10 +541,10 @@ int main(int argc, char* argv[])
 		swh->flags = cpu_to_be32(0x00000000);
 	}
 	swh->reserved_0 = 0;
-	swh->payload_size = cpu_to_be64(s.st_size);
-	p = SHA512(infile, s.st_size, md);
+	swh->payload_size = cpu_to_be64(payload_st.st_size);
+	p = SHA512(infile, payload_st.st_size, md);
 	if (!p)
-		die(EX_SOFTWARE, "%s", "openssl error");
+		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
 	memcpy(swh->payload_hash, md, sizeof(sha2_hash_t));
 	verbose_print((char *) "Payload hash = ", md, sizeof(md));
 
@@ -654,7 +592,7 @@ int main(int argc, char* argv[])
 	verbose_msg("SW signature size     = %4u (%#06x) at offset %4u (%#06x)",
 			size, size, offset, offset);
 
-	verbose_msg("TOTAL HEADER SIZE     = %4u (%#0x)", SECURE_BOOT_HEADERS_SIZE,
+	verbose_msg("TOTAL HEADER SIZE     = %4d (%#0x)", SECURE_BOOT_HEADERS_SIZE,
 			SECURE_BOOT_HEADERS_SIZE);
 	verbose_msg("PAYLOAD SIZE          = %4lu (%#0lx)",
 			be64_to_cpu(swh->payload_size), be64_to_cpu(swh->payload_size));
@@ -664,10 +602,10 @@ int main(int argc, char* argv[])
 	// Write container.
 	r = write(fdout, container, SECURE_BOOT_HEADERS_SIZE);
 	if (r != 4096)
-		die(EX_SOFTWARE, "Unable to write container (r = %d)", r);
-	r = read(fdin, buf, s.st_size % 4096);
-	r = write(fdout, buf, s.st_size % 4096);
-	l = s.st_size - s.st_size % 4096;
+		die(EX_SOFTWARE, "Cannot write container (r = %d)", r);
+	r = read(fdin, buf, payload_st.st_size % 4096);
+	r = write(fdout, buf, payload_st.st_size % 4096);
+	l = payload_st.st_size - payload_st.st_size % 4096;
 	while (l) {
 		r = read(fdin, buf, 4096);
 		r = write(fdout, buf, 4096);
