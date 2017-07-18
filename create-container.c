@@ -108,6 +108,7 @@ void getSigRaw(ecc_signature_t *sigraw, char *inFile)
 	void *infile;
 	unsigned char outbuf[2 * EC_COORDBYTES];
 	int r, rlen, roff, slen, soff;
+	const BIGNUM *sr, *ss;
 
 	fdin = open(inFile, O_RDONLY);
 	if (fdin <= 0)
@@ -126,13 +127,19 @@ void getSigRaw(ecc_signature_t *sigraw, char *inFile)
 
 	memset(&outbuf, 0, sizeof(outbuf));
 
-	rlen = BN_num_bytes(signature->r);
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+	ECDSA_SIG_get0(signature, &sr, &ss);
+#else
+	sr = signature->r;
+	ss = signature->s;
+#endif
+	rlen = BN_num_bytes(sr);
 	roff = 66 - rlen;
-	BN_bn2bin(signature->r, &outbuf[roff]);
+	BN_bn2bin(sr, &outbuf[roff]);
 
-	slen = BN_num_bytes(signature->s);
+	slen = BN_num_bytes(ss);
 	soff = 66 + (66 - slen);
-	BN_bn2bin(signature->s, &outbuf[soff]);
+	BN_bn2bin(ss, &outbuf[soff]);
 
 	memcpy(*sigraw, outbuf, 2 * EC_COORDBYTES);
 

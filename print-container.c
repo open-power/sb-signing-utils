@@ -350,9 +350,14 @@ static bool verify_signature(const char *moniker, const unsigned char *dgst,
 	BN_bin2bn((const unsigned char*) &sig_raw[0], 66, r_bn);
 	BN_bin2bn((const unsigned char*) &sig_raw[66], 66, s_bn);
 
-	ECDSA_SIG ecdsa_sig;
-	ecdsa_sig.r = r_bn;
-	ecdsa_sig.s = s_bn;
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+	ECDSA_SIG* ecdsa_sig = ECDSA_SIG_new();
+	ECDSA_SIG_set0(ecdsa_sig, r_bn, s_bn);
+#else
+	ECDSA_SIG* ecdsa_sig = malloc(sizeof(ECDSA_SIG));
+	ecdsa_sig->r = r_bn;
+	ecdsa_sig->s = s_bn;
+#endif
 
 	// Convert the raw key to a structure that can be handled by openssl.
 	verbose_print((char *) "Raw key = ", (uint8_t *) key_raw,
@@ -387,7 +392,7 @@ static bool verify_signature(const char *moniker, const unsigned char *dgst,
 		die(EX_SOFTWARE, "%s", "Cannot EC_KEY_set_public_key");
 
 	// Verify the signature.
-	r = ECDSA_do_verify(dgst, dgst_len, &ecdsa_sig, ec_key);
+	r = ECDSA_do_verify(dgst, dgst_len, ecdsa_sig, ec_key);
 	if (r == 1) {
 		printf("%s is good: VERIFIED ./\n", moniker);
 		status = true;
@@ -404,6 +409,11 @@ static bool verify_signature(const char *moniker, const unsigned char *dgst,
 
 	EC_KEY_free(ec_key);
 
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+	ECDSA_SIG_free(ecdsa_sig);
+#else
+	free(ecdsa_sig);
+#endif
 	return status;
 }
 
