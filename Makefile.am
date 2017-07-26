@@ -29,7 +29,7 @@ bin_PROGRAMS = create-container print-container
 
 dist_bin_SCRIPTS = crtSignedContainer.sh sign-with-local-keys.sh
 
-EXTRA_DIST = ccan
+EXTRA_DIST = ccan container.c
 
 create_container_SOURCES = \
 	container.h \
