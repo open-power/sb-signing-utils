@@ -162,6 +162,7 @@ static void display_container(struct parsed_stb_container c)
 			sizeof(c.c->hw_pkey_b));
 	print_bytes((char *) "hw_pkey_c: ", (uint8_t *) c.c->hw_pkey_c,
 			sizeof(c.c->hw_pkey_c));
+
 	p = SHA512(c.c->hw_pkey_a, sizeof(ecc_key_t) * 3, md);
 	if (!p)
 		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
@@ -246,7 +247,7 @@ static bool validate_container(struct parsed_stb_container c, int fdin)
 	p = SHA512((uint8_t *) c.ph, sizeof(ROM_prefix_header_raw), md);
 	if (!p)
 		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
-	print_bytes((char *) "PR header hash = ", (uint8_t *) md,
+	if (verbose) print_bytes((char *) "PR header hash = ", (uint8_t *) md,
 			SHA512_DIGEST_LENGTH);
 
 	// Verify HW key sigs.
@@ -256,13 +257,13 @@ static bool validate_container(struct parsed_stb_container c, int fdin)
 			c.pd->hw_sig_b, c.c->hw_pkey_b) && status;
 	status = verify_signature("HW sig C", md, SHA512_DIGEST_LENGTH,
 			c.pd->hw_sig_c, c.c->hw_pkey_c) && status;
-	printf("\n");
+	if (verbose) printf("\n");
 
 	// Get SW header hash.
 	p = SHA512((uint8_t *) c.sh, sizeof(ROM_sw_header_raw), md);
 	if (!p)
 		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
-	print_bytes((char *) "SW header hash = ", (uint8_t *) md,
+	if (verbose) print_bytes((char *) "SW header hash = ", (uint8_t *) md,
 			SHA512_DIGEST_LENGTH);
 
 	// Verify SW key sigs.
@@ -275,36 +276,41 @@ static bool validate_container(struct parsed_stb_container c, int fdin)
 	if (c.ph->sw_key_count >= 3)
 		status = verify_signature("SW sig R", md, SHA512_DIGEST_LENGTH,
 				c.ssig->sw_sig_r, c.pd->sw_pkey_r) && status;
-	printf("\n");
+	if (verbose) printf("\n");
 
 	// Verify Payload hash.
 	status = getPayloadHash(fdin, md) && status;
-	print_bytes((char *) "Payload hash = ", (uint8_t *) md,
+	if (verbose) print_bytes((char *) "Payload hash = ", (uint8_t *) md,
 			SHA512_DIGEST_LENGTH);
 
 	if (memcmp((uint8_t *) c.sh->payload_hash, md, SHA512_DIGEST_LENGTH)) {
-		printf("Payload hash does not agree with value in SW header: MISMATCH\n");
+		if (verbose)
+			printf("Payload hash does not agree with value in SW header: MISMATCH\n");
 		status = false;
 	} else {
-		printf("Payload hash agrees with value in SW header: VERIFIED ./\n");
+		if (verbose)
+			printf("Payload hash agrees with value in SW header: VERIFIED ./\n");
 		status = status && true;
 	}
-	printf("\n");
+	if (verbose) printf("\n");
 
 	// Verify SW keys hash.
 	p = SHA512(c.pd->sw_pkey_p, sizeof(ecc_key_t) * c.ph->sw_key_count, md);
 	if (!p)
 		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
-	print_bytes((char *) "SW keys hash = ", (uint8_t *) md,
+	if (verbose) print_bytes((char *) "SW keys hash = ", (uint8_t *) md,
 			SHA512_DIGEST_LENGTH);
 
 	if (memcmp((uint8_t *) c.ph->payload_hash, md, SHA512_DIGEST_LENGTH)) {
-		printf("SW keys hash does not agree with value in Prefix header: MISMATCH\n");
+		if (verbose)
+			printf("SW keys hash does not agree with value in Prefix header: MISMATCH\n");
 		status = false;
 	} else {
-		printf("SW keys hash agrees with value in Prefix header: VERIFIED ./\n");
+		if (verbose)
+			printf("SW keys hash agrees with value in Prefix header: VERIFIED ./\n");
 		status = status && true;
 	}
+	if (verbose) printf("\n");
 	return status;
 }
 
@@ -314,23 +320,25 @@ static bool verify_container(struct parsed_stb_container c, char * verify)
 
 	void *md = alloca(SHA512_DIGEST_LENGTH);
 	void *p;
-	printf("\n");
 
 	p = SHA512(c.c->hw_pkey_a, sizeof(ecc_key_t) * 3, md);
 	if (!p)
 		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
-	print_bytes((char *) "HW keys hash = ", (uint8_t *) md,
+	if (verbose) print_bytes((char *) "HW keys hash = ", (uint8_t *) md,
 			SHA512_DIGEST_LENGTH);
 
 	void *md_verify = alloca(SHA512_DIGEST_LENGTH);
 	getVerificationHash(verify, md_verify, SHA512_DIGEST_LENGTH);
 
 	if (memcmp((uint8_t *) md_verify, md, SHA512_DIGEST_LENGTH )) {
-		printf("HW keys hash does not agree with provided value: MISMATCH\n");
+		if (verbose)
+			printf("HW keys hash does not agree with provided value: MISMATCH\n");
 	} else {
-		printf("HW keys hash agrees with provided value: VERIFIED ./\n");
+		if (verbose)
+			printf("HW keys hash agrees with provided value: VERIFIED ./\n");
 		status = true;
 	}
+	if (verbose) printf("\n");
 	return status;
 }
 
@@ -341,7 +349,7 @@ static bool verify_signature(const char *moniker, const unsigned char *dgst,
 	bool status = false;
 
 	// Convert the raw sig to a structure that can be handled by openssl.
-	verbose_print((char *) "Raw sig = ", (uint8_t *) sig_raw,
+	debug_print((char *) "Raw sig = ", (uint8_t *) sig_raw,
 			sizeof(ecc_signature_t));
 
 	BIGNUM *r_bn = BN_new();
@@ -360,7 +368,7 @@ static bool verify_signature(const char *moniker, const unsigned char *dgst,
 #endif
 
 	// Convert the raw key to a structure that can be handled by openssl.
-	verbose_print((char *) "Raw key = ", (uint8_t *) key_raw,
+	debug_print((char *) "Raw key = ", (uint8_t *) key_raw,
 			sizeof(ecc_key_t));
 
 	EC_KEY *ec_key = EC_KEY_new();
@@ -394,10 +402,10 @@ static bool verify_signature(const char *moniker, const unsigned char *dgst,
 	// Verify the signature.
 	r = ECDSA_do_verify(dgst, dgst_len, ecdsa_sig, ec_key);
 	if (r == 1) {
-		printf("%s is good: VERIFIED ./\n", moniker);
+		if (verbose) printf("%s is good: VERIFIED ./\n", moniker);
 		status = true;
 	} else if (r == 0) {
-		printf("%s FAILED to verify.\n", moniker);
+		if (verbose) printf("%s FAILED to verify.\n", moniker);
 		status = false;
 	} else {
 		die(EX_SOFTWARE, "%s", "Cannot ECDSA_do_verify");
@@ -578,6 +586,7 @@ int main(int argc, char* argv[])
 			break;
 		case 'w':
 			wrap = atoi(optarg);
+			wrap = (wrap < 2) ? INT_MAX : wrap;
 			break;
 		case 's':
 			print_stats = true;
@@ -634,7 +643,7 @@ int main(int argc, char* argv[])
 
 	if ((validate_status != UNATTEMPTED) || (verify_status != UNATTEMPTED)) {
 
-		printf("\nContainer validity check %s. Container verification check %s.\n\n",
+		printf("Container validity check %s. Container verification check %s.\n\n",
 				(validate_status == UNATTEMPTED) ?
 						"not attempted" :
 						((validate_status == PASSED) ? "PASSED" : "FAILED"),

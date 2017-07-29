@@ -28,7 +28,7 @@
 
 extern char *progname;
 
-extern bool verbose;
+extern bool verbose, debug;
 extern int wrap;
 
 #define die(status, msg, ...) \
@@ -43,10 +43,8 @@ extern int wrap;
         if (verbose) fprintf(stdout, "--> %s: " msg "\n", progname, \
         		__VA_ARGS__);
 
-void verbose_print(char *lead, unsigned char *buffer, size_t buflen)
+void hex_print(char *lead, unsigned char *buffer, size_t buflen)
 {
-	if (!verbose)
-		return;
 	unsigned int i, indent = 4;
 	char prelead[100];
 	snprintf(prelead, 100, "--> %s: ", progname);
@@ -64,6 +62,18 @@ void verbose_print(char *lead, unsigned char *buffer, size_t buflen)
 		}
 	}
 	fprintf(stdout, "\n");
+}
+
+void verbose_print(char *lead, unsigned char *buffer, size_t buflen)
+{
+	if (verbose)
+		hex_print(lead, buffer, buflen);
+}
+
+void debug_print(char *lead, unsigned char *buffer, size_t buflen)
+{
+	if (debug)
+		hex_print(lead, buffer, buflen);
 }
 
 int isValidHex(char *input, int len) {

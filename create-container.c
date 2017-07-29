@@ -442,6 +442,8 @@ int main(int argc, char* argv[])
 	ph->ver_alg.version = cpu_to_be16(1);
 	ph->ver_alg.hash_alg = 1;
 	ph->ver_alg.sig_alg = 1;
+
+	// Set code-start-offset.
 	if (params.hw_cs_offset) {
 		if (!isValidHex(params.hw_cs_offset, 4))
 			die(EX_DATAERR, "%s",
@@ -454,6 +456,8 @@ int main(int argc, char* argv[])
 		ph->code_start_offset = 0;
 	}
 	ph->reserved = 0;
+
+	// Set flags.
 	if (params.hw_flags) {
 		if (!isValidHex(params.hw_flags, 4))
 			die(EX_DATAERR, "%s",
@@ -472,6 +476,8 @@ int main(int argc, char* argv[])
 	memset(pd->hw_sig_a, 0, sizeof(ecc_signature_t));
 	memset(pd->hw_sig_b, 0, sizeof(ecc_signature_t));
 	memset(pd->hw_sig_c, 0, sizeof(ecc_signature_t));
+
+	// Write the HW signatures.
 	if (params.hw_sigfn_a) {
 		getSigRaw(&sigraw, params.hw_sigfn_a);
 		verbose_print((char *) "signature A = ", sigraw, sizeof(sigraw));
@@ -490,6 +496,8 @@ int main(int argc, char* argv[])
 	memset(pd->sw_pkey_p, 0, sizeof(ecc_key_t));
 	memset(pd->sw_pkey_q, 0, sizeof(ecc_key_t));
 	memset(pd->sw_pkey_r, 0, sizeof(ecc_key_t));
+
+	// Write the FW keys.
 	if (params.sw_keyfn_p) {
 		getPublicKeyRaw(&pubkeyraw, params.sw_keyfn_p);
 		verbose_print((char *) "pubkey P = ", pubkeyraw, sizeof(pubkeyraw) - 1);
@@ -510,12 +518,15 @@ int main(int argc, char* argv[])
 	}
 	debug_msg("sw_key_count = %u", ph->sw_key_count);
 	ph->payload_size = cpu_to_be64(ph->sw_key_count * sizeof(ecc_key_t));
+
+	// Calculate the SW keys hash.
 	p = SHA512(pd->sw_pkey_p, sizeof(ecc_key_t) * ph->sw_key_count, md);
 	if (!p)
 		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
 	memcpy(ph->payload_hash, md, sizeof(sha2_hash_t));
 	verbose_print((char *) "SW keys hash = ", md, sizeof(md));
 
+	// Dump the Prefix header.
 	if (params.prhdrfn)
 		writeHdr((void *) ph, params.prhdrfn, PREFIX_HDR);
 
@@ -524,6 +535,8 @@ int main(int argc, char* argv[])
 	swh->ver_alg.version = cpu_to_be16(1);
 	swh->ver_alg.hash_alg = 1;
 	swh->ver_alg.sig_alg = 1;
+
+	// Set code-start-offset.
 	if (params.sw_cs_offset) {
 		if (!isValidHex(params.sw_cs_offset, 4))
 			die(EX_DATAERR, "%s",
@@ -536,6 +549,8 @@ int main(int argc, char* argv[])
 		swh->code_start_offset = 0;
 	}
 	swh->reserved = 0;
+
+	// Set flags.
 	if (params.sw_flags) {
 		if (!isValidHex(params.sw_flags, 4))
 			die(EX_DATAERR, "%s",
@@ -549,12 +564,15 @@ int main(int argc, char* argv[])
 	}
 	swh->reserved_0 = 0;
 	swh->payload_size = cpu_to_be64(payload_st.st_size);
+
+	// Calculate the payload hash.
 	p = SHA512(infile, payload_st.st_size, md);
 	if (!p)
 		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
 	memcpy(swh->payload_hash, md, sizeof(sha2_hash_t));
 	verbose_print((char *) "Payload hash = ", md, sizeof(md));
 
+	// Dump the Software header.
 	if (params.swhdrfn)
 		writeHdr((void *) swh, params.swhdrfn, SOFTWARE_HDR);
 
@@ -562,6 +580,8 @@ int main(int argc, char* argv[])
 	memset(ssig->sw_sig_p, 0, sizeof(ecc_signature_t));
 	memset(ssig->sw_sig_q, 0, sizeof(ecc_signature_t));
 	memset(ssig->sw_sig_r, 0, sizeof(ecc_signature_t));
+
+	// Write the HW signatures.
 	if (params.sw_sigfn_p) {
 		getSigRaw(&sigraw, params.sw_sigfn_p);
 		verbose_print((char *) "signature P = ", sigraw, sizeof(sigraw));
@@ -578,6 +598,7 @@ int main(int argc, char* argv[])
 		memcpy(ssig->sw_sig_r, sigraw, sizeof(ecc_key_t));
 	}
 
+	// Print container stats.
 	size = (uint8_t*) ph - (uint8_t *) c;
 	offset = (uint8_t*) c - (uint8_t *) c;
 	verbose_msg("HW header size        = %4u (%#06x) at offset %4u (%#06x)",
