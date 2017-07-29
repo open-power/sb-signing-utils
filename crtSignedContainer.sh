@@ -4,6 +4,7 @@
 VERBOSE=""
 DEBUG=""
 WRAP=""
+RC=0
 
 P=${0##*/}
 
@@ -26,6 +27,9 @@ usage () {
     echo "	-o, --code-start-offset code start offset for software header in hex"
     echo "	-f, --flags             prefix header flags in hex"
     echo "	-e, --eyeCatch          name or identifier of the module being built"
+    echo "	    --validate          validate the container after build"
+    echo "	    --verify            verify the container after build, against the provided"
+    echo "	                        value, or filename containing value, of the HW Keys hash"
     echo ""
     exit 1
 }
@@ -97,12 +101,14 @@ for arg in "$@"; do
     "--protectedPayload")  set -- "$@" "-l" ;;
     "--out")        set -- "$@" "-i" ;;
     "--eyeCatch")   set -- "$@" "-e" ;;
+    "--validate")   set -- "$@" "-8" ;;
+    "--verify")     set -- "$@" "-9" ;;
     *)              set -- "$@" "$arg"
   esac
 done
 
 # Process command-line arguments
-while getopts ?dvw:a:b:c:p:q:r:f:o:l:i:e: opt
+while getopts ?dvw:a:b:c:p:q:r:f:o:l:i:e:89: opt
 do
   case "$opt" in
     v) VERBOSE="TRUE";;
@@ -119,6 +125,8 @@ do
     l) PAYLOAD="`echo $OPTARG`";;
     i) OUTPUT="`echo $OPTARG`";;
     e) eyeCatch="`echo $OPTARG`";;
+    8) VALIDATE="TRUE";;
+    9) VERIFY="`echo $OPTARG`";;
     h|\?) usage;;
   esac
 done
@@ -176,6 +184,8 @@ HW_KEY_ARGS=""
 SW_KEY_ARGS=""
 HW_SIG_ARGS=""
 SW_SIG_ARGS=""
+VERIFY_ARGS=""
+DEBUG_ARGS=""
 ADDL_ARGS=""
 
 [ -n "$HW_KEY_A" ] && HW_KEY_ARGS="$HW_KEY_ARGS -a $HW_KEY_A"
@@ -185,17 +195,21 @@ ADDL_ARGS=""
 [ -n "$SW_KEY_Q" ] && SW_KEY_ARGS="$SW_KEY_ARGS -q $SW_KEY_Q"
 [ -n "$SW_KEY_R" ] && SW_KEY_ARGS="$SW_KEY_ARGS -r $SW_KEY_R"
 
+[ -n "$VERBOSE" ] && DEBUG_ARGS="$DEBUG_ARGS -v"
+[ -n "$DEBUG" ] && DEBUG_ARGS="$DEBUG_ARGS -d"
+[ -n "$WRAP" ] && DEBUG_ARGS="$DEBUG_ARGS -w $WRAP"
 [ -n "$HW_FLAGS" ] && ADDL_ARGS="$ADDL_ARGS --hw-flags $HW_FLAGS"
 [ -n "$CS_OFFSET" ] && ADDL_ARGS="$ADDL_ARGS --sw-cs-offset $CS_OFFSET"
-[ -n "$VERBOSE" ] && ADDL_ARGS="$ADDL_ARGS -v"
-[ -n "$DEBUG" ] && ADDL_ARGS="$ADDL_ARGS -d"
-[ -n "$WRAP" ] && ADDL_ARGS="$ADDL_ARGS -w $WRAP"
+
+[ -n "$VALIDATE" ] && VERIFY_ARGS="$VERIFY_ARGS --validate"
+[ -n "$VERIFY" ] && VERIFY_ARGS="$VERIFY_ARGS --verify $VERIFY"
 
 # Build enough of the container to create the Prefix and Software headers
 echo "--> $P: Generating signing requests..."
 create-container $HW_KEY_ARGS $SW_KEY_ARGS \
                  --payload $PAYLOAD --imagefile $OUTPUT \
                  --dumpPrefixHdr $T/prefix_hdr --dumpSwHdr $T/software_hdr \
+                 $DEBUG_ARGS \
                  $ADDL_ARGS
 
 # Sign the Prefix header (all 3 HW keys are required)
@@ -264,12 +278,20 @@ if [ -n "$HW_SIG_ARGS" -o -n "$SW_SIG_ARGS" ]; then
     create-container $HW_KEY_ARGS $SW_KEY_ARGS \
                      $HW_SIG_ARGS $SW_SIG_ARGS \
                      --payload $PAYLOAD --imagefile $OUTPUT \
+                     $DEBUG_ARGS \
                      $ADDL_ARGS
 else
     echo "--> $P: No signatures available."
 fi
 
-echo "--> $P: Done."
+echo "--> $P: Container build completed."
+
+# Validate, verify the container.
+if [ -n "$VALIDATE" -o -n "$VERIFY" ]; then
+    echo
+    print-container --imagefile $OUTPUT --no-print $VERIFY_ARGS $DEBUG_ARGS
+    RC=$?
+fi
 
 # Cleanup
 if [ $KEEP_CACHE == false ]; then
@@ -283,3 +305,5 @@ if [ $KEEP_CACHE == false ]; then
         echo "--> $P: Not removing cache dir: $T"
     fi
 fi
+
+exit $RC
