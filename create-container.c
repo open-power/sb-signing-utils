@@ -52,10 +52,6 @@ void usage(int status);
 void getPublicKeyRaw(ecc_key_t *pubkeyraw, char *inFile)
 {
 	EVP_PKEY* pkey;
-	EC_KEY *key;
-	const EC_GROUP *ecgrp;
-	const EC_POINT *ecpoint;
-	BIGNUM *pubkeyBN;
 	unsigned char pubkeyData[1 + 2 * EC_COORDBYTES];
 
 	FILE *fp = fopen(inFile, "r");
@@ -63,40 +59,78 @@ void getPublicKeyRaw(ecc_key_t *pubkeyraw, char *inFile)
 		die(EX_NOINPUT, "Cannot open key file: %s: %s", inFile, strerror(errno));
 
 	if ((pkey = PEM_read_PrivateKey(fp, NULL, NULL, NULL))) {
-		debug_msg("File \"%s\" is private key", inFile);
+		debug_msg("File \"%s\" is a PEM private key", inFile);
+		fclose(fp);
 	} else {
 		fclose(fp);
 		fp = fopen(inFile, "r");
 		if ((pkey = PEM_read_PUBKEY(fp, NULL, NULL, NULL))) {
-			debug_msg("File \"%s\" is public key", inFile);
-		} else {
-			die(EX_DATAERR, "File \"%s\" is neither a private nor public key",
-					inFile);
+			debug_msg("File \"%s\" is a PEM public key", inFile);
 		}
+		fclose(fp);
 	}
 
-	key = EVP_PKEY_get1_EC_KEY(pkey);
-	if (!key)
-		die(EX_SOFTWARE, "%s", "Cannot EVP_PKEY_get1_EC_KEY");
+	if (pkey) {
+		EC_KEY *key;
+		const EC_GROUP *ecgrp;
+		const EC_POINT *ecpoint;
+		BIGNUM *pubkeyBN;
 
-	ecgrp = EC_KEY_get0_group(key);
-	if (!ecgrp)
-		die(EX_SOFTWARE, "%s", "Cannot EC_KEY_get0_group");
+		key = EVP_PKEY_get1_EC_KEY(pkey);
+		if (!key)
+			die(EX_SOFTWARE, "%s", "Cannot EVP_PKEY_get1_EC_KEY");
 
-	ecpoint = EC_KEY_get0_public_key(key);
-	if (!ecpoint)
-		die(EX_SOFTWARE, "%s", "Cannot EC_KEY_get0_public_key");
+		ecgrp = EC_KEY_get0_group(key);
+		if (!ecgrp)
+			die(EX_SOFTWARE, "%s", "Cannot EC_KEY_get0_group");
 
-	pubkeyBN = EC_POINT_point2bn(ecgrp, ecpoint, POINT_CONVERSION_UNCOMPRESSED,
-			NULL, NULL);
-	BN_bn2bin(pubkeyBN, pubkeyData);
+		ecpoint = EC_KEY_get0_public_key(key);
+		if (!ecpoint)
+			die(EX_SOFTWARE, "%s", "Cannot EC_KEY_get0_public_key");
 
+		pubkeyBN = EC_POINT_point2bn(ecgrp, ecpoint, POINT_CONVERSION_UNCOMPRESSED,
+				NULL, NULL);
+		BN_bn2bin(pubkeyBN, pubkeyData);
+
+		BN_free(pubkeyBN);
+		EC_KEY_free(key);
+		EVP_PKEY_free(pkey);
+	}
+	else {
+		/* The file is not a public or private key in PEM format. So we check if
+		 * it is a p521 pubkey in RAW format, in which case it will be 133 bytes
+		 * with a leading byte of 0x04, indicating an uncompressed key. */
+		int fdin, r;
+		struct stat s;
+		void *infile = NULL;
+
+		fdin = open(inFile, O_RDONLY);
+		if (fdin <= 0)
+			die(EX_NOINPUT, "Cannot open key file: %s: %s", inFile, strerror(errno));
+
+		r = fstat(fdin, &s);
+		if (r != 0)
+			die(EX_NOINPUT, "Cannot stat key file: %s", inFile);
+
+		if (s.st_size == 1 + 2 * EC_COORDBYTES)
+			infile = mmap(NULL, s.st_size, PROT_READ, MAP_PRIVATE, fdin, 0);
+
+		close(fdin);
+
+		if (!infile || (*(unsigned char*) infile != 0x04)) {
+			die(EX_DATAERR,
+					"File \"%s\" is not in expected format (private or public key in PEM, or public key RAW)",
+					inFile);
+		}
+		else
+			debug_msg("File \"%s\" is a RAW public key", inFile);
+
+		memcpy(pubkeyData, infile, sizeof(ecc_key_t) + 1);
+	}
+
+	// Remove the leading byte
 	memcpy(*pubkeyraw, &pubkeyData[1], sizeof(ecc_key_t));
 
-	BN_free(pubkeyBN);
-	EC_KEY_free(key);
-	EVP_PKEY_free(pkey);
-	fclose(fp);
 	return;
 }
 
@@ -198,12 +232,12 @@ __attribute__((__noreturn__)) void usage (int status)
 			" -v, --verbose           show verbose output\n"
 			" -d, --debug             show additional debug output\n"
 			" -w, --wrap              column to wrap long output in verbose mode\n"
-			" -a, --hw_key_a          file containing HW key A private key in PEM format\n"
-			" -b, --hw_key_b          file containing HW key B private key in PEM format\n"
-			" -c, --hw_key_c          file containing HW key C private key in PEM format\n"
-			" -p, --sw_key_p          file containing SW key P private key in PEM format\n"
-			" -q, --sw_key_q          file containing SW key Q private key in PEM format\n"
-			" -r, --sw_key_r          file containing SW key R private key in PEM format\n"
+			" -a, --hw_key_a          file containing HW key A key in PEM or RAW format\n"
+			" -b, --hw_key_b          file containing HW key B key in PEM or RAW format\n"
+			" -c, --hw_key_c          file containing HW key C key in PEM or RAW format\n"
+			" -p, --sw_key_p          file containing SW key P key in PEM or RAW format\n"
+			" -q, --sw_key_q          file containing SW key Q key in PEM or RAW format\n"
+			" -r, --sw_key_r          file containing SW key R key in PEM or RAW format\n"
 			" -A, --hw_sig_a          file containing HW key A signature in DER format\n"
 			" -B, --hw_sig_b          file containing HW key B signature in DER format\n"
 			" -C, --hw_sig_c          file containing HW key C signature in DER format\n"
@@ -218,6 +252,9 @@ __attribute__((__noreturn__)) void usage (int status)
 			" -F, --sw-flags          software header flags in hex\n"
 			"     --dumpPrefixHdr     file to dump Prefix header blob (to be signed)\n"
 			"     --dumpSwHdr         file to dump Software header blob (to be signed)\n"
+			"Note:\n"
+			"- Keys A,B,C,P,Q,R must be valid p521 ECC keys. Keys may be provided as public\n"
+			"  or private key in PEM format, or public key in uncompressed raw format.\n"
 			"\n");
 	};
 	exit(status);
