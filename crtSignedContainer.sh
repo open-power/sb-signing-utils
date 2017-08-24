@@ -204,6 +204,7 @@ ADDL_ARGS=""
 
 [ -n "$VALIDATE" ] && VERIFY_ARGS="$VERIFY_ARGS --validate"
 [ -n "$VERIFY" ] && VERIFY_ARGS="$VERIFY_ARGS --verify $VERIFY"
+[ -n "$LABEL" ] && ADDL_ARGS="$ADDL_ARGS --label $LABEL"
 
 # Build enough of the container to create the Prefix and Software headers
 echo "--> $P: Generating signing requests..."
