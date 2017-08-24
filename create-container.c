@@ -595,11 +595,11 @@ int main(int argc, char* argv[])
 
 	// Add component ID (label).
 	if (params.label) {
-		if (!isValidAscii(params.label, 8))
+		if (!isValidAscii(params.label, 0))
 			die(EX_DATAERR, "%s",
 					"Invalid input for label, expecting a 8 char ASCII value");
 		strncpy((char *) &swh->reserved, params.label, 8);
-		verbose_msg("component ID (was reserved) = %s",
+		verbose_msg("component ID (was reserved) = %.8s",
 				(char * ) &swh->reserved);
 	}
 
