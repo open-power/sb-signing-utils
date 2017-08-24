@@ -26,7 +26,7 @@ usage () {
     echo "	-i, --out               file to write containerized payload"
     echo "	-o, --code-start-offset code start offset for software header in hex"
     echo "	-f, --flags             prefix header flags in hex"
-    echo "	-e, --eyeCatch          name or identifier of the module being built"
+    echo "	-L, --label             name or identifier of the module being built (8 char max)"
     echo "	    --validate          validate the container after build"
     echo "	    --verify            verify the container after build, against the provided"
     echo "	                        value, or filename containing value, of the HW Keys hash"
@@ -100,7 +100,8 @@ for arg in "$@"; do
     "--code-start-offset") set -- "$@" "-o" ;;
     "--protectedPayload")  set -- "$@" "-l" ;;
     "--out")        set -- "$@" "-i" ;;
-    "--eyeCatch")   set -- "$@" "-e" ;;
+    "--label   ")   set -- "$@" "-L" ;;
+    "--sign-project-FW-token")   set -- "$@" "-L" ;;
     "--validate")   set -- "$@" "-8" ;;
     "--verify")     set -- "$@" "-9" ;;
     *)              set -- "$@" "$arg"
@@ -108,7 +109,7 @@ for arg in "$@"; do
 done
 
 # Process command-line arguments
-while getopts ?dvw:a:b:c:p:q:r:f:o:l:i:e:89: opt
+while getopts ?dvw:a:b:c:p:q:r:f:o:l:i:L:89: opt
 do
   case "$opt" in
     v) VERBOSE="TRUE";;
@@ -124,7 +125,7 @@ do
     o) CS_OFFSET="`echo $OPTARG | tr A-Z a-z`";;
     l) PAYLOAD="`echo $OPTARG`";;
     i) OUTPUT="`echo $OPTARG`";;
-    e) eyeCatch="`echo $OPTARG`";;
+    L) LABEL="`echo $OPTARG`";;
     8) VALIDATE="TRUE";;
     9) VERIFY="`echo $OPTARG`";;
     h|\?) usage;;
@@ -151,26 +152,26 @@ for KEY in SW_KEY_P SW_KEY_Q SW_KEY_R; do
 done
 
 # Set cache directory
-: ${TMPDIR:=/tmp}
+set ${TMPDIR:=/tmp}
 SCRATCH_DIR=$TMPDIR
 moniker="SIGNTOOL"
 KEEP_CACHE=true
 
-test -z "$eyeCatch" && KEEP_CACHE=false && eyeCatch="IMAGE"
+test -z "$LABEL" && KEEP_CACHE=false && LABEL="IMAGE"
 
-T=$(ls -1dt $SCRATCH_DIR/${moniker}_* 2>/dev/null | head -1)
+TOPDIR=$(ls -1dt $SCRATCH_DIR/${moniker}_* 2>/dev/null | head -1)
 
-if [ -n "$T" ]; then
-    crtTime=$(date -d @$(basename $T | cut -d_ -f2))
-    echo "--> $P: Using existing cache dir: $T, created: $crtTime"
+if [ -n "$TOPDIR" ]; then
+    crtTime=$(date -d @$(basename $TOPDIR | cut -d_ -f2))
+    echo "--> $P: Using existing cache dir: $TOPDIR, created: $crtTime"
 else
     buildID="${moniker}_$(date +%s)"
-    T=$SCRATCH_DIR/$buildID
-    echo "--> $P: Creating new cache dir: $T"
-    mkdir $T
+    TOPDIR=$SCRATCH_DIR/$buildID
+    echo "--> $P: Creating new cache dir: $TOPDIR"
+    mkdir $TOPDIR
 fi
 
-T=$T/$eyeCatch
+T=$TOPDIR/$LABEL
 
 if [ -d "$T" ]; then
     echo "--> $P: Using existing cache subdir: $T"

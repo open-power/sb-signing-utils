@@ -244,12 +244,13 @@ __attribute__((__noreturn__)) void usage (int status)
 			" -P, --sw_sig_p          file containing SW key P signature in DER format\n"
 			" -Q, --sw_sig_q          file containing SW key Q signature in DER format\n"
 			" -R, --sw_sig_r          file containing SW key R signature in DER format\n"
-			" -L, --payload           file containing the payload to be signed\n"
+			" -l, --payload           file containing the payload to be signed\n"
 			" -I, --imagefile         file to write containerized image (output)\n"
 			" -o, --hw-cs-offset      code start offset for prefix header in hex\n"
 			" -O, --sw-cs-offset      code start offset for software header in hex\n"
 			" -f, --hw-flags          prefix header flags in hex\n"
 			" -F, --sw-flags          software header flags in hex\n"
+			" -L, --label             character field up to 8 bytes, written to SW header\n"
 			"     --dumpPrefixHdr     file to dump Prefix header blob (to be signed)\n"
 			"     --dumpSwHdr         file to dump Software header blob (to be signed)\n"
 			"Note:\n"
@@ -277,12 +278,13 @@ static struct option const opts[] = {
 	{ "sw_sig_p",         required_argument, 0,  'P' },
 	{ "sw_sig_q",         required_argument, 0,  'Q' },
 	{ "sw_sig_r",         required_argument, 0,  'R' },
-	{ "payload",          required_argument, 0,  'L' },
+	{ "payload",          required_argument, 0,  'l' },
 	{ "imagefile",        required_argument, 0,  'I' },
 	{ "hw-cs-offset",     required_argument, 0,  'o' },
 	{ "sw-cs-offset",     required_argument, 0,  'O' },
 	{ "hw-flags",         required_argument, 0,  'f' },
 	{ "sw-flags",         required_argument, 0,  'F' },
+	{ "label",            required_argument, 0,  'L' },
 	{ "dumpPrefixHdr",    required_argument, 0,  128 },
 	{ "dumpSwHdr",        required_argument, 0,  129 },
 	{}
@@ -307,6 +309,7 @@ static struct {
 	char *sw_cs_offset;
 	char *hw_flags;
 	char *sw_flags;
+	char *label;
 	char *prhdrfn;
 	char *swhdrfn;
 } params;
@@ -344,7 +347,7 @@ int main(int argc, char* argv[])
 
 	while (1) {
 		int opt;
-		opt = getopt_long(argc, argv, "hvdw:a:b:c:p:q:r:A:B:C:P:Q:R:L:I:o:O:f:F:",
+		opt = getopt_long(argc, argv, "hvdw:a:b:c:p:q:r:A:B:C:P:Q:R:L:I:o:O:f:F:l:",
 				opts, &indexptr);
 		if (opt == -1)
 			break;
@@ -400,7 +403,7 @@ int main(int argc, char* argv[])
 		case 'R':
 			params.sw_sigfn_r = optarg;
 			break;
-		case 'L':
+		case 'l':
 			params.payloadfn = optarg;
 			break;
 		case 'I':
@@ -417,6 +420,9 @@ int main(int argc, char* argv[])
 			break;
 		case 'F':
 			params.sw_flags = optarg;
+			break;
+		case 'L':
+			params.label = optarg;
 			break;
 		case 128:
 			params.prhdrfn = optarg;
@@ -586,6 +592,16 @@ int main(int argc, char* argv[])
 		swh->code_start_offset = 0;
 	}
 	swh->reserved = 0;
+
+	// Add component ID (label).
+	if (params.label) {
+		if (!isValidAscii(params.label, 8))
+			die(EX_DATAERR, "%s",
+					"Invalid input for label, expecting a 8 char ASCII value");
+		strncpy((char *) &swh->reserved, params.label, 8);
+		verbose_msg("component ID (was reserved) = %s",
+				(char * ) &swh->reserved);
+	}
 
 	// Set flags.
 	if (params.sw_flags) {
