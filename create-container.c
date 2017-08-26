@@ -136,13 +136,10 @@ void getPublicKeyRaw(ecc_key_t *pubkeyraw, char *inFile)
 
 void getSigRaw(ecc_signature_t *sigraw, char *inFile)
 {
-	ECDSA_SIG* signature;
 	int fdin;
 	struct stat s;
 	void *infile;
-	unsigned char outbuf[2 * EC_COORDBYTES];
-	int r, rlen, roff, slen, soff;
-	const BIGNUM *sr, *ss;
+	int r;
 
 	fdin = open(inFile, O_RDONLY);
 	if (fdin <= 0)
@@ -156,28 +153,45 @@ void getSigRaw(ecc_signature_t *sigraw, char *inFile)
 	if (!infile)
 		die(EX_OSERR, "%s", "Cannot mmap file");
 
-	signature = d2i_ECDSA_SIG(NULL, (const unsigned char **) &infile,
-			7 + 2 * EC_COORDBYTES);
+	close(fdin);
 
-	memset(&outbuf, 0, sizeof(outbuf));
+	if (s.st_size == 2 * EC_COORDBYTES) {
+		/* The file is a p521 signature in RAW format. */
+		debug_msg("File \"%s\" is a RAW signature", inFile);
+		memcpy(sigraw, infile, sizeof(ecc_signature_t));
+	}
+	else {
+		/* Assume the file is a p521 signature in DER format.
+		 * Convert the DER to a signature object, then extract the RAW. */
+		debug_msg("File \"%s\" is a DER signature", inFile);
+
+		int rlen, roff, slen, soff;
+		const BIGNUM *sr, *ss;
+		unsigned char outbuf[2 * EC_COORDBYTES];
+
+		ECDSA_SIG* signature = d2i_ECDSA_SIG(NULL,
+				(const unsigned char **) &infile, 7 + 2 * EC_COORDBYTES);
+
+		memset(&outbuf, 0, sizeof(outbuf));
 
 #if OPENSSL_VERSION_NUMBER >= 0x10100000L
-	ECDSA_SIG_get0(signature, &sr, &ss);
+		ECDSA_SIG_get0(signature, &sr, &ss);
 #else
-	sr = signature->r;
-	ss = signature->s;
+		sr = signature->r;
+		ss = signature->s;
 #endif
-	rlen = BN_num_bytes(sr);
-	roff = 66 - rlen;
-	BN_bn2bin(sr, &outbuf[roff]);
+		rlen = BN_num_bytes(sr);
+		roff = 66 - rlen;
+		BN_bn2bin(sr, &outbuf[roff]);
 
-	slen = BN_num_bytes(ss);
-	soff = 66 + (66 - slen);
-	BN_bn2bin(ss, &outbuf[soff]);
+		slen = BN_num_bytes(ss);
+		soff = 66 + (66 - slen);
+		BN_bn2bin(ss, &outbuf[soff]);
 
-	memcpy(*sigraw, outbuf, 2 * EC_COORDBYTES);
+		memcpy(sigraw, outbuf, sizeof(ecc_signature_t));
 
-	ECDSA_SIG_free(signature);
+		ECDSA_SIG_free(signature);
+	}
 	return;
 }
 

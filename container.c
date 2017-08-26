@@ -89,7 +89,7 @@ int isValidHex(char *input, int len) {
 	char multiplier[8];
 	bool result = false;
 
-	if (strnlen(input, maxlen) >= maxlen)
+	if ((strnlen(input, maxlen) > maxlen * 2) || (len > (int) maxlen))
 		die(EX_DATAERR, "input exceeded max length: %lu", maxlen);
 
 	if (len > 0)
@@ -123,7 +123,7 @@ int isValidAscii(char *input, int len) {
 	char multiplier[8];
 	bool result = false;
 
-	if (strnlen(input, maxlen) >= maxlen)
+	if ((strnlen(input, maxlen) > maxlen) || (len > (int) maxlen))
 		die(EX_DATAERR, "input exceeded max length: %lu", maxlen);
 
 	if (len > 0)
