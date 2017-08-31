@@ -102,6 +102,10 @@ equivalent to running:
 $ libtoolize -f && aclocal && autoheader && automake -a && autoconf && \
   configure && make
 
+Or:
+
+$ autoreconf -i -Wno-unsupported && ./configure && make
+
 To clean the project, including removing *all* GNU toolchain support
 files, run:
 
@@ -120,6 +124,23 @@ To clean the project, run the following, which is really just doing a
 "make clean":
 
 $ clean_all.sh lite
+
+Installing the project
+--------------------
+To install the project (executable files) locally, after running the
+preferred build method above:
+
+$ make install
+
+To uninstall:
+
+$ make uninstall
+
+The files install to /usr/local/bin by default.  You must have write
+permission to this directory.  To install to a different directory:
+
+$ make install bindir=/preferred/install/path/
+$ make uninstall bindir=/preferred/install/path/
 
 Signing HOWTO
 -------------
