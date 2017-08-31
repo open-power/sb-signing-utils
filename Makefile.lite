@@ -9,3 +9,15 @@ print-container: print-container.c
 clean:
 	$(RM) create-container print-container
 
+prefix = /usr/local
+exec_prefix = $(prefix)
+bindir = $(exec_prefix)/bin
+
+install:
+	cp create-container print-container $(bindir)/
+	cp crtSignedContainer.sh sign-with-local-keys.sh $(bindir)/
+
+uninstall:
+	cd $(bindir) && $(RM) create-container print-container
+	cd $(bindir) && $(RM) crtSignedContainer.sh sign-with-local-keys.sh
+
