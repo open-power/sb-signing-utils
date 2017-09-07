@@ -42,6 +42,8 @@ usage () {
     echo "	    --validate          validate the container after build"
     echo "	    --verify            verify the container after build, against the provided"
     echo "	                        value, or filename containing value, of the HW Keys hash"
+    echo "	    --sign-project-config   INI file containing configuration properties (options"
+    echo "	                            set here override those set via cmdline or environment)"
     echo ""
     exit 1
 }
@@ -64,6 +66,10 @@ is_raw_key () {
          $(dd if="$K" bs=1 count=1 2>/dev/null | xxd -p) == "04"
 }
 
+to_lower () {
+    echo $1 | tr A-Z a-z
+}
+
 to_upper () {
     echo $1 | tr a-z A-Z
 }
@@ -72,9 +78,9 @@ checkKey () {
     # The variable name
     KEY_NAME=$1
     # The filename holding the key
-    K=${!KEY_NAME}
-    KEYS=0
-    PUBKEYS=0
+    local K=${!KEY_NAME}
+    local KEYS=0
+    local PUBKEYS=0
 
     if [ -n "$K" ]; then
         if [ -f "$K" ]; then
@@ -104,6 +110,28 @@ checkKey () {
     fi
 }
 
+parseIni () {
+    local IFS=" ="
+    local section property value
+
+    while read property value
+    do
+        if echo "$property" | egrep -q "^;"
+        then
+            # This is a comment
+            continue
+        elif echo "$property" | egrep -q "\[.*]"
+        then
+            # This is a section header
+            section=$(echo $property | tr -d [] )
+        elif test -n "$value"
+        then
+            # This is a property, set it
+            declare -g "${section}_${property}=$value"
+        fi
+    done < $1
+}
+
 # Main
 
 # Convert long options to short
@@ -125,8 +153,9 @@ for arg in "$@"; do
     "--protectedPayload")  set -- "$@" "-l" ;;
     "--out")        set -- "$@" "-i" ;;
     "--mode")       set -- "$@" "-m" ;;
-    "--label   ")   set -- "$@" "-L" ;;
+    "--label")      set -- "$@" "-L" ;;
     "--sign-project-FW-token")   set -- "$@" "-L" ;;
+    "--sign-project-config")   set -- "$@" "-7" ;;
     "--validate")   set -- "$@" "-8" ;;
     "--verify")     set -- "$@" "-9" ;;
     *)              set -- "$@" "$arg"
@@ -134,26 +163,27 @@ for arg in "$@"; do
 done
 
 # Process command-line arguments
-while getopts ?dvw:a:b:c:p:q:r:f:o:l:i:m:L:89: opt
+while getopts ?dvw:a:b:c:p:q:r:f:o:l:i:m:L:7:89: opt
 do
   case "$opt" in
     v) VERBOSE="TRUE";;
     d) DEBUG="TRUE";;
-    w) WRAP="`echo $OPTARG`";;
-    a) HW_KEY_A="`echo $OPTARG`";;
-    b) HW_KEY_B="`echo $OPTARG`";;
-    c) HW_KEY_C="`echo $OPTARG`";;
-    p) SW_KEY_P="`echo $OPTARG`";;
-    q) SW_KEY_Q="`echo $OPTARG`";;
-    r) SW_KEY_R="`echo $OPTARG`";;
-    f) HW_FLAGS="`echo $OPTARG | tr A-Z a-z`";;
-    o) CS_OFFSET="`echo $OPTARG | tr A-Z a-z`";;
-    l) PAYLOAD="`echo $OPTARG`";;
-    i) OUTPUT="`echo $OPTARG`";;
-    m) MODE="`echo $OPTARG`";;
-    L) LABEL="`echo $OPTARG`";;
+    w) WRAP="$OPTARG";;
+    a) HW_KEY_A="$OPTARG";;
+    b) HW_KEY_B="$OPTARG";;
+    c) HW_KEY_C="$OPTARG";;
+    p) SW_KEY_P="$OPTARG";;
+    q) SW_KEY_Q="$OPTARG";;
+    r) SW_KEY_R="$OPTARG";;
+    f) HW_FLAGS="$OPTARG";;
+    o) CS_OFFSET="$OPTARG";;
+    l) PAYLOAD="$OPTARG";;
+    i) OUTPUT="$OPTARG";;
+    m) MODE="$(to_lower $OPTARG)";;
+    L) LABEL="$OPTARG";;
+    7) PROJECT_INI="$OPTARG";;
     8) VALIDATE="TRUE";;
-    9) VERIFY="`echo $OPTARG`";;
+    9) VERIFY="$OPTARG";;
     h|\?) usage;;
   esac
 done
@@ -214,6 +244,12 @@ test -n "$HW_FLAGS" && ADDL_ARGS="$ADDL_ARGS --hw-flags $HW_FLAGS"
 test -n "$CS_OFFSET" && ADDL_ARGS="$ADDL_ARGS --sw-cs-offset $CS_OFFSET"
 test -n "$LABEL" && ADDL_ARGS="$ADDL_ARGS --label $LABEL"
 
+# These are the only env vars that override a command line option
+test -n "$SB_PROJECT_INI" && PROJECT_INI="$SB_PROJECT_INI"
+test -n "$SB_SIGN_MODE" && MODE="$(to_lower $SB_SIGN_MODE)"
+
+test "$MODE" == development && MODE=local
+
 # Determine if validate or verify has been requested
 test -n "$BR2_CONFIG" && source $BR2_CONFIG &> /dev/null
 test -n "$BR2_OPENPOWER_SECUREBOOT_PASS_ON_VALIDATION_ERROR" && PASS_ON_ERR=Y
@@ -228,15 +264,38 @@ then
     VERIFY="$BR2_OPENPOWER_SECUREBOOT_CONTAINER_VERIFY"
 fi
 
-test -n "$VALIDATE" && VERIFY_ARGS="$VERIFY_ARGS --validate"
-test -n "$VERIFY" && VERIFY_ARGS="$VERIFY_ARGS --verify $VERIFY"
+# Parse INI file
+if [ -n "$PROJECT_INI" ]
+then
+    test ! -f "$PROJECT_INI" && die "Can't open INI file: $PROJECT_INI"
+
+    echo "--> $P: Parsing INI file: $PROJECT_INI"
+    parseIni $PROJECT_INI
+
+    SF_USER="$signer_userid"
+    SF_SSHKEY="$signer_sshkey_file"
+    SF_EPWD="$signer_epwd_file"
+    SF_SERVER="$server_hostname"
+
+    VALIDATE="$signtool_validate"
+    VERIFY="$signtool_verify"
+
+    if [ "$(to_upper $signtool_pass_on_validation_error)" == Y -o \
+         "$(to_upper $signtool_pass_on_validation_error)" == TRUE ]
+    then
+        PASS_ON_ERR=Y
+    fi
+fi
+
+if [ "$MODE" == "production" ]
+then
+    test -z "$SF_USER" && die "Production mode selected but no signer userid provided"
+    test -z "$SF_SSHKEY" && die "Production mode selected but no signer ssh key provided"
+    test -z "$SF_EPWD" && die "Production mode selected but no signer ePWD provided"
+    test -z "$SF_SERVER" && die "Production mode selected but no signframework server provided"
+fi
 
 # Get the public keys
-SF_EPWD=/path/to/epwd.txt
-SF_SSHKEY=/path/to/id_rsa.sign
-SF_USER=sf_user
-SF_SERVER=server.mydomain.com
-
 if [ "$MODE" == "local" ]
 then
     # Set args from cmdline params
@@ -442,7 +501,10 @@ fi
 echo "--> $P: Container $LABEL build completed."
 
 # Validate, verify the container
-if [ -n "$VALIDATE" -o -n "$VERIFY" ]; then
+test -n "$VALIDATE" && VERIFY_ARGS="$VERIFY_ARGS --validate"
+test -n "$VERIFY" && VERIFY_ARGS="$VERIFY_ARGS --verify $VERIFY"
+
+if [ -n "$VERIFY_ARGS" ]; then
     echo
     print-container --imagefile $OUTPUT --no-print $VERIFY_ARGS $DEBUG_ARGS
     test $? -ne 0 && test $PASS_ON_ERR == N && RC=1
