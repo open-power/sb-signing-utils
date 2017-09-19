@@ -3,8 +3,8 @@
 
 # Defaults, initial values
 P=${0##*/}
-MODE=local
-PASS_ON_ERR=N
+
+SIGN_MODE=local
 
 HW_KEY_ARGS=""
 SW_KEY_ARGS=""
@@ -179,19 +179,67 @@ do
     o) CS_OFFSET="$OPTARG";;
     l) PAYLOAD="$OPTARG";;
     i) OUTPUT="$OPTARG";;
-    m) MODE="$(to_lower $OPTARG)";;
+    m) SIGN_MODE="$(to_lower $OPTARG)";;
     L) LABEL="$OPTARG";;
     7) PROJECT_INI="$OPTARG";;
-    8) VALIDATE="TRUE";;
-    9) VERIFY="$OPTARG";;
+    8) SB_VALIDATE="TRUE";;
+    9) SB_VERIFY="$OPTARG";;
     h|\?) usage;;
   esac
 done
 
-# Check arguments
+# Process config properties from op-build _defconfig
+test -n "$BR2_CONFIG" && source $BR2_CONFIG &> /dev/null
+test -n "$BR2_OPENPOWER_SECUREBOOT_PASS_ON_VALIDATION_ERROR" && SB_PASS_ON_ERROR=Y
+
+# Determine if validate or verify has been requested via the _defconfig
+if [ -z "$SB_VALIDATE" -a -n "$BR2_OPENPOWER_SECUREBOOT_CONTAINER_VALIDATE" ]
+then
+    SB_VALIDATE="$BR2_OPENPOWER_SECUREBOOT_CONTAINER_VALIDATE"
+fi
+
+if [ -z "$SB_VERIFY" -a -n "$BR2_OPENPOWER_SECUREBOOT_CONTAINER_VERIFY" ]
+then
+    SB_VERIFY="$BR2_OPENPOWER_SECUREBOOT_CONTAINER_VERIFY"
+fi
+
+# These are the only env vars that override a command line option
+test -n "$SB_SIGN_MODE" && SIGN_MODE="$(to_lower $SB_SIGN_MODE)"
+test -n "$SB_PROJECT_INI" && PROJECT_INI="$SB_PROJECT_INI"
+
+# What op-buid calls development mode, we call local mode
+test "$SIGN_MODE" == development && SIGN_MODE=local
+
+# Parse INI file
+if [ -n "$PROJECT_INI" ]
+then
+    test ! -f "$PROJECT_INI" && die "Can't open INI file: $PROJECT_INI"
+
+    echo "--> $P: Parsing INI file: $PROJECT_INI"
+    parseIni $PROJECT_INI
+
+    SF_USER="$signer_userid"
+    SF_SSHKEY="$signer_sshkey_file"
+    SF_EPWD="$signer_epwd_file"
+    SF_SERVER="$server_hostname"
+
+    SB_VALIDATE="$signtool_validate"
+    SB_VERIFY="$signtool_verify"
+    SB_PASS_ON_ERROR="$signtool_pass_on_validation_error"
+fi
+
+# Check required arguments
 test -z "$PAYLOAD" && die "Input payload required"
 test -z "$OUTPUT" && die "Destination imagefile required"
 test ! -f "$PAYLOAD" && die "Can't open payload file: $PAYLOAD"
+
+if [ "$SIGN_MODE" == "production" ]
+then
+    test -z "$SF_USER" && die "Production mode selected but no signer userid provided"
+    test -z "$SF_SSHKEY" && die "Production mode selected but no signer ssh key provided"
+    test -z "$SF_EPWD" && die "Production mode selected but no signer ePWD provided"
+    test -z "$SF_SERVER" && die "Production mode selected but no signframework server provided"
+fi
 
 # Check input keys
 HW_KEY_COUNT=0
@@ -244,59 +292,8 @@ test -n "$HW_FLAGS" && ADDL_ARGS="$ADDL_ARGS --hw-flags $HW_FLAGS"
 test -n "$CS_OFFSET" && ADDL_ARGS="$ADDL_ARGS --sw-cs-offset $CS_OFFSET"
 test -n "$LABEL" && ADDL_ARGS="$ADDL_ARGS --label $LABEL"
 
-# These are the only env vars that override a command line option
-test -n "$SB_PROJECT_INI" && PROJECT_INI="$SB_PROJECT_INI"
-test -n "$SB_SIGN_MODE" && MODE="$(to_lower $SB_SIGN_MODE)"
-
-test "$MODE" == development && MODE=local
-
-# Determine if validate or verify has been requested
-test -n "$BR2_CONFIG" && source $BR2_CONFIG &> /dev/null
-test -n "$BR2_OPENPOWER_SECUREBOOT_PASS_ON_VALIDATION_ERROR" && PASS_ON_ERR=Y
-
-if [ -z "$VALIDATE" -a -n "$BR2_OPENPOWER_SECUREBOOT_CONTAINER_VALIDATE" ]
-then
-    VALIDATE="$BR2_OPENPOWER_SECUREBOOT_CONTAINER_VALIDATE"
-fi
-
-if [ -z "$VERIFY" -a -n "$BR2_OPENPOWER_SECUREBOOT_CONTAINER_VERIFY" ]
-then
-    VERIFY="$BR2_OPENPOWER_SECUREBOOT_CONTAINER_VERIFY"
-fi
-
-# Parse INI file
-if [ -n "$PROJECT_INI" ]
-then
-    test ! -f "$PROJECT_INI" && die "Can't open INI file: $PROJECT_INI"
-
-    echo "--> $P: Parsing INI file: $PROJECT_INI"
-    parseIni $PROJECT_INI
-
-    SF_USER="$signer_userid"
-    SF_SSHKEY="$signer_sshkey_file"
-    SF_EPWD="$signer_epwd_file"
-    SF_SERVER="$server_hostname"
-
-    VALIDATE="$signtool_validate"
-    VERIFY="$signtool_verify"
-
-    if [ "$(to_upper $signtool_pass_on_validation_error)" == Y -o \
-         "$(to_upper $signtool_pass_on_validation_error)" == TRUE ]
-    then
-        PASS_ON_ERR=Y
-    fi
-fi
-
-if [ "$MODE" == "production" ]
-then
-    test -z "$SF_USER" && die "Production mode selected but no signer userid provided"
-    test -z "$SF_SSHKEY" && die "Production mode selected but no signer ssh key provided"
-    test -z "$SF_EPWD" && die "Production mode selected but no signer ePWD provided"
-    test -z "$SF_SERVER" && die "Production mode selected but no signframework server provided"
-fi
-
 # Get the public keys
-if [ "$MODE" == "local" ]
+if [ "$SIGN_MODE" == "local" ]
 then
     # Set args from cmdline params
     test -n "$HW_KEY_A" && HW_KEY_ARGS="$HW_KEY_ARGS -a $HW_KEY_A"
@@ -306,7 +303,7 @@ then
     test -n "$SW_KEY_Q" && SW_KEY_ARGS="$SW_KEY_ARGS -q $SW_KEY_Q"
     test -n "$SW_KEY_R" && SW_KEY_ARGS="$SW_KEY_ARGS -r $SW_KEY_R"
 
-elif [ "$MODE" == "production" ]
+elif [ "$SIGN_MODE" == "production" ]
 then
     SF_PROJECT_BASE=sign_ecc_pwr_hw_key
     for KEY in a b c; do
@@ -367,9 +364,9 @@ then
         SW_KEY_ARGS="$SW_KEY_ARGS -$KEY $T/$KEYFILE"
     done
 
-elif [ -n "$MODE" ]
+elif [ -n "$SIGN_MODE" ]
 then
-    die "Unsupported mode: $MODE"
+    die "Unsupported mode: $SIGN_MODE"
 fi
 
 # Build enough of the container to create the Prefix and Software headers
@@ -383,7 +380,7 @@ create-container $HW_KEY_ARGS $SW_KEY_ARGS \
 # Prepare the HW and SW key signatures
 FOUND=""
 
-if [ "$MODE" == "local" ]
+if [ "$SIGN_MODE" == "local" ]
 then
     for KEY in a b c; do
         SIGFILE=HW_key_$KEY.sig
@@ -427,7 +424,7 @@ then
         SW_SIG_ARGS="$SW_SIG_ARGS -$(to_upper $KEY) $T/$SIGFILE"
     done
 
-elif [ "$MODE" == "production" ]
+elif [ "$SIGN_MODE" == "production" ]
 then
     SF_PROJECT_BASE=sign_ecc_pwr_hw_key
     for KEY in a b c; do
@@ -501,13 +498,25 @@ fi
 echo "--> $P: Container $LABEL build completed."
 
 # Validate, verify the container
-test -n "$VALIDATE" && VERIFY_ARGS="$VERIFY_ARGS --validate"
-test -n "$VERIFY" && VERIFY_ARGS="$VERIFY_ARGS --verify $VERIFY"
+if [ "$(to_upper $SB_VALIDATE)" != Y -a \
+     "$(to_upper $SB_VALIDATE)" != TRUE ]
+then
+    SB_VALIDATE=""
+fi
+
+if [ "$(to_upper $SB_PASS_ON_ERROR)" != Y -a \
+     "$(to_upper $SB_PASS_ON_ERROR)" != TRUE ]
+then
+    SB_PASS_ON_ERROR=""
+fi
+
+test -n "$SB_VALIDATE" && VERIFY_ARGS="$VERIFY_ARGS --validate"
+test -n "$SB_VERIFY" && VERIFY_ARGS="$VERIFY_ARGS --verify $SB_VERIFY"
 
 if [ -n "$VERIFY_ARGS" ]; then
     echo
     print-container --imagefile $OUTPUT --no-print $VERIFY_ARGS $DEBUG_ARGS
-    test $? -ne 0 && test $PASS_ON_ERR == N && RC=1
+    test $? -ne 0 && test -z $SB_PASS_ON_ERROR && RC=1
 fi
 
 # Cleanup
