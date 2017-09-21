@@ -38,6 +38,7 @@ usage () {
     echo "	-o, --code-start-offset code start offset for software header in hex"
     echo "	-f, --flags             prefix header flags in hex"
     echo "	-m, --mode              signing mode: local, independent or production"
+    echo "	-s, --scratchDir        scratch directory to use for file caching, etc."
     echo "	-L, --label             name or identifier of the module being built (8 char max)"
     echo "	    --validate          validate the container after build"
     echo "	    --verify            verify the container after build, against the provided"
@@ -153,6 +154,7 @@ for arg in "$@"; do
     "--protectedPayload")  set -- "$@" "-l" ;;
     "--out")        set -- "$@" "-i" ;;
     "--mode")       set -- "$@" "-m" ;;
+    "--scratchDir") set -- "$@" "-s" ;;
     "--label")      set -- "$@" "-L" ;;
     "--sign-project-FW-token")   set -- "$@" "-L" ;;
     "--sign-project-config")   set -- "$@" "-7" ;;
@@ -163,7 +165,7 @@ for arg in "$@"; do
 done
 
 # Process command-line arguments
-while getopts ?dvw:a:b:c:p:q:r:f:o:l:i:m:L:7:89: opt
+while getopts ?dvw:a:b:c:p:q:r:f:o:l:i:m:s:L:7:89: opt
 do
   case "$opt" in
     v) VERBOSE="TRUE";;
@@ -180,6 +182,7 @@ do
     l) PAYLOAD="$OPTARG";;
     i) OUTPUT="$OPTARG";;
     m) SIGN_MODE="$(to_lower $OPTARG)";;
+    s) SB_SCRATCH_DIR="$OPTARG";;
     L) LABEL="$OPTARG";;
     7) PROJECT_INI="$OPTARG";;
     8) SB_VALIDATE="TRUE";;
@@ -256,21 +259,23 @@ for KEY in SW_KEY_P SW_KEY_Q SW_KEY_R; do
 done
 
 # Set cache directory
-set ${TMPDIR:=/tmp}
-SCRATCH_DIR=$TMPDIR
+: ${TMPDIR:=/tmp}
+: ${SB_SCRATCH_DIR:=$TMPDIR}
+: ${SB_KEEP_CACHE:=true}
+: ${LABEL:=IMAGE}
+
 moniker="SIGNTOOL"
-KEEP_CACHE=true
 
-test -z "$LABEL" && KEEP_CACHE=false && LABEL="IMAGE"
+test ! -d "$SB_SCRATCH_DIR" && die "Scratch directory not found: $SB_SCRATCH_DIR"
 
-TOPDIR=$(ls -1dt $SCRATCH_DIR/${moniker}_* 2>/dev/null | head -1)
+TOPDIR=$(ls -1dt $SB_SCRATCH_DIR/${moniker}_* 2>/dev/null | head -1)
 
 if [ -n "$TOPDIR" ]; then
     crtTime=$(date -d @$(basename $TOPDIR | cut -d_ -f2))
     echo "--> $P: Using existing cache dir: $TOPDIR, created: $crtTime"
 else
     buildID="${moniker}_$(date +%s)"
-    TOPDIR=$SCRATCH_DIR/$buildID
+    TOPDIR=$SB_SCRATCH_DIR/$buildID
     echo "--> $P: Creating new cache dir: $TOPDIR"
     mkdir $TOPDIR
 fi
@@ -324,7 +329,7 @@ then
                 cp -p $KEYFOUND $T/
             else
                 echo "--> $P: Requesting public key for HW key $(to_upper $KEY)..."
-                sf_client -stdout -project getpubkeyecc -param "-signproject $SF_PROJECT" \
+                sf_client -project getpubkeyecc -param "-signproject $SF_PROJECT" \
                           -epwd $SF_EPWD -comments "Requesting $SF_PROJECT"  \
                           -url sftp://$SF_USER@$SF_SERVER -pkey $SF_SSHKEY -o $T/$KEYFILE
                 # TODO Check return code, fail on error...
@@ -353,7 +358,7 @@ then
                 cp -p $KEYFOUND $T/
             else
                 echo "--> $P: Requesting public key for SW key $(to_upper $KEY)..."
-                sf_client -stdout -project getpubkeyecc -param "-signproject $SF_PROJECT" \
+                sf_client -project getpubkeyecc -param "-signproject $SF_PROJECT" \
                           -epwd $SF_EPWD -comments "Requesting $SF_PROJECT" \
                           -url sftp://$SF_USER@$SF_SERVER -pkey $SF_SSHKEY -o $T/$KEYFILE
                 # TODO Check return code, fail on error...
@@ -520,7 +525,7 @@ if [ -n "$VERIFY_ARGS" ]; then
 fi
 
 # Cleanup
-if [ $KEEP_CACHE == false ]; then
+if [ $SB_KEEP_CACHE == false ]; then
     echo "--> $P: Removing cache subdir: $T"
     rm -rf $T
     T=$(dirname $T)
