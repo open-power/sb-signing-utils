@@ -1,5 +1,7 @@
 #!/bin/bash
+#
 # Script to create a signed container.  Intended for op-build integration.
+#
 
 # Defaults, initial values
 P=${0##*/}
@@ -19,7 +21,9 @@ DEBUG=""
 WRAP=""
 RC=0
 
+#
 # Functions
+#
 usage () {
     echo ""
     echo "	Options:"
@@ -84,7 +88,15 @@ checkKey () {
     local PUBKEYS=0
 
     if [ -n "$K" ]; then
-        if [ -f "$K" ]; then
+        # Handle the special values __skip, __get and _getkey
+        if [ "$K" == __skip ]; then
+            KEYS=0
+        elif [ "$K" == __get -o "$K" == __getkey ]; then
+            KEYS=1
+            PUBKEYS=1
+
+        # If it's a file, determine what kind of key it contains
+        elif [ -f "$K" ]; then
             if is_private_key "$K"; then
                 KEYS=1
             elif is_public_key "$K"; then
@@ -119,11 +131,11 @@ parseIni () {
     do
         if echo "$property" | egrep -q "^;"
         then
-            # This is a comment
+            # This is a comment, skip it
             continue
         elif echo "$property" | egrep -q "\[.*]"
         then
-            # This is a section header
+            # This is a section header, read it
             section=$(echo $property | tr -d [] )
         elif test -n "$value"
         then
@@ -133,7 +145,9 @@ parseIni () {
     done < $1
 }
 
+#
 # Main
+#
 
 # Convert long options to short
 for arg in "$@"; do
@@ -213,7 +227,9 @@ test -n "$SB_PROJECT_INI" && PROJECT_INI="$SB_PROJECT_INI"
 # What op-buid calls development mode, we call local mode
 test "$SIGN_MODE" == development && SIGN_MODE=local
 
+#
 # Parse INI file
+#
 if [ -n "$PROJECT_INI" ]
 then
     test ! -f "$PROJECT_INI" && die "Can't open INI file: $PROJECT_INI"
@@ -231,7 +247,9 @@ then
     SB_PASS_ON_ERROR="$signtool_pass_on_validation_error"
 fi
 
+#
 # Check required arguments
+#
 test -z "$PAYLOAD" && die "Input payload required"
 test -z "$OUTPUT" && die "Destination imagefile required"
 test ! -f "$PAYLOAD" && die "Can't open payload file: $PAYLOAD"
@@ -258,7 +276,9 @@ for KEY in SW_KEY_P SW_KEY_Q SW_KEY_R; do
     checkKey $KEY
 done
 
+#
 # Set cache directory
+#
 : ${TMPDIR:=/tmp}
 : ${SB_SCRATCH_DIR:=$TMPDIR}
 : ${SB_KEEP_CACHE:=true}
@@ -297,26 +317,55 @@ test -n "$HW_FLAGS" && ADDL_ARGS="$ADDL_ARGS --hw-flags $HW_FLAGS"
 test -n "$CS_OFFSET" && ADDL_ARGS="$ADDL_ARGS --sw-cs-offset $CS_OFFSET"
 test -n "$LABEL" && ADDL_ARGS="$ADDL_ARGS --label $LABEL"
 
+#
 # Get the public keys
+#
 if [ "$SIGN_MODE" == "local" ]
 then
-    # Set args from cmdline params
-    test -n "$HW_KEY_A" && HW_KEY_ARGS="$HW_KEY_ARGS -a $HW_KEY_A"
-    test -n "$HW_KEY_B" && HW_KEY_ARGS="$HW_KEY_ARGS -b $HW_KEY_B"
-    test -n "$HW_KEY_C" && HW_KEY_ARGS="$HW_KEY_ARGS -c $HW_KEY_C"
-    test -n "$SW_KEY_P" && SW_KEY_ARGS="$SW_KEY_ARGS -p $SW_KEY_P"
-    test -n "$SW_KEY_Q" && SW_KEY_ARGS="$SW_KEY_ARGS -q $SW_KEY_Q"
-    test -n "$SW_KEY_R" && SW_KEY_ARGS="$SW_KEY_ARGS -r $SW_KEY_R"
+    for KEY in a b c; do
+        # This will evaluate the value of HW_KEY_A, HW_KEY_B, HW_KEY_C
+        varname=HW_KEY_$(to_upper $KEY); KEYFILE=${!varname}
+
+        # Handle the special values, or empty value
+        test -z "$KEYFILE" && continue
+        test "$KEYFILE" == __skip && continue
+        test "$KEYFILE" == __get -o "$KEYFILE" == __getkey && \
+            die "Cannot $KEYFILE $varname in $SIGN_MODE mode"
+
+        # Add to HW_KEY_ARGS
+        HW_KEY_ARGS="$HW_KEY_ARGS -$KEY $KEYFILE"
+    done
+
+    for KEY in p q r; do
+        # Find the value of SW_KEY_P, SW_KEY_Q, SW_KEY_R
+        varname=SW_KEY_$(to_upper $KEY); KEYFILE=${!varname}
+
+        # Handle the special values, or empty value
+        test -z "$KEYFILE" && break
+        test "$KEYFILE" == __skip && break
+        test "$KEYFILE" == __get -o "$KEYFILE" == __getkey && \
+            die "Cannot $KEYFILE $varname in $SIGN_MODE mode"
+
+        # Add to SW_KEY_ARGS
+        SW_KEY_ARGS="$SW_KEY_ARGS -$KEY $KEYFILE"
+    done
 
 elif [ "$SIGN_MODE" == "production" ]
 then
     SF_PROJECT_BASE=sign_ecc_pwr_hw_key
     for KEY in a b c; do
+        varname=HW_KEY_$(to_upper $KEY); KEYFILE=${!varname}
+
+        # Handle the special values, or empty value
+        test -z "$KEYFILE" && continue
+        test "$KEYFILE" == __skip && continue
+        # TODO: Add full support for user-specified keys in Production mode.
+        # Currently we use it only to check if __skip was specified.
+
         SF_PROJECT=${SF_PROJECT_BASE}_${KEY}
         KEYFILE=project.$SF_PROJECT.HW_key_$KEY.raw
 
-        # If no keyfile in the current dir, try to find one.
-        # If no keyfile found, try to get one.
+        # If no keyfile in the current dir, try to find one. If none found, try to get one.
         if [ -f "$T/$KEYFILE" ]
         then
             echo "--> $P: Found key for HW key $(to_upper $KEY)."
@@ -337,12 +386,18 @@ then
             fi
         fi
 
-        # Set args from project files
+        # Add to HW_KEY_ARGS
         HW_KEY_ARGS="$HW_KEY_ARGS -$KEY $T/$KEYFILE"
     done
 
     SF_PROJECT_BASE=sign_ecc_pwr_fw_key_op_bld
-    for KEY in p; do
+    for KEY in p q r; do
+        varname=SW_KEY_$(to_upper $KEY); KEYFILE=${!varname}
+
+        # Handle the special values, or empty value
+        test -z "$KEYFILE" && break
+        test "$KEYFILE" == __skip && break
+
         SF_PROJECT=${SF_PROJECT_BASE}_${KEY}
         KEYFILE=project.$SF_PROJECT.SW_key_$KEY.raw
 
@@ -366,6 +421,7 @@ then
             fi
         fi
 
+        # Add to SW_KEY_ARGS
         SW_KEY_ARGS="$SW_KEY_ARGS -$KEY $T/$KEYFILE"
     done
 
@@ -374,7 +430,9 @@ then
     die "Unsupported mode: $SIGN_MODE"
 fi
 
+#
 # Build enough of the container to create the Prefix and Software headers
+#
 echo "--> $P: Generating signing requests..."
 create-container $HW_KEY_ARGS $SW_KEY_ARGS \
                  --payload $PAYLOAD --imagefile $OUTPUT \
@@ -382,14 +440,22 @@ create-container $HW_KEY_ARGS $SW_KEY_ARGS \
                  $DEBUG_ARGS \
                  $ADDL_ARGS
 
+#
 # Prepare the HW and SW key signatures
+#
 FOUND=""
 
 if [ "$SIGN_MODE" == "local" ]
 then
     for KEY in a b c; do
         SIGFILE=HW_key_$KEY.sig
-        name=HW_KEY_$(to_upper $KEY); eval KEYFILE=\$$name;
+        varname=HW_KEY_$(to_upper $KEY); KEYFILE=${!varname}
+
+        # Handle the special values, or empty value
+        test -z "$KEYFILE" && continue
+        test "$KEYFILE" == __skip && continue
+        test "$KEYFILE" == __get -o "$KEYFILE" == __getkey && \
+            die "Cannot $KEYFILE $varname in $SIGN_MODE mode"
 
         # If no signature found, try to generate one.
         if [ -f "$T/$SIGFILE" ]
@@ -410,7 +476,13 @@ then
 
     for KEY in p q r; do
         SIGFILE=SW_key_$KEY.sig
-        name=SW_KEY_$(to_upper $KEY); eval KEYFILE=\$$name;
+        varname=SW_KEY_$(to_upper $KEY); KEYFILE=${!varname}
+
+        # Handle the special values, or empty value
+        test -z "$KEYFILE" && break
+        test "$KEYFILE" == __skip && break
+        test "$KEYFILE" == __get -o "$KEYFILE" == __getkey && \
+            die "Cannot $KEYFILE $varname in $SIGN_MODE mode"
 
         # If no signature found, try to generate one.
         if [ -f "$T/$SIGFILE" ]
@@ -436,8 +508,16 @@ then
         SF_PROJECT=${SF_PROJECT_BASE}_${KEY}
         SIGFILE=project.$SF_PROJECT.HW_sig_$KEY.raw
 
-        # If no signature in the current dir, try to find one.
-        # If no signature found, request one.
+        varname=HW_KEY_$(to_upper $KEY); KEYFILE=${!varname}
+
+        # Handle the special values, or empty value
+        test -z "$KEYFILE" && continue
+        test "$KEYFILE" == __skip && continue
+        test "$KEYFILE" == __getkey && continue
+        # TODO: Add full support for user-specified keys in Production mode.
+        # Currently we use it only to check if __skip or __getkey was specified.
+
+        # If no signature in the current dir, try to find one. If none found, request one.
         if [ -f "$T/$SIGFILE" ]
         then
             echo "--> $P: Found signature for HW key $(to_upper $KEY)."
@@ -450,7 +530,7 @@ then
                 cp -p $SIGFOUND $T/
             else
                 echo "--> $P: Requesting signature for HW key $(to_upper $KEY)..."
-                sf_client -stdout -project $SF_PROJECT -epwd $SF_EPWD \
+                sf_client -project $SF_PROJECT -epwd $SF_EPWD \
                           -comments "Requesting sig for $SF_PROJECT" \
                           -url sftp://$SF_USER@$SF_SERVER -pkey $SF_SSHKEY \
                           -payload  $T/prefix_hdr -o $T/$SIGFILE
@@ -464,9 +544,16 @@ then
     done
 
     SF_PROJECT_BASE=sign_ecc_pwr_fw_key_op_bld
-    for KEY in p; do
+    for KEY in p q r; do
         SF_PROJECT=${SF_PROJECT_BASE}_${KEY}
         SIGFILE=project.$SF_PROJECT.SW_sig_$KEY.raw
+
+        varname=SW_KEY_$(to_upper $KEY); KEYFILE=${!varname}
+
+        # Handle the special values, or empty value
+        test -z "$KEYFILE" && break
+        test "$KEYFILE" == __skip && break
+        test "$KEYFILE" == __getkey && continue
 
         # If no signature in the current dir, request one.
         if [ -f "$T/$SIGFILE" ]
@@ -475,7 +562,7 @@ then
         else
             echo "--> $P: Requesting signature for SW key $(to_upper $KEY)..."
             sha512sum $T/software_hdr | cut -d' ' -f1 | xxd -p -r > $T/software_hdr.sha512.bin
-            sf_client -stdout -project $SF_PROJECT -epwd $SF_EPWD \
+            sf_client -project $SF_PROJECT -epwd $SF_EPWD \
                       -comments "Requesting sig for $LABEL from $SF_PROJECT" \
                       -url sftp://$SF_USER@$SF_SERVER -pkey $SF_SSHKEY \
                       -payload $T/software_hdr.sha512.bin -o $T/$SIGFILE
@@ -488,7 +575,9 @@ then
     done
 fi
 
+#
 # Build the full container
+#
 if [ -n "$HW_SIG_ARGS" -o -n "$SW_SIG_ARGS" ]; then
     echo "--> $P: Have signatures for keys $FOUND adding to container..."
     create-container $HW_KEY_ARGS $SW_KEY_ARGS \
@@ -502,7 +591,9 @@ fi
 
 echo "--> $P: Container $LABEL build completed."
 
+#
 # Validate, verify the container
+#
 if [ "$(to_upper $SB_VALIDATE)" != Y -a \
      "$(to_upper $SB_VALIDATE)" != TRUE ]
 then
@@ -524,7 +615,9 @@ if [ -n "$VERIFY_ARGS" ]; then
     test $? -ne 0 && test -z $SB_PASS_ON_ERROR && RC=1
 fi
 
+#
 # Cleanup
+#
 if [ $SB_KEEP_CACHE == false ]; then
     echo "--> $P: Removing cache subdir: $T"
     rm -rf $T
