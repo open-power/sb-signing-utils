@@ -88,8 +88,8 @@ checkKey () {
     local PUBKEYS=0
 
     if [ -n "$K" ]; then
-        # Handle the special values __skip, __get and _getkey
-        if [ "$K" == __skip ]; then
+        # Handle the special values __skip, __get, __getkey and __getsig
+        if [ "$K" == __skip -o "$K" == __getsig ]; then
             KEYS=0
         elif [ "$K" == __get -o "$K" == __getkey ]; then
             KEYS=1
@@ -359,6 +359,7 @@ then
         # Handle the special values, or empty value
         test -z "$KEYFILE" && continue
         test "$KEYFILE" == __skip && continue
+        test "$KEYFILE" == __getsig && continue
         # TODO: Add full support for user-specified keys in Production mode.
         # Currently we use it only to check if __skip was specified.
 
@@ -397,6 +398,7 @@ then
         # Handle the special values, or empty value
         test -z "$KEYFILE" && break
         test "$KEYFILE" == __skip && break
+        test "$KEYFILE" == __getsig && continue
 
         SF_PROJECT=${SF_PROJECT_BASE}_${KEY}
         KEYFILE=project.$SF_PROJECT.SW_key_$KEY.raw
