@@ -142,7 +142,7 @@ parseIni () {
             # This is a property, set it
             declare -g "${section}_${property}=$value"
         fi
-    done < $1
+    done < "$1"
 }
 
 #
@@ -227,6 +227,8 @@ test -n "$SB_PROJECT_INI" && PROJECT_INI="$SB_PROJECT_INI"
 # What op-buid calls development mode, we call local mode
 test "$SIGN_MODE" == development && SIGN_MODE=local
 
+echo "--> $P: Signing mode: $SIGN_MODE"
+
 #
 # Parse INI file
 #
@@ -235,16 +237,17 @@ then
     test ! -f "$PROJECT_INI" && die "Can't open INI file: $PROJECT_INI"
 
     echo "--> $P: Parsing INI file: $PROJECT_INI"
-    parseIni $PROJECT_INI
+    parseIni "$PROJECT_INI"
 
-    SF_USER="$signer_userid"
-    SF_SSHKEY="$signer_sshkey_file"
-    SF_EPWD="$signer_epwd_file"
-    SF_SERVER="$server_hostname"
+    test -n "$signer_userid" && SF_USER="$signer_userid"
+    test -n "$signer_sshkey_file" && SF_SSHKEY="$signer_sshkey_file"
+    test -n "$signer_epwd_file" && SF_EPWD="$signer_epwd_file"
+    test -n "$server_hostname" && SF_SERVER="$server_hostname"
 
-    SB_VALIDATE="$signtool_validate"
-    SB_VERIFY="$signtool_verify"
-    SB_PASS_ON_ERROR="$signtool_pass_on_validation_error"
+    test -n "$signtool_validate" && SB_VALIDATE="$signtool_validate"
+    test -n "$signtool_verify" && SB_VERIFY="$signtool_verify"
+    test -n "$signtool_pass_on_validation_error" && \
+        SB_PASS_ON_ERROR="$signtool_pass_on_validation_error"
 fi
 
 #
@@ -288,25 +291,26 @@ moniker="SIGNTOOL"
 
 test ! -d "$SB_SCRATCH_DIR" && die "Scratch directory not found: $SB_SCRATCH_DIR"
 
-TOPDIR=$(ls -1dt $SB_SCRATCH_DIR/${moniker}_* 2>/dev/null | head -1)
+TOPDIR=$(ls -1dt "$SB_SCRATCH_DIR"/${moniker}_* 2>/dev/null | head -1)
 
 if [ -n "$TOPDIR" ]; then
-    crtTime=$(date -d @$(basename $TOPDIR | cut -d_ -f2))
+    crtTime=$(date -d @$(basename "$TOPDIR" | cut -d_ -f2))
+    buildID="${TOPDIR##*/}"
     echo "--> $P: Using existing cache dir: $TOPDIR, created: $crtTime"
 else
     buildID="${moniker}_$(date +%s)"
-    TOPDIR=$SB_SCRATCH_DIR/$buildID
+    TOPDIR="$SB_SCRATCH_DIR/$buildID"
     echo "--> $P: Creating new cache dir: $TOPDIR"
-    mkdir $TOPDIR
+    mkdir "$TOPDIR"
 fi
 
-T=$TOPDIR/$LABEL
+T="$TOPDIR/$LABEL"
 
 if [ -d "$T" ]; then
     echo "--> $P: Using existing cache subdir: $T"
 else
     echo "--> $P: Creating new cache subdir: $T"
-    mkdir $T
+    mkdir "$T"
 fi
 
 # Set arguments for (program) execution
@@ -352,7 +356,6 @@ then
 
 elif [ "$SIGN_MODE" == "production" ]
 then
-    SF_PROJECT_BASE=sign_ecc_pwr_hw_key
     for KEY in a b c; do
         varname=HW_KEY_$(to_upper $KEY); KEYFILE=${!varname}
 
@@ -363,6 +366,7 @@ then
         # TODO: Add full support for user-specified keys in Production mode.
         # Currently we use it only to check if __skip was specified.
 
+        SF_PROJECT_BASE=sign_ecc_pwr_hw_key
         SF_PROJECT=${SF_PROJECT_BASE}_${KEY}
         KEYFILE=project.$SF_PROJECT.HW_key_$KEY.raw
 
@@ -371,17 +375,17 @@ then
         then
             echo "--> $P: Found key for HW key $(to_upper $KEY)."
         else
-            KEYFOUND=$(find $TOPDIR -name $KEYFILE | head -1)
+            KEYFOUND=$(find "$TOPDIR" -name $KEYFILE | head -1)
 
             if [ -n "$KEYFOUND" ]
             then
                 echo "--> $P: Found key for HW key $(to_upper $KEY)."
-                cp -p $KEYFOUND $T/
+                cp -p $KEYFOUND "$T/"
             else
                 echo "--> $P: Requesting public key for HW key $(to_upper $KEY)..."
                 sf_client -project getpubkeyecc -param "-signproject $SF_PROJECT" \
-                          -epwd $SF_EPWD -comments "Requesting $SF_PROJECT"  \
-                          -url sftp://$SF_USER@$SF_SERVER -pkey $SF_SSHKEY -o $T/$KEYFILE
+                          -epwd "$SF_EPWD" -comments "Requesting $SF_PROJECT"  \
+                          -url sftp://$SF_USER@$SF_SERVER -pkey "$SF_SSHKEY" -o "$T/$KEYFILE"
                 # TODO Check return code, fail on error...
                 echo "--> $P: Retrieved public key for HW key $(to_upper $KEY)."
             fi
@@ -391,7 +395,6 @@ then
         HW_KEY_ARGS="$HW_KEY_ARGS -$KEY $T/$KEYFILE"
     done
 
-    SF_PROJECT_BASE=sign_ecc_pwr_fw_key_op_bld
     for KEY in p q r; do
         varname=SW_KEY_$(to_upper $KEY); KEYFILE=${!varname}
 
@@ -400,6 +403,7 @@ then
         test "$KEYFILE" == __skip && break
         test "$KEYFILE" == __getsig && continue
 
+        SF_PROJECT_BASE=sign_ecc_pwr_fw_key_op_bld
         SF_PROJECT=${SF_PROJECT_BASE}_${KEY}
         KEYFILE=project.$SF_PROJECT.SW_key_$KEY.raw
 
@@ -407,17 +411,17 @@ then
         then
             echo "--> $P: Found key for SW key $(to_upper $KEY)."
         else
-            KEYFOUND=$(find $TOPDIR -name $KEYFILE | head -1)
+            KEYFOUND=$(find "$TOPDIR" -name $KEYFILE | head -1)
 
             if [ -n "$KEYFOUND" ]
             then
                 echo "--> $P: Found key for SW key $(to_upper $KEY)."
-                cp -p $KEYFOUND $T/
+                cp -p $KEYFOUND "$T/"
             else
                 echo "--> $P: Requesting public key for SW key $(to_upper $KEY)..."
                 sf_client -project getpubkeyecc -param "-signproject $SF_PROJECT" \
-                          -epwd $SF_EPWD -comments "Requesting $SF_PROJECT" \
-                          -url sftp://$SF_USER@$SF_SERVER -pkey $SF_SSHKEY -o $T/$KEYFILE
+                          -epwd "$SF_EPWD" -comments "Requesting $SF_PROJECT" \
+                          -url sftp://$SF_USER@$SF_SERVER -pkey "$SF_SSHKEY" -o "$T/$KEYFILE"
                 # TODO Check return code, fail on error...
                 echo "--> $P: Retrieved public key for SW key $(to_upper $KEY)."
             fi
@@ -437,8 +441,8 @@ fi
 #
 echo "--> $P: Generating signing requests..."
 create-container $HW_KEY_ARGS $SW_KEY_ARGS \
-                 --payload $PAYLOAD --imagefile $OUTPUT \
-                 --dumpPrefixHdr $T/prefix_hdr --dumpSwHdr $T/software_hdr \
+                 --payload "$PAYLOAD" --imagefile "$OUTPUT" \
+                 --dumpPrefixHdr "$T/prefix_hdr" --dumpSwHdr "$T/software_hdr" \
                  $DEBUG_ARGS \
                  $ADDL_ARGS
 
@@ -466,7 +470,7 @@ then
         elif test -f $KEYFILE && is_private_key $KEYFILE
         then
             echo "--> $P: Generating signature for HW key $(to_upper $KEY)..."
-            openssl dgst -SHA512 -sign $KEYFILE $T/prefix_hdr > $T/$SIGFILE
+            openssl dgst -SHA512 -sign "$KEYFILE" "$T/prefix_hdr" > "$T/$SIGFILE"
         else
             echo "--> $P: No signature found and no private key available for HW key $(to_upper $KEY), skipping."
             continue
@@ -493,7 +497,7 @@ then
         elif test -f $KEYFILE && is_private_key $KEYFILE
         then
             echo "--> $P: Generating signature for SW key $(to_upper $KEY)..."
-            openssl dgst -SHA512 -sign $KEYFILE $T/software_hdr > $T/$SIGFILE
+            openssl dgst -SHA512 -sign "$KEYFILE" "$T/software_hdr" > "$T/$SIGFILE"
         else
             echo "--> $P: No signature found and no private key available for SW key $(to_upper $KEY), skipping."
             continue
@@ -505,8 +509,8 @@ then
 
 elif [ "$SIGN_MODE" == "production" ]
 then
-    SF_PROJECT_BASE=sign_ecc_pwr_hw_key
     for KEY in a b c; do
+        SF_PROJECT_BASE=sign_ecc_pwr_hw_key
         SF_PROJECT=${SF_PROJECT_BASE}_${KEY}
         SIGFILE=project.$SF_PROJECT.HW_sig_$KEY.raw
 
@@ -524,7 +528,7 @@ then
         then
             echo "--> $P: Found signature for HW key $(to_upper $KEY)."
         else
-            SIGFOUND=$(find $TOPDIR -name $SIGFILE | head -1)
+            SIGFOUND=$(find "$TOPDIR" -name $SIGFILE | head -1)
 
             if [ -n "$SIGFOUND" ]
             then
@@ -532,10 +536,10 @@ then
                 cp -p $SIGFOUND $T/
             else
                 echo "--> $P: Requesting signature for HW key $(to_upper $KEY)..."
-                sf_client -project $SF_PROJECT -epwd $SF_EPWD \
+                sf_client -project $SF_PROJECT -epwd "$SF_EPWD" \
                           -comments "Requesting sig for $SF_PROJECT" \
-                          -url sftp://$SF_USER@$SF_SERVER -pkey $SF_SSHKEY \
-                          -payload  $T/prefix_hdr -o $T/$SIGFILE
+                          -url sftp://$SF_USER@$SF_SERVER -pkey "$SF_SSHKEY" \
+                          -payload  "$T/prefix_hdr" -o "$T/$SIGFILE"
                 # TODO Check return code, fail on error...
                 echo "--> $P: Retrieved signature for HW key $(to_upper $KEY)."
             fi
@@ -545,8 +549,8 @@ then
         HW_SIG_ARGS="$HW_SIG_ARGS -$(to_upper $KEY) $T/$SIGFILE"
     done
 
-    SF_PROJECT_BASE=sign_ecc_pwr_fw_key_op_bld
     for KEY in p q r; do
+        SF_PROJECT_BASE=sign_ecc_pwr_fw_key_op_bld
         SF_PROJECT=${SF_PROJECT_BASE}_${KEY}
         SIGFILE=project.$SF_PROJECT.SW_sig_$KEY.raw
 
@@ -563,11 +567,11 @@ then
             echo "--> $P: Found signature for SW key $(to_upper $KEY)."
         else
             echo "--> $P: Requesting signature for SW key $(to_upper $KEY)..."
-            sha512sum $T/software_hdr | cut -d' ' -f1 | xxd -p -r > $T/software_hdr.sha512.bin
-            sf_client -project $SF_PROJECT -epwd $SF_EPWD \
+            sha512sum "$T/software_hdr" | cut -d' ' -f1 | xxd -p -r > "$T/software_hdr.sha512.bin"
+            sf_client -project $SF_PROJECT -epwd "$SF_EPWD" \
                       -comments "Requesting sig for $LABEL from $SF_PROJECT" \
-                      -url sftp://$SF_USER@$SF_SERVER -pkey $SF_SSHKEY \
-                      -payload $T/software_hdr.sha512.bin -o $T/$SIGFILE
+                      -url sftp://$SF_USER@$SF_SERVER -pkey "$SF_SSHKEY" \
+                      -payload "$T/software_hdr.sha512.bin" -o "$T/$SIGFILE"
             # TODO Check return code, fail on error...
             echo "--> $P: Retrieved signature for SW key $(to_upper $KEY)."
         fi
@@ -584,7 +588,7 @@ if [ -n "$HW_SIG_ARGS" -o -n "$SW_SIG_ARGS" ]; then
     echo "--> $P: Have signatures for keys $FOUND adding to container..."
     create-container $HW_KEY_ARGS $SW_KEY_ARGS \
                      $HW_SIG_ARGS $SW_SIG_ARGS \
-                     --payload $PAYLOAD --imagefile $OUTPUT \
+                     --payload "$PAYLOAD" --imagefile "$OUTPUT" \
                      $DEBUG_ARGS \
                      $ADDL_ARGS
 else
@@ -608,12 +612,14 @@ then
     SB_PASS_ON_ERROR=""
 fi
 
-test -n "$SB_VALIDATE" && VERIFY_ARGS="$VERIFY_ARGS --validate"
-test -n "$SB_VERIFY" && VERIFY_ARGS="$VERIFY_ARGS --verify $SB_VERIFY"
+test -n "$SB_VALIDATE" && VALIDATE_OPT="--validate"
+test -n "$SB_VERIFY" && VERIFY_OPT="--verify" && VERIFY_ARGS="$SB_VERIFY"
 
-if [ -n "$VERIFY_ARGS" ]; then
+if [ -n "$VALIDATE_OPT" -o -n "$VERIFY_OPT" ]; then
     echo
-    print-container --imagefile $OUTPUT --no-print $VERIFY_ARGS $DEBUG_ARGS
+    print-container --imagefile "$OUTPUT" --no-print \
+                    $DEBUG_ARGS $VALIDATE_OPT $VERIFY_OPT "$VERIFY_ARGS"
+
     test $? -ne 0 && test -z $SB_PASS_ON_ERROR && RC=1
 fi
 
