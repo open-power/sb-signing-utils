@@ -44,6 +44,9 @@ usage () {
     echo "	-m, --mode              signing mode: local, independent or production"
     echo "	-s, --scratchDir        scratch directory to use for file caching, etc."
     echo "	-L, --label             name or identifier of the module being built (8 char max)"
+    echo "	    --archiveOut        file or directory to write archive (tarball) of artifacts"
+    echo "	                        if directory, must end in '/'.  for PWD, use '.'"
+    echo "	    --archiveIn         file containing archive of artifacts to import to cache"
     echo "	    --validate          validate the container after build"
     echo "	    --verify            verify the container after build, against the provided"
     echo "	                        value, or filename containing value, of the HW Keys hash"
@@ -77,6 +80,57 @@ to_lower () {
 
 to_upper () {
     echo $1 | tr a-z A-Z
+}
+
+is_path_full () {
+    # If a path has a leading slash, it's a full path, not relative
+    echo "$1" | egrep -q ^/
+}
+
+is_path_dir () {
+    # If a path has a trailing slash, it's a dir, not a file
+    echo "$1" | egrep -q /$
+}
+
+exportArchive () {
+    cd $SB_SCRATCH_DIR
+    if tar -zcf "$SB_ARCHIVE_OUT" $buildID/$LABEL/; then
+        echo "--> $P: Archive saved to: $SB_ARCHIVE_OUT"
+    else
+        echo "--> $P: Error $? saving archive to: $SB_ARCHIVE_OUT"
+    fi
+}
+
+importArchive () {
+    echo "--> $P: Importing achive: $SB_ARCHIVE_IN..."
+
+    test ! -f "$SB_ARCHIVE_IN" && die "archiveIn file not found: $SB_ARCHIVE_IN"
+
+    cd "$TOPDIR"
+
+    archpath=$(tar -tf "$SB_ARCHIVE_IN" | head -1)
+    archdir=$(echo $archpath | cut -d/ -f1)
+    archsubdir=$(echo $archpath | cut -d/ -f2)
+
+    test -z "$archdir" -o -z "$archsubdir" && \
+        die "Cannot determine archive content for $SB_ARCHIVE_IN"
+
+    if [ -d "$archsubdir" ]; then
+        # We already have this subdir in the cache, make a backup
+        cp -rpT $archsubdir $archsubdir.save
+    else
+        # We don't yet have a subdir by this name, create it
+        mkdir $archsubdir
+    fi
+
+    if ! tar -xf "$SB_ARCHIVE_IN"; then
+        echo "--> $P: Error $? unpacking archive: $SB_ARCHIVE_IN"
+    fi
+
+    # Move the unpacked files and remove the temporary archive directory
+    mv $archdir/$archsubdir/* $archsubdir/
+    rmdir $archdir/$archsubdir/
+    rmdir $archdir/
 }
 
 checkKey () {
@@ -171,7 +225,9 @@ for arg in "$@"; do
     "--scratchDir") set -- "$@" "-s" ;;
     "--label")      set -- "$@" "-L" ;;
     "--sign-project-FW-token")   set -- "$@" "-L" ;;
-    "--sign-project-config")   set -- "$@" "-7" ;;
+    "--sign-project-config")   set -- "$@" "-5" ;;
+    "--archiveIn")  set -- "$@" "-6" ;;
+    "--archiveOut") set -- "$@" "-7" ;;
     "--validate")   set -- "$@" "-8" ;;
     "--verify")     set -- "$@" "-9" ;;
     *)              set -- "$@" "$arg"
@@ -179,7 +235,7 @@ for arg in "$@"; do
 done
 
 # Process command-line arguments
-while getopts ?dvw:a:b:c:p:q:r:f:o:l:i:m:s:L:7:89: opt
+while getopts ?hdvw:a:b:c:p:q:r:f:o:l:i:m:s:L:5:6:7:89: opt
 do
   case "$opt" in
     v) VERBOSE="TRUE";;
@@ -198,7 +254,9 @@ do
     m) SIGN_MODE="$(to_lower $OPTARG)";;
     s) SB_SCRATCH_DIR="$OPTARG";;
     L) LABEL="$OPTARG";;
-    7) PROJECT_INI="$OPTARG";;
+    5) PROJECT_INI="$OPTARG";;
+    6) SB_ARCHIVE_IN="$OPTARG";;
+    7) SB_ARCHIVE_OUT="$OPTARG";;
     8) SB_VALIDATE="TRUE";;
     9) SB_VERIFY="$OPTARG";;
     h|\?) usage;;
@@ -313,7 +371,38 @@ else
     mkdir "$T"
 fi
 
+#
+# If --archiveOut requested, construct the path and check it now
+#
+if [ -n "$SB_ARCHIVE_OUT" ]; then
+
+    path=$SB_ARCHIVE_OUT
+
+    test "$path" == . && path=${PWD}/
+
+    if ! is_path_full "$path"; then
+        # Path is a relative path, prepend PWD
+        path=${PWD}/${path}
+    fi
+
+    if is_path_dir "$path"; then
+        # Path is a directory, append default filename
+        path=${path}$(to_lower $buildID)_${LABEL}.tgz
+    fi
+
+    test ! -d "${path%/*}" && die "archiveOut directory not found: ${path%/*}/"
+
+    SB_ARCHIVE_OUT=$path
+fi
+
+#
+# If --archiveIn requested, import the file now
+#
+test -n "$SB_ARCHIVE_IN" && importArchive "$SB_ARCHIVE_IN"
+
+#
 # Set arguments for (program) execution
+#
 test -n "$VERBOSE" && DEBUG_ARGS="$DEBUG_ARGS -v"
 test -n "$DEBUG" && DEBUG_ARGS="$DEBUG_ARGS -d"
 test -n "$WRAP" && DEBUG_ARGS="$DEBUG_ARGS -w $WRAP"
@@ -622,6 +711,11 @@ if [ -n "$VALIDATE_OPT" -o -n "$VERIFY_OPT" ]; then
 
     test $? -ne 0 && test -z $SB_PASS_ON_ERROR && RC=1
 fi
+
+#
+# Export archive
+#
+test -n "$SB_ARCHIVE_OUT" && exportArchive "$SB_ARCHIVE_OUT"
 
 #
 # Cleanup
