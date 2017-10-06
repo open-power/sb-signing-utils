@@ -313,7 +313,13 @@ fi
 #
 test -z "$PAYLOAD" && die "Input payload required"
 test -z "$OUTPUT" && die "Destination imagefile required"
-test ! -f "$PAYLOAD" && die "Can't open payload file: $PAYLOAD"
+
+if [ "$PAYLOAD" == __none ]; then
+    PAYLOAD=/dev/zero
+elif [ ! -f "$PAYLOAD"]; then
+    die "Can't open payload file: $PAYLOAD"
+fi
+
 
 if [ "$SIGN_MODE" == "production" ]
 then
@@ -369,6 +375,11 @@ if [ -d "$T" ]; then
 else
     echo "--> $P: Creating new cache subdir: $T"
     mkdir "$T"
+fi
+
+# Set a scratch file for output, if none provided.
+if [ "$OUTPUT" == __none ]; then
+    OUTPUT="$SB_SCRATCH_DIR/$(to_lower $buildID).scratch.out.img"
 fi
 
 #
