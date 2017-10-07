@@ -316,10 +316,9 @@ test -z "$OUTPUT" && die "Destination imagefile required"
 
 if [ "$PAYLOAD" == __none ]; then
     PAYLOAD=/dev/zero
-elif [ ! -f "$PAYLOAD"]; then
+elif [ ! -f "$PAYLOAD" ]; then
     die "Can't open payload file: $PAYLOAD"
 fi
-
 
 if [ "$SIGN_MODE" == "production" ]
 then
