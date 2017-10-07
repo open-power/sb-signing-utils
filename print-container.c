@@ -45,6 +45,15 @@ bool print_stats;
 bool verbose, debug;
 int wrap = 100;
 
+ecc_key_t ECDSA_KEY_NULL;
+
+typedef struct keyprops {
+	char index;
+	char *name;
+	const ecc_key_t *key;
+	const ecc_signature_t *sig;
+} Keyprops;
+
 static void usage(int status);
 
 static bool getPayloadHash(int fdin, unsigned char *md);
@@ -239,7 +248,23 @@ static void display_container(struct parsed_stb_container c)
 
 static bool validate_container(struct parsed_stb_container c, int fdin)
 {
+	static int n;
 	static int status = true;
+
+	Keyprops *k;
+
+	Keyprops hwKeylist[] = {
+		{ 'a', "HW_key_A", &(c.c->hw_pkey_a), &(c.pd->hw_sig_a) },
+		{ 'b', "HW_key_B", &(c.c->hw_pkey_b), &(c.pd->hw_sig_b) },
+		{ 'c', "HW_key_C", &(c.c->hw_pkey_c), &(c.pd->hw_sig_c) },
+		{ 0 },
+	};
+	Keyprops swKeylist[] = {
+		{ 'p', "SW_key_P", &(c.pd->sw_pkey_p), &(c.ssig->sw_sig_p) },
+		{ 'q', "SW_key_Q", &(c.pd->sw_pkey_q), &(c.ssig->sw_sig_q) },
+		{ 'r', "SW_key_R", &(c.pd->sw_pkey_r), &(c.ssig->sw_sig_r) },
+		{ 0 },
+	};
 
 	void *md = alloca(SHA512_DIGEST_LENGTH);
 	void *p;
@@ -252,12 +277,14 @@ static bool validate_container(struct parsed_stb_container c, int fdin)
 			SHA512_DIGEST_LENGTH);
 
 	// Verify HW key sigs.
-	status = verify_signature("HW sig A", md, SHA512_DIGEST_LENGTH,
-			c.pd->hw_sig_a, c.c->hw_pkey_a) && status;
-	status = verify_signature("HW sig B", md, SHA512_DIGEST_LENGTH,
-			c.pd->hw_sig_b, c.c->hw_pkey_b) && status;
-	status = verify_signature("HW sig C", md, SHA512_DIGEST_LENGTH,
-			c.pd->hw_sig_c, c.c->hw_pkey_c) && status;
+	for (k = hwKeylist; k->index; k++) {
+
+		if (memcmp(k->key, &ECDSA_KEY_NULL, sizeof(ecc_key_t)))
+			status = verify_signature(k->name, md, SHA512_DIGEST_LENGTH,
+					*(k->sig), *(k->key)) && status;
+		else
+			if (verbose) printf("%s is NULL, skipping signature check.\n", k->name);
+	}
 	if (verbose) printf("\n");
 
 	// Get SW header hash.
@@ -268,15 +295,14 @@ static bool validate_container(struct parsed_stb_container c, int fdin)
 			SHA512_DIGEST_LENGTH);
 
 	// Verify SW key sigs.
-	if (c.ph->sw_key_count >= 1)
-		status = verify_signature("SW sig P", md, SHA512_DIGEST_LENGTH,
-				c.ssig->sw_sig_p, c.pd->sw_pkey_p) && status;
-	if (c.ph->sw_key_count >= 2)
-		status = verify_signature("SW sig Q", md, SHA512_DIGEST_LENGTH,
-				c.ssig->sw_sig_q, c.pd->sw_pkey_q) && status;
-	if (c.ph->sw_key_count >= 3)
-		status = verify_signature("SW sig R", md, SHA512_DIGEST_LENGTH,
-				c.ssig->sw_sig_r, c.pd->sw_pkey_r) && status;
+	for (k = swKeylist, n = 1; k->index && n <= c.ph->sw_key_count; k++, n++) {
+
+		if (memcmp(k->key, &ECDSA_KEY_NULL, sizeof(ecc_key_t)))
+			status = verify_signature(k->name, md, SHA512_DIGEST_LENGTH,
+					*(k->sig), *(k->key)) && status;
+		else
+			if (verbose) printf("%s is NULL, skipping\n", k->name);
+	}
 	if (verbose) printf("\n");
 
 	// Verify Payload hash.
@@ -403,10 +429,10 @@ static bool verify_signature(const char *moniker, const unsigned char *dgst,
 	// Verify the signature.
 	r = ECDSA_do_verify(dgst, dgst_len, ecdsa_sig, ec_key);
 	if (r == 1) {
-		if (verbose) printf("%s is good: VERIFIED ./\n", moniker);
+		if (verbose) printf("%s signature is good: VERIFIED ./\n", moniker);
 		status = true;
 	} else if (r == 0) {
-		if (verbose) printf("%s FAILED to verify.\n", moniker);
+		if (verbose) printf("%s signature FAILED to verify.\n", moniker);
 		status = false;
 	} else {
 		die(EX_SOFTWARE, "%s", "Cannot ECDSA_do_verify");
