@@ -306,6 +306,13 @@ then
     test -n "$signtool_verify" && SB_VERIFY="$signtool_verify"
     test -n "$signtool_pass_on_validation_error" && \
         SB_PASS_ON_ERROR="$signtool_pass_on_validation_error"
+
+    test -n "$signproject_hw_signing_project_basename" && \
+        SF_HW_SIGNING_PROJECT_BASE="$signproject_hw_signing_project_basename"
+    test -n "$signproject_fw_signing_project_basename" && \
+        SF_FW_SIGNING_PROJECT_BASE="$signproject_fw_signing_project_basename"
+    test -n "$signproject_getpubkey_project_basename" && \
+        SF_GETPUBKEY_PROJECT_BASE="$signproject_getpubkey_project_basename"
 fi
 
 #
@@ -413,12 +420,22 @@ test -n "$SB_ARCHIVE_IN" && importArchive "$SB_ARCHIVE_IN"
 #
 # Set arguments for (program) execution
 #
-test -n "$VERBOSE" && DEBUG_ARGS="$DEBUG_ARGS -v"
+test -n "$VERBOSE" && DEBUG_ARGS=" -v"
 test -n "$DEBUG" && DEBUG_ARGS="$DEBUG_ARGS -d"
 test -n "$WRAP" && DEBUG_ARGS="$DEBUG_ARGS -w $WRAP"
 test -n "$HW_FLAGS" && ADDL_ARGS="$ADDL_ARGS --hw-flags $HW_FLAGS"
 test -n "$CS_OFFSET" && ADDL_ARGS="$ADDL_ARGS --sw-cs-offset $CS_OFFSET"
 test -n "$LABEL" && ADDL_ARGS="$ADDL_ARGS --label $LABEL"
+
+test -n "$VERBOSE" && SF_DEBUG_ARGS=" -v"
+test -n "$DEBUG" && SF_DEBUG_ARGS="$SF_DEBUG_ARGS -d -stdout"
+
+#
+# Set defaults for signframework project basenames
+#
+: ${SF_HW_SIGNING_PROJECT_BASE:=sign_ecc_pwr_hw_key}
+: ${SF_FW_SIGNING_PROJECT_BASE:=sign_ecc_pwr_fw_key_op_bld}
+: ${SF_GETPUBKEY_PROJECT_BASE:=getpubkeyecc}
 
 #
 # Get the public keys
@@ -465,8 +482,7 @@ then
         # TODO: Add full support for user-specified keys in Production mode.
         # Currently we use it only to check if __skip was specified.
 
-        SF_PROJECT_BASE=sign_ecc_pwr_hw_key
-        SF_PROJECT=${SF_PROJECT_BASE}_${KEY}
+        SF_PROJECT=${SF_HW_SIGNING_PROJECT_BASE}_${KEY}
         KEYFILE=project.$SF_PROJECT.HW_key_$KEY.raw
 
         # If no keyfile in the current dir, try to find one. If none found, try to get one.
@@ -482,9 +498,11 @@ then
                 cp -p $KEYFOUND "$T/"
             else
                 echo "--> $P: Requesting public key for HW key $(to_upper $KEY)..."
-                sf_client -project getpubkeyecc -param "-signproject $SF_PROJECT" \
-                          -epwd "$SF_EPWD" -comments "Requesting $SF_PROJECT"  \
-                          -url sftp://$SF_USER@$SF_SERVER -pkey "$SF_SSHKEY" -o "$T/$KEYFILE"
+                sf_client $SF_DEBUG_ARGS -project $SF_GETPUBKEY_PROJECT_BASE \
+                          -param "-signproject $SF_PROJECT" \
+                          -epwd "$SF_EPWD" -comments "Requesting $SF_PROJECT" \
+                          -url sftp://$SF_USER@$SF_SERVER -pkey "$SF_SSHKEY" \
+                          -o "$T/$KEYFILE"
                 # TODO Check return code, fail on error...
                 echo "--> $P: Retrieved public key for HW key $(to_upper $KEY)."
             fi
@@ -502,8 +520,7 @@ then
         test "$KEYFILE" == __skip && break
         test "$KEYFILE" == __getsig && continue
 
-        SF_PROJECT_BASE=sign_ecc_pwr_fw_key_op_bld
-        SF_PROJECT=${SF_PROJECT_BASE}_${KEY}
+        SF_PROJECT=${SF_FW_SIGNING_PROJECT_BASE}_${KEY}
         KEYFILE=project.$SF_PROJECT.SW_key_$KEY.raw
 
         if [ -f "$T/$KEYFILE" ]
@@ -518,9 +535,11 @@ then
                 cp -p $KEYFOUND "$T/"
             else
                 echo "--> $P: Requesting public key for SW key $(to_upper $KEY)..."
-                sf_client -project getpubkeyecc -param "-signproject $SF_PROJECT" \
+                sf_client $SF_DEBUG_ARGS -project $SF_GETPUBKEY_PROJECT_BASE \
+                          -param "-signproject $SF_PROJECT" \
                           -epwd "$SF_EPWD" -comments "Requesting $SF_PROJECT" \
-                          -url sftp://$SF_USER@$SF_SERVER -pkey "$SF_SSHKEY" -o "$T/$KEYFILE"
+                          -url sftp://$SF_USER@$SF_SERVER -pkey "$SF_SSHKEY" \
+                          -o "$T/$KEYFILE"
                 # TODO Check return code, fail on error...
                 echo "--> $P: Retrieved public key for SW key $(to_upper $KEY)."
             fi
@@ -609,8 +628,7 @@ then
 elif [ "$SIGN_MODE" == "production" ]
 then
     for KEY in a b c; do
-        SF_PROJECT_BASE=sign_ecc_pwr_hw_key
-        SF_PROJECT=${SF_PROJECT_BASE}_${KEY}
+        SF_PROJECT=${SF_HW_SIGNING_PROJECT_BASE}_${KEY}
         SIGFILE=project.$SF_PROJECT.HW_sig_$KEY.raw
 
         varname=HW_KEY_$(to_upper $KEY); KEYFILE=${!varname}
@@ -635,7 +653,7 @@ then
                 cp -p $SIGFOUND $T/
             else
                 echo "--> $P: Requesting signature for HW key $(to_upper $KEY)..."
-                sf_client -project $SF_PROJECT -epwd "$SF_EPWD" \
+                sf_client $SF_DEBUG_ARGS -project $SF_PROJECT -epwd "$SF_EPWD" \
                           -comments "Requesting sig for $SF_PROJECT" \
                           -url sftp://$SF_USER@$SF_SERVER -pkey "$SF_SSHKEY" \
                           -payload  "$T/prefix_hdr" -o "$T/$SIGFILE"
@@ -649,8 +667,7 @@ then
     done
 
     for KEY in p q r; do
-        SF_PROJECT_BASE=sign_ecc_pwr_fw_key_op_bld
-        SF_PROJECT=${SF_PROJECT_BASE}_${KEY}
+        SF_PROJECT=${SF_FW_SIGNING_PROJECT_BASE}_${KEY}
         SIGFILE=project.$SF_PROJECT.SW_sig_$KEY.raw
 
         varname=SW_KEY_$(to_upper $KEY); KEYFILE=${!varname}
@@ -667,7 +684,7 @@ then
         else
             echo "--> $P: Requesting signature for SW key $(to_upper $KEY)..."
             sha512sum "$T/software_hdr" | cut -d' ' -f1 | xxd -p -r > "$T/software_hdr.sha512.bin"
-            sf_client -project $SF_PROJECT -epwd "$SF_EPWD" \
+            sf_client $SF_DEBUG_ARGS -project $SF_PROJECT -epwd "$SF_EPWD" \
                       -comments "Requesting sig for $LABEL from $SF_PROJECT" \
                       -url sftp://$SF_USER@$SF_SERVER -pkey "$SF_SSHKEY" \
                       -payload "$T/software_hdr.sha512.bin" -o "$T/$SIGFILE"
