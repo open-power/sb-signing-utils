@@ -25,7 +25,7 @@
 
 ACLOCAL_AMFLAGS = -I m4
 
-bin_PROGRAMS = create-container print-container
+bin_PROGRAMS = create-container print-container hashkeys
 
 dist_bin_SCRIPTS = crtSignedContainer.sh sign-with-local-keys.sh
 
@@ -45,3 +45,10 @@ print_container_SOURCES = \
 print_container_CPPFLAGS = $(AM_CPPFLAGS) -I. -g3 -std=gnu99
 print_container_LDFLAGS =
 print_container_LDADD = -lssl -lcrypto
+
+hashkeys_SOURCES = \
+	hashkeys.c
+
+hashkeys_CPPFLAGS = $(AM_CPPFLAGS) -I. -g3 -std=gnu99
+hashkeys_LDFLAGS =
+hashkeys_LDADD = -lssl -lcrypto

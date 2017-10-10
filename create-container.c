@@ -487,17 +487,17 @@ int main(int argc, char* argv[])
 	memset(c->hw_pkey_c, 0, sizeof(ecc_key_t));
 	if (params.hw_keyfn_a) {
 		getPublicKeyRaw(&pubkeyraw, params.hw_keyfn_a);
-		verbose_print((char *) "pubkey A = ", pubkeyraw, sizeof(pubkeyraw) - 1);
+		verbose_print((char *) "pubkey A = ", pubkeyraw, sizeof(pubkeyraw));
 		memcpy(c->hw_pkey_a, pubkeyraw, sizeof(ecc_key_t));
 	}
 	if (params.hw_keyfn_b) {
 		getPublicKeyRaw(&pubkeyraw, params.hw_keyfn_b);
-		verbose_print((char *) "pubkey B = ", pubkeyraw, sizeof(pubkeyraw) - 1);
+		verbose_print((char *) "pubkey B = ", pubkeyraw, sizeof(pubkeyraw));
 		memcpy(c->hw_pkey_b, pubkeyraw, sizeof(ecc_key_t));
 	}
 	if (params.hw_keyfn_c) {
 		getPublicKeyRaw(&pubkeyraw, params.hw_keyfn_c);
-		verbose_print((char *) "pubkey C = ", pubkeyraw, sizeof(pubkeyraw) - 1);
+		verbose_print((char *) "pubkey C = ", pubkeyraw, sizeof(pubkeyraw));
 		memcpy(c->hw_pkey_c, pubkeyraw, sizeof(ecc_key_t));
 	}
 	p = SHA512(c->hw_pkey_a, sizeof(ecc_key_t) * 3, md);
@@ -567,19 +567,19 @@ int main(int argc, char* argv[])
 	// Write the FW keys.
 	if (params.sw_keyfn_p) {
 		getPublicKeyRaw(&pubkeyraw, params.sw_keyfn_p);
-		verbose_print((char *) "pubkey P = ", pubkeyraw, sizeof(pubkeyraw) - 1);
+		verbose_print((char *) "pubkey P = ", pubkeyraw, sizeof(pubkeyraw));
 		memcpy(pd->sw_pkey_p, pubkeyraw, sizeof(ecc_key_t));
 		ph->sw_key_count++;
 	}
 	if (params.sw_keyfn_q) {
 		getPublicKeyRaw(&pubkeyraw, params.sw_keyfn_q);
-		verbose_print((char *) "pubkey Q = ", pubkeyraw, sizeof(pubkeyraw) - 1);
+		verbose_print((char *) "pubkey Q = ", pubkeyraw, sizeof(pubkeyraw));
 		memcpy(pd->sw_pkey_q, pubkeyraw, sizeof(ecc_key_t));
 		ph->sw_key_count++;
 	}
 	if (params.sw_keyfn_r) {
 		getPublicKeyRaw(&pubkeyraw, params.sw_keyfn_r);
-		verbose_print((char *) "pubkey R = ", pubkeyraw, sizeof(pubkeyraw) - 1);
+		verbose_print((char *) "pubkey R = ", pubkeyraw, sizeof(pubkeyraw));
 		memcpy(pd->sw_pkey_r, pubkeyraw, sizeof(ecc_key_t));
 		ph->sw_key_count++;
 	}
