@@ -39,8 +39,9 @@
 #include <openssl/pem.h>
 #include <openssl/sha.h>
 
-#define PREFIX_HDR 0
-#define SOFTWARE_HDR 1
+#define CONTAINER_HDR 0
+#define PREFIX_HDR 1
+#define SOFTWARE_HDR 2
 
 char *progname;
 
@@ -201,34 +202,37 @@ void writeHdr(void *hdr, const char *outFile, int hdr_type)
 	int r, hdr_sz;
 	unsigned char md[SHA512_DIGEST_LENGTH];
 
+	switch (hdr_type) {
+	case CONTAINER_HDR:
+		hdr_sz = SECURE_BOOT_HEADERS_SIZE;
+		break;
+	case PREFIX_HDR:
+		hdr_sz = sizeof(ROM_prefix_header_raw);
+		SHA512(hdr, hdr_sz, md);
+		verbose_print((char *) "PR header hash  = ", md, sizeof(md));
+		break;
+	case SOFTWARE_HDR:
+		hdr_sz = sizeof(ROM_sw_header_raw);
+		SHA512(hdr, hdr_sz, md);
+		verbose_print((char *) "SW header hash  = ", md, sizeof(md));
+		break;
+	default:
+		die(EX_SOFTWARE, "Unknown header type (%d)", hdr_type);
+	}
+
 	fdout = open(outFile, O_WRONLY | O_CREAT | O_TRUNC,
 			S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
 	if (fdout <= 0)
 		die(EX_CANTCREAT, "Cannot create output file: %s", outFile);
 
-	switch (hdr_type) {
-	case PREFIX_HDR:
-		hdr_sz = sizeof(ROM_prefix_header_raw);
-		break;
-	case SOFTWARE_HDR:
-		hdr_sz = sizeof(ROM_sw_header_raw);
-		break;
-	default:
-		die(EX_SOFTWARE, "Bad header type (%d)", hdr_type);
-	}
 	r = write(fdout, (const void *) hdr, hdr_sz);
+	close(fdout);
+
 	if (r < hdr_sz)
-		die(EX_SOFTWARE, "Cannot write container (r = %d)", r);
+		die(EX_SOFTWARE, "Error writing header file (r = %d)", r);
 
 	debug_msg("Wrote %d bytes to %s", r, outFile);
 
-	SHA512(hdr, r, md);
-	if (hdr_type == PREFIX_HDR)
-		verbose_print((char *) "PR header hash  = ", md, sizeof(md));
-	else
-		verbose_print((char *) "SW header hash  = ", md, sizeof(md));
-
-	close(fdout);
 	return;
 }
 
@@ -267,6 +271,7 @@ __attribute__((__noreturn__)) void usage (int status)
 			" -L, --label             character field up to 8 bytes, written to SW header\n"
 			"     --dumpPrefixHdr     file to dump Prefix header blob (to be signed)\n"
 			"     --dumpSwHdr         file to dump Software header blob (to be signed)\n"
+			"     --dumpContrHdr      file to dump full Container header (w/o payload)\n"
 			"Note:\n"
 			"- Keys A,B,C,P,Q,R must be valid p521 ECC keys. Keys may be provided as public\n"
 			"  or private key in PEM format, or public key in uncompressed raw format.\n"
@@ -301,6 +306,7 @@ static struct option const opts[] = {
 	{ "label",            required_argument, 0,  'L' },
 	{ "dumpPrefixHdr",    required_argument, 0,  128 },
 	{ "dumpSwHdr",        required_argument, 0,  129 },
+	{ "dumpContrHdr",     required_argument, 0,  130 },
 	{}
 };
 
@@ -326,6 +332,7 @@ static struct {
 	char *label;
 	char *prhdrfn;
 	char *swhdrfn;
+	char *cthdrfn;
 } params;
 
 
@@ -443,6 +450,9 @@ int main(int argc, char* argv[])
 			break;
 		case 129:
 			params.swhdrfn = optarg;
+			break;
+		case 130:
+			params.cthdrfn = optarg;
 			break;
 		default:
 			usage(EX_USAGE);
@@ -664,6 +674,10 @@ int main(int argc, char* argv[])
 		verbose_print((char *) "signature R = ", sigraw, sizeof(sigraw));
 		memcpy(ssig->sw_sig_r, sigraw, sizeof(ecc_key_t));
 	}
+
+	// Dump the full container header.
+	if (params.cthdrfn)
+		writeHdr((void *) c, params.cthdrfn, CONTAINER_HDR);
 
 	// Print container stats.
 	size = (uint8_t*) ph - (uint8_t *) c;

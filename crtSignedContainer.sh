@@ -44,6 +44,7 @@ usage () {
     echo "	-m, --mode              signing mode: local, independent or production"
     echo "	-s, --scratchDir        scratch directory to use for file caching, etc."
     echo "	-L, --label             name or identifier of the module being built (8 char max)"
+    echo "	    --contrHdrOut       file write container header only (w/o payload)"
     echo "	    --archiveOut        file or directory to write archive (tarball) of artifacts"
     echo "	                        if directory, must end in '/'.  for PWD, use '.'"
     echo "	    --archiveIn         file containing archive of artifacts to import to cache"
@@ -225,7 +226,8 @@ for arg in "$@"; do
     "--scratchDir") set -- "$@" "-s" ;;
     "--label")      set -- "$@" "-L" ;;
     "--sign-project-FW-token")   set -- "$@" "-L" ;;
-    "--sign-project-config")   set -- "$@" "-5" ;;
+    "--sign-project-config")   set -- "$@" "-4" ;;
+    "--contrHdrOut") set -- "$@" "-5" ;;
     "--archiveIn")  set -- "$@" "-6" ;;
     "--archiveOut") set -- "$@" "-7" ;;
     "--validate")   set -- "$@" "-8" ;;
@@ -235,7 +237,7 @@ for arg in "$@"; do
 done
 
 # Process command-line arguments
-while getopts ?hdvw:a:b:c:p:q:r:f:o:l:i:m:s:L:5:6:7:89: opt
+while getopts ?hdvw:a:b:c:p:q:r:f:o:l:i:m:s:L:4:5:6:7:89: opt
 do
   case "$opt" in
     v) VERBOSE="TRUE";;
@@ -254,7 +256,8 @@ do
     m) SIGN_MODE="$(to_lower $OPTARG)";;
     s) SB_SCRATCH_DIR="$OPTARG";;
     L) LABEL="$OPTARG";;
-    5) PROJECT_INI="$OPTARG";;
+    4) PROJECT_INI="$OPTARG";;
+    5) SB_CONTR_HDR_OUT="$OPTARG";;
     6) SB_ARCHIVE_IN="$OPTARG";;
     7) SB_ARCHIVE_OUT="$OPTARG";;
     8) SB_VALIDATE="TRUE";;
@@ -426,6 +429,7 @@ test -n "$WRAP" && DEBUG_ARGS="$DEBUG_ARGS -w $WRAP"
 test -n "$HW_FLAGS" && ADDL_ARGS="$ADDL_ARGS --hw-flags $HW_FLAGS"
 test -n "$CS_OFFSET" && ADDL_ARGS="$ADDL_ARGS --sw-cs-offset $CS_OFFSET"
 test -n "$LABEL" && ADDL_ARGS="$ADDL_ARGS --label $LABEL"
+test -n "$SB_CONTR_HDR_OUT" && CONTR_HDR_OUT_OPT="--dumpContrHdr"
 
 test -n "$VERBOSE" && SF_DEBUG_ARGS=" -v"
 test -n "$DEBUG" && SF_DEBUG_ARGS="$SF_DEBUG_ARGS -d -stdout"
@@ -705,13 +709,23 @@ if [ -n "$HW_SIG_ARGS" -o -n "$SW_SIG_ARGS" ]; then
     create-container $HW_KEY_ARGS $SW_KEY_ARGS \
                      $HW_SIG_ARGS $SW_SIG_ARGS \
                      --payload "$PAYLOAD" --imagefile "$OUTPUT" \
+                     $CONTR_HDR_OUT_OPT "$SB_CONTR_HDR_OUT" \
                      $DEBUG_ARGS \
                      $ADDL_ARGS
+
+    test -n "$SB_CONTR_HDR_OUT" && \
+        echo "--> $P: Container header saved to: $SB_CONTR_HDR_OUT"
+
 else
     echo "--> $P: No signatures available."
 fi
 
 echo "--> $P: Container $LABEL build completed."
+
+#
+# Export archive
+#
+test -n "$SB_ARCHIVE_OUT" && exportArchive "$SB_ARCHIVE_OUT"
 
 #
 # Validate, verify the container
@@ -738,11 +752,6 @@ if [ -n "$VALIDATE_OPT" -o -n "$VERIFY_OPT" ]; then
 
     test $? -ne 0 && test -z $SB_PASS_ON_ERROR && RC=1
 fi
-
-#
-# Export archive
-#
-test -n "$SB_ARCHIVE_OUT" && exportArchive "$SB_ARCHIVE_OUT"
 
 #
 # Cleanup
