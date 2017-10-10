@@ -31,12 +31,12 @@ usage () {
     echo "	-v, --verbose           show verbose output"
     echo "	-d, --debug             show additional debug output"
     echo "	-w, --wrap              column to wrap long output in verbose mode"
-    echo "	-a, --hwPrivKeyA        file containing HW key A private key in PEM format"
-    echo "	-b, --hwPrivKeyB        file containing HW key B private key in PEM format"
-    echo "	-c, --hwPrivKeyC        file containing HW key C private key in PEM format"
-    echo "	-p, --swPrivKeyP        file containing SW key P private key in PEM format"
-    echo "	-q, --swPrivKeyQ        file containing SW key Q private key in PEM format"
-    echo "	-r, --swPrivKeyR        file containing SW key R private key in PEM format"
+    echo "	-a, --hwKeyA            file containing HW key A private key in PEM format"
+    echo "	-b, --hwKeyB            file containing HW key B private key in PEM format"
+    echo "	-c, --hwKeyC            file containing HW key C private key in PEM format"
+    echo "	-p, --swKeyP            file containing SW key P private key in PEM format"
+    echo "	-q, --swKeyQ            file containing SW key Q private key in PEM format"
+    echo "	-r, --swKeyR            file containing SW key R private key in PEM format"
     echo "	-l, --protectedPayload  file containing the payload to be signed"
     echo "	-i, --out               file to write containerized payload"
     echo "	-o, --code-start-offset code start offset for software header in hex"
@@ -218,6 +218,12 @@ for arg in "$@"; do
     "--swPrivKeyP") set -- "$@" "-p" ;;
     "--swPrivKeyQ") set -- "$@" "-q" ;;
     "--swPrivKeyR") set -- "$@" "-r" ;;
+    "--hwKeyA") set -- "$@" "-a" ;;
+    "--hwKeyB") set -- "$@" "-b" ;;
+    "--hwKeyC") set -- "$@" "-c" ;;
+    "--swKeyP") set -- "$@" "-p" ;;
+    "--swKeyQ") set -- "$@" "-q" ;;
+    "--swKeyR") set -- "$@" "-r" ;;
     "--flags")      set -- "$@" "-f" ;;
     "--code-start-offset") set -- "$@" "-o" ;;
     "--protectedPayload")  set -- "$@" "-l" ;;
