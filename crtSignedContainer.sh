@@ -103,18 +103,18 @@ exportArchive () {
 }
 
 importArchive () {
-    echo "--> $P: Importing achive: $SB_ARCHIVE_IN..."
+    echo "--> $P: Importing archive: $1..."
 
-    test ! -f "$SB_ARCHIVE_IN" && die "archiveIn file not found: $SB_ARCHIVE_IN"
+    test ! -f "$1" && die "archiveIn file not found: $1"
 
     cd "$TOPDIR"
 
-    archpath=$(tar -tf "$SB_ARCHIVE_IN" | head -1)
+    archpath=$(tar -tf "$1" | head -1)
     archdir=$(echo $archpath | cut -d/ -f1)
     archsubdir=$(echo $archpath | cut -d/ -f2)
 
     test -z "$archdir" -o -z "$archsubdir" && \
-        die "Cannot determine archive content for $SB_ARCHIVE_IN"
+        die "Cannot determine archive content for $1"
 
     if [ -d "$archsubdir" ]; then
         # We already have this subdir in the cache, make a backup
@@ -124,8 +124,8 @@ importArchive () {
         mkdir $archsubdir
     fi
 
-    if ! tar -xf "$SB_ARCHIVE_IN"; then
-        echo "--> $P: Error $? unpacking archive: $SB_ARCHIVE_IN"
+    if ! tar -xf "$1"; then
+        echo "--> $P: Error $? unpacking archive: $1"
     fi
 
     # Move the unpacked files and remove the temporary archive directory
@@ -422,9 +422,17 @@ if [ -n "$SB_ARCHIVE_OUT" ]; then
 fi
 
 #
-# If --archiveIn requested, import the file now
+# If --archiveIn requested, import the file(s) now
 #
-test -n "$SB_ARCHIVE_IN" && importArchive "$SB_ARCHIVE_IN"
+if [ -n "$SB_ARCHIVE_IN" ]
+then
+    IFS=","
+    for f in $SB_ARCHIVE_IN
+    do
+        f="${f# }"; f="${f% }" # strip leading or trailing space
+        importArchive "$f"
+    done
+fi
 
 #
 # Set arguments for (program) execution
