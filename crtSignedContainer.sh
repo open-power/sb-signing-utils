@@ -655,7 +655,6 @@ then
         # Handle the special values, or empty value
         test -z "$KEYFILE" && continue
         test "$KEYFILE" == __skip && continue
-        test "$KEYFILE" == __getkey && continue
         # TODO: Add full support for user-specified keys in Production mode.
         # Currently we use it only to check if __skip or __getkey was specified.
 
@@ -671,6 +670,7 @@ then
                 echo "--> $P: Found signature for HW key $(to_upper $KEY)."
                 cp -p $SIGFOUND $T/
             else
+                test "$KEYFILE" == __getkey && continue
                 echo "--> $P: Requesting signature for HW key $(to_upper $KEY)..."
                 sf_client $SF_DEBUG_ARGS -project $SF_PROJECT -epwd "$SF_EPWD" \
                           -comments "Requesting sig for $SF_PROJECT" \
@@ -694,13 +694,13 @@ then
         # Handle the special values, or empty value
         test -z "$KEYFILE" && break
         test "$KEYFILE" == __skip && break
-        test "$KEYFILE" == __getkey && continue
 
         # If no signature in the current dir, request one.
         if [ -f "$T/$SIGFILE" ]
         then
             echo "--> $P: Found signature for SW key $(to_upper $KEY)."
         else
+            test "$KEYFILE" == __getkey && continue
             echo "--> $P: Requesting signature for SW key $(to_upper $KEY)..."
             sha512sum "$T/software_hdr" | cut -d' ' -f1 | xxd -p -r > "$T/software_hdr.sha512.bin"
             sf_client $SF_DEBUG_ARGS -project $SF_PROJECT -epwd "$SF_EPWD" \
