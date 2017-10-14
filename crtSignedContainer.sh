@@ -432,6 +432,7 @@ then
         f="${f# }"; f="${f% }" # strip leading or trailing space
         importArchive "$f"
     done
+    unset IFS
 fi
 
 #
