@@ -17,10 +17,10 @@ exec_prefix = $(prefix)
 bindir = $(exec_prefix)/bin
 
 install:
-	cp create-container print-container hashkeys $(bindir)/
-	cp crtSignedContainer.sh sign-with-local-keys.sh $(bindir)/
+	cp create-container print-container hashkeys "$(bindir)"
+	cp crtSignedContainer.sh sign-with-local-keys.sh "$(bindir)"
 
 uninstall:
-	cd $(bindir) && $(RM) create-container print-container hashkeys
-	cd $(bindir) && $(RM) crtSignedContainer.sh sign-with-local-keys.sh
+	cd "$(bindir)" && $(RM) create-container print-container hashkeys
+	cd "$(bindir)" && $(RM) crtSignedContainer.sh sign-with-local-keys.sh
 
