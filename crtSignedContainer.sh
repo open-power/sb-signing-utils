@@ -195,7 +195,7 @@ parseIni () {
         elif test -n "$value"
         then
             # This is a property, set it
-            declare -g "${section}_${property}=$value"
+            eval "${section}_${property}=\"$value\""
         fi
     done < "$1"
 }
