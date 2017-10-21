@@ -257,13 +257,13 @@ static bool validate_container(struct parsed_stb_container c, int fdin)
 		{ 'a', "HW_key_A", &(c.c->hw_pkey_a), &(c.pd->hw_sig_a) },
 		{ 'b', "HW_key_B", &(c.c->hw_pkey_b), &(c.pd->hw_sig_b) },
 		{ 'c', "HW_key_C", &(c.c->hw_pkey_c), &(c.pd->hw_sig_c) },
-		{ 0 },
+		{ 0, NULL, NULL, NULL },
 	};
 	Keyprops swKeylist[] = {
 		{ 'p', "SW_key_P", &(c.pd->sw_pkey_p), &(c.ssig->sw_sig_p) },
 		{ 'q', "SW_key_Q", &(c.pd->sw_pkey_q), &(c.ssig->sw_sig_q) },
 		{ 'r', "SW_key_R", &(c.pd->sw_pkey_r), &(c.ssig->sw_sig_r) },
-		{ 0 },
+		{ 0, NULL, NULL, NULL },
 	};
 
 	void *md = alloca(SHA512_DIGEST_LENGTH);
@@ -564,7 +564,7 @@ static struct option const opts[] = {
 	{ "verify",           required_argument, 0,  129 },
 	{ "no-print",         no_argument,       0,  130 },
 	{ "print",            no_argument,       0,  131 },
-	{}
+	{ NULL, 0, NULL, 0 }
 };
 
 static struct {

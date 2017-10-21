@@ -307,7 +307,7 @@ static struct option const opts[] = {
 	{ "dumpPrefixHdr",    required_argument, 0,  128 },
 	{ "dumpSwHdr",        required_argument, 0,  129 },
 	{ "dumpContrHdr",     required_argument, 0,  130 },
-	{}
+	{ NULL, 0, NULL, 0 }
 };
 
 static struct {

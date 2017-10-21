@@ -168,7 +168,7 @@ static struct option const opts[] = {
 	{ "outfile",          required_argument, 0,  'o' },
 	{ "ascii",            no_argument,       0,  128 },
 	{ "binary",           no_argument,       0,  129 },
-	{}
+	{ NULL, 0, NULL, 0 }
 };
 
 static struct {
