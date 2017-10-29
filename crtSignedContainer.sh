@@ -16,9 +16,6 @@ VERIFY_ARGS=""
 DEBUG_ARGS=""
 ADDL_ARGS=""
 
-VERBOSE=""
-DEBUG=""
-WRAP=""
 RC=0
 
 #
@@ -246,9 +243,9 @@ done
 while getopts ?hdvw:a:b:c:p:q:r:f:o:l:i:m:s:L:4:5:6:7:89: opt
 do
   case "$opt" in
-    v) VERBOSE="TRUE";;
-    d) DEBUG="TRUE";;
-    w) WRAP="$OPTARG";;
+    v) SB_VERBOSE="TRUE";;
+    d) SB_DEBUG="TRUE";;
+    w) SB_WRAP="$OPTARG";;
     a) HW_KEY_A="$OPTARG";;
     b) HW_KEY_B="$OPTARG";;
     c) HW_KEY_C="$OPTARG";;
@@ -438,16 +435,16 @@ fi
 #
 # Set arguments for (program) execution
 #
-test -n "$VERBOSE" && DEBUG_ARGS=" -v"
-test -n "$DEBUG" && DEBUG_ARGS="$DEBUG_ARGS -d"
-test -n "$WRAP" && DEBUG_ARGS="$DEBUG_ARGS -w $WRAP"
+test -n "$SB_VERBOSE" && DEBUG_ARGS=" -v"
+test -n "$SB_DEBUG" && DEBUG_ARGS="$DEBUG_ARGS -d"
+test -n "$SB_WRAP" && DEBUG_ARGS="$DEBUG_ARGS -w $SB_WRAP"
 test -n "$HW_FLAGS" && ADDL_ARGS="$ADDL_ARGS --hw-flags $HW_FLAGS"
 test -n "$CS_OFFSET" && ADDL_ARGS="$ADDL_ARGS --sw-cs-offset $CS_OFFSET"
 test -n "$LABEL" && ADDL_ARGS="$ADDL_ARGS --label $LABEL"
 test -n "$SB_CONTR_HDR_OUT" && CONTR_HDR_OUT_OPT="--dumpContrHdr"
 
-test -n "$VERBOSE" && SF_DEBUG_ARGS=" -v"
-test -n "$DEBUG" && SF_DEBUG_ARGS="$SF_DEBUG_ARGS -d -stdout"
+test -n "$SB_VERBOSE" && SF_DEBUG_ARGS=" -v"
+test -n "$SB_DEBUG" && SF_DEBUG_ARGS="$SF_DEBUG_ARGS -d -stdout"
 
 #
 # Set defaults for signframework project basenames
