@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include <config.h>
+
 #include <alloca.h>
 #include <errno.h>
 #include <fcntl.h>
