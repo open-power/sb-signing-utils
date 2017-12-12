@@ -104,14 +104,21 @@ importArchive () {
 
     test ! -f "$1" && die "archiveIn file not found: $1"
 
+    if ! is_path_full "$1"; then
+        local f="$PWD/$1"
+    else
+        local f="$1"
+    fi
+
+    local previous_wd=$PWD
     cd "$TOPDIR"
 
-    archpath=$(tar -tf "$1" | head -1)
+    archpath=$(tar -tf "$f" | head -1)
     archdir=$(echo $archpath | cut -d/ -f1)
     archsubdir=$(echo $archpath | cut -d/ -f2)
 
     test -z "$archdir" -o -z "$archsubdir" && \
-        die "Cannot determine archive content for $1"
+        die "Cannot determine archive content for $f"
 
     if [ -d "$archsubdir" ]; then
         # We already have this subdir in the cache, make a backup
@@ -121,14 +128,15 @@ importArchive () {
         mkdir $archsubdir
     fi
 
-    if ! tar -xf "$1"; then
-        echo "--> $P: Error $? unpacking archive: $1"
+    if ! tar -xf "$f"; then
+        echo "--> $P: Error $? unpacking archive: $f"
     fi
 
     # Move the unpacked files and remove the temporary archive directory
     mv $archdir/$archsubdir/* $archsubdir/
     rmdir $archdir/$archsubdir/
     rmdir $archdir/
+    cd $previous_wd
 }
 
 checkKey () {

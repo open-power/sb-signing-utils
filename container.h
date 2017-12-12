@@ -17,11 +17,11 @@
 #ifndef __STB_CONTAINER_H
 #define __STB_CONTAINER_H
 
+#include <stddef.h>
 #include <stdint.h>
-#include <stdlib.h>
-#include <stdbool.h>
-#include <ccan/endian/endian.h>
-#include <ccan/short_types/short_types.h>
+
+#include "ccan/endian/endian.h"
+#include "ccan/short_types/short_types.h"
 
 #define PASSED 1
 #define FAILED 0

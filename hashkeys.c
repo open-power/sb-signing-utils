@@ -16,26 +16,27 @@
 
 #include <config.h>
 
-#include "container.c"
-#include "container.h"
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdbool.h>
-#include <getopt.h>
-#include <unistd.h>
-#include <string.h>
 #include <errno.h>
-#include <limits.h>
-#include <sys/stat.h>
-#include <sys/mman.h>
 #include <fcntl.h>
-#include <sysexits.h>
-
+#include <getopt.h>
+#include <limits.h>
+#include <openssl/bn.h>
 #include <openssl/ec.h>
-#include <openssl/ecdsa.h>
+#include <openssl/evp.h>
+#include <openssl/ossl_typ.h>
 #include <openssl/pem.h>
 #include <openssl/sha.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <sysexits.h>
+#include <unistd.h>
+
+#include "container.c"
+#include "container.h"
 
 #define BINARY_OUT 0
 #define ASCII_OUT 1
