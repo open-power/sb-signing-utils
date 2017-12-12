@@ -21,26 +21,40 @@ AC_HEADER_STDC
 
 # Check endianness
 AC_MSG_CHECKING([system endianness])
-#AC_PREPROC_IFELSE(
-#  [AC_LANG_PROGRAM([[#include <endian.h>]],
-#		   [[#if __BYTE_ORDER != __LITTLE_ENDIAN]]
-#		   [[#error]]
-#		   [[#endif]])],
-#  endian=little
-#  little_endian=1
-#  big_endian=0)
-#
-#AC_PREPROC_IFELSE(
-#  [AC_LANG_PROGRAM([[#include <endian.h>]],
-#		   [[#if __BYTE_ORDER != __BIG_ENDIAN]]
-#		   [[#error]]
-#		   [[#endif]])],
-#  endian=big
-#  little_endian=0
-#  big_endian=1)
-endian=big
-little_endian=0
-big_endian=1
+AC_PREPROC_IFELSE(
+  [AC_LANG_PROGRAM([[#if !_AIX]]
+            [[#include <endian.h>]]
+            [[#endif]],
+            [[#if !_AIX]]
+		    [[#if __BYTE_ORDER != __LITTLE_ENDIAN]]
+		    [[#error]]
+		    [[#endif]]
+            [[#endif]])],
+  endian=little
+  little_endian=1
+  big_endian=0)
+
+AC_PREPROC_IFELSE(
+  [AC_LANG_PROGRAM([[#if !_AIX]]
+            [[#include <endian.h>]]
+            [[#endif]],
+            [[#if !_AIX]]
+		    [[#if __BYTE_ORDER != __BIG_ENDIAN]]
+		    [[#error]]
+		    [[#endif]]
+            [[#endif]])],
+  endian=big
+  little_endian=0
+  big_endian=1)
+
+AC_PREPROC_IFELSE(
+  [AC_LANG_PROGRAM([[]],
+                [[#if _AIX]]
+                [[return 1;]]
+                [[#endif]])],
+  endian=big
+  little_endian=0
+  big_endian=1)
 
 if test x"$endian" != "xbig" -a x"$endian" != "xlittle"; then
   AC_MSG_ERROR([Can't determine endianness; is endian.h present?])
