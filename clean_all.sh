@@ -12,13 +12,6 @@ case "`echo $1 | tr A-Z a-z`" in
     rm -f libtool Makefile.in Makefile stamp-h1
     rm -rf autom4te.cache/ *.m4
     ;;
-  aix)
-    gmake clean
-    rm -f compile config.guess config.sub depcomp install-sh ltmain.sh missing
-    rm -f config.status config.h config.h.in* config.log configure
-    rm -f libtool Makefile.in Makefile stamp-h1
-    rm -rf autom4te.cache/ *.m4
-    ;;
   *)
     echo "Unknown build type: $1"
     exit 1
