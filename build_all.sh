@@ -12,6 +12,11 @@ case "`echo $1 | tr A-Z a-z`" in
     ./configure && \
     make
     ;;
+  aix)
+    autoreconf -i -Wno-unsupported && \
+    ./configure && \
+    gmake
+    ;;
   *)
     echo "Unknown build type: $1"
     exit 1
