@@ -50,6 +50,9 @@ AC_PREPROC_IFELSE(
 AC_PREPROC_IFELSE(
   [AC_LANG_PROGRAM([[]],
                 [[#if _AIX]]
+		    [[#if __BYTE_ORDER != __BIG_ENDIAN]]
+		    [[#error]]
+		    [[#endif]]
                 [[return 1;]]
                 [[#endif]])],
   endian=big
