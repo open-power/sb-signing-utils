@@ -80,6 +80,10 @@ to_upper () {
     echo "$1" | tr a-z A-Z
 }
 
+is_cmd_available () {
+    command -v "$1" &>/dev/null
+}
+
 is_path_full () {
     # If a path has a leading slash, it's a full path, not relative
     echo "$1" | egrep -q ^/
@@ -208,6 +212,13 @@ parseIni () {
 #
 # Main
 #
+
+# Check required programs
+for p in date egrep tar xxd openssl sha512sum create-container print-container
+do
+    is_cmd_available $p || \
+        die "Required command \"$p\" not available or not found in PATH"
+done
 
 # Convert long options to short
 for arg in "$@"; do
@@ -358,6 +369,8 @@ then
     test -z "$SF_SSHKEY" && die "Production mode selected but no signer ssh key provided"
     test -z "$SF_EPWD" && die "Production mode selected but no signer ePWD provided"
     test -z "$SF_SERVER" && die "Production mode selected but no signframework server provided"
+    is_cmd_available sf_client || \
+        die "Required command \"sf_client\" not available or not found in PATH"
 fi
 
 # Check input keys
