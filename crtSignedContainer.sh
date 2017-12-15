@@ -55,29 +55,29 @@ usage () {
 }
 
 die () {
-    echo "$P: $@" 1>&2
+    echo "$P: $*" 1>&2
     exit 1
 }
 
 is_private_key () {
-    openssl ec -pubout -in $1 &>/dev/null
+    openssl ec -pubout -in "$1" &>/dev/null
 }
 
 is_public_key () {
-    openssl ec -pubin -pubout -in $1 &>/dev/null
+    openssl ec -pubin -pubout -in "$1" &>/dev/null
 }
 
 is_raw_key () {
-    test $(stat -c%s "$K") -eq 133 -a \
-         $(dd if="$K" bs=1 count=1 2>/dev/null | xxd -p) == "04"
+    test "$(stat -c%s "$K")" -eq 133 -a \
+         "$(dd if="$K" bs=1 count=1 2>/dev/null | xxd -p)" == "04"
 }
 
 to_lower () {
-    echo $1 | tr A-Z a-z
+    echo "$1" | tr A-Z a-z
 }
 
 to_upper () {
-    echo $1 | tr a-z A-Z
+    echo "$1" | tr a-z A-Z
 }
 
 is_path_full () {
@@ -91,8 +91,8 @@ is_path_dir () {
 }
 
 exportArchive () {
-    cd $SB_SCRATCH_DIR
-    if tar -zcf "$SB_ARCHIVE_OUT" $buildID/$LABEL/; then
+    cd "$SB_SCRATCH_DIR" || die "Cannot cd to $SB_SCRATCH_DIR"
+    if tar -zcf "$SB_ARCHIVE_OUT" "$buildID/$LABEL/"; then
         echo "--> $P: Archive saved to: $SB_ARCHIVE_OUT"
     else
         echo "--> $P: Error $? saving archive to: $SB_ARCHIVE_OUT"
@@ -111,21 +111,21 @@ importArchive () {
     fi
 
     local previous_wd=$PWD
-    cd "$TOPDIR"
+    cd "$TOPDIR" || die "Cannot cd to $TOPDIR"
 
     archpath=$(tar -tf "$f" | head -1)
-    archdir=$(echo $archpath | cut -d/ -f1)
-    archsubdir=$(echo $archpath | cut -d/ -f2)
+    archdir=$(echo "$archpath" | cut -d/ -f1)
+    archsubdir=$(echo "$archpath" | cut -d/ -f2)
 
     test -z "$archdir" -o -z "$archsubdir" && \
         die "Cannot determine archive content for $f"
 
     if [ -d "$archsubdir" ]; then
         # We already have this subdir in the cache, make a backup
-        cp -rpT $archsubdir $archsubdir.save
+        cp -rpT "$archsubdir" "$archsubdir.save"
     else
         # We don't yet have a subdir by this name, create it
-        mkdir $archsubdir
+        mkdir "$archsubdir"
     fi
 
     if ! tar -xf "$f"; then
@@ -133,17 +133,17 @@ importArchive () {
     fi
 
     # Move the unpacked files and remove the temporary archive directory
-    mv $archdir/$archsubdir/* $archsubdir/
-    rmdir $archdir/$archsubdir/
-    rmdir $archdir/
+    mv "$archdir/$archsubdir/"* "$archsubdir/"
+    rmdir "$archdir/$archsubdir/"
+    rmdir "$archdir/"
     cd $previous_wd
 }
 
 checkKey () {
     # The variable name
-    KEY_NAME=$1
+    KEY_NAME="$1"
     # The filename holding the key
-    local K=${!KEY_NAME}
+    local K="${!KEY_NAME}"
     local KEYS=0
     local PUBKEYS=0
 
@@ -187,7 +187,7 @@ parseIni () {
     local IFS=" ="
     local section property value
 
-    while read property value
+    while read -r property value
     do
         if echo "$property" | egrep -q "^;"
         then
@@ -196,7 +196,7 @@ parseIni () {
         elif echo "$property" | egrep -q "\[.*]"
         then
             # This is a section header, read it
-            section=$(echo $property | tr -d [] )
+            section=$(echo "$property" | tr -d [] )
         elif test -n "$value"
         then
             # This is a property, set it
@@ -248,9 +248,9 @@ for arg in "$@"; do
 done
 
 # Process command-line arguments
-while getopts ?hdvw:a:b:c:p:q:r:f:o:l:i:m:s:L:4:5:6:7:89: opt
+while getopts -- ?hdvw:a:b:c:p:q:r:f:o:l:i:m:s:L:4:5:6:7:89: opt
 do
-  case "$opt" in
+  case "${opt:?}" in
     v) SB_VERBOSE="TRUE";;
     d) SB_DEBUG="TRUE";;
     w) SB_WRAP="$OPTARG";;
@@ -264,7 +264,7 @@ do
     o) CS_OFFSET="$OPTARG";;
     l) PAYLOAD="$OPTARG";;
     i) OUTPUT="$OPTARG";;
-    m) SIGN_MODE="$(to_lower $OPTARG)";;
+    m) SIGN_MODE="$(to_lower "$OPTARG")";;
     s) SB_SCRATCH_DIR="$OPTARG";;
     L) LABEL="$OPTARG";;
     4) PROJECT_INI="$OPTARG";;
@@ -293,7 +293,7 @@ then
 fi
 
 # These are the only env vars that override a command line option
-test -n "$SB_SIGN_MODE" && SIGN_MODE="$(to_lower $SB_SIGN_MODE)"
+test -n "$SB_SIGN_MODE" && SIGN_MODE="$(to_lower "$SB_SIGN_MODE")"
 test -n "$SB_PROJECT_INI" && PROJECT_INI="$SB_PROJECT_INI"
 
 # What op-buid calls development mode, we call local mode
@@ -307,6 +307,17 @@ echo "--> $P: Signing mode: $SIGN_MODE"
 if [ -n "$PROJECT_INI" ]
 then
     test ! -f "$PROJECT_INI" && die "Can't open INI file: $PROJECT_INI"
+
+    signer_userid=""
+    signer_sshkey_file=""
+    signer_epwd_file=""
+    server_hostname=""
+    signtool_validate=""
+    signtool_verify=""
+    signtool_pass_on_validation_error=""
+    signproject_hw_signing_project_basename=""
+    signproject_fw_signing_project_basename=""
+    signproject_getpubkey_project_basename=""
 
     echo "--> $P: Parsing INI file: $PROJECT_INI"
     parseIni "$PROJECT_INI"
@@ -366,10 +377,10 @@ done
 #
 # Set cache directory
 #
-: ${TMPDIR:=/tmp}
-: ${SB_SCRATCH_DIR:=$TMPDIR}
-: ${SB_KEEP_CACHE:=true}
-: ${LABEL:=IMAGE}
+: "${TMPDIR:=/tmp}"
+: "${SB_SCRATCH_DIR:=$TMPDIR}"
+: "${SB_KEEP_CACHE:=true}"
+: "${LABEL:=IMAGE}"
 
 moniker="SIGNTOOL"
 
@@ -399,7 +410,7 @@ fi
 
 # Set a scratch file for output, if none provided.
 if [ "$OUTPUT" == __none ]; then
-    OUTPUT="$SB_SCRATCH_DIR/$(to_lower $buildID).scratch.out.img"
+    OUTPUT="$SB_SCRATCH_DIR/$(to_lower "$buildID").scratch.out.img"
 fi
 
 #
@@ -418,7 +429,7 @@ if [ -n "$SB_ARCHIVE_OUT" ]; then
 
     if is_path_dir "$path"; then
         # Path is a directory, append default filename
-        path=${path}$(to_lower $buildID)_${LABEL}.tgz
+        path=${path}$(to_lower "$buildID")_${LABEL}.tgz
     fi
 
     test ! -d "${path%/*}" && die "archiveOut directory not found: ${path%/*}/"
@@ -457,9 +468,9 @@ test -n "$SB_DEBUG" && SF_DEBUG_ARGS="$SF_DEBUG_ARGS -d -stdout"
 #
 # Set defaults for signframework project basenames
 #
-: ${SF_HW_SIGNING_PROJECT_BASE:=sign_ecc_pwr_hw_key}
-: ${SF_FW_SIGNING_PROJECT_BASE:=sign_ecc_pwr_fw_key_op_bld}
-: ${SF_GETPUBKEY_PROJECT_BASE:=getpubkeyecc}
+: "${SF_HW_SIGNING_PROJECT_BASE:=sign_ecc_pwr_hw_key}"
+: "${SF_FW_SIGNING_PROJECT_BASE:=sign_ecc_pwr_fw_key_op_bld}"
+: "${SF_GETPUBKEY_PROJECT_BASE:=getpubkeyecc}"
 
 #
 # Get the public keys
@@ -519,10 +530,10 @@ then
             if [ -n "$KEYFOUND" ]
             then
                 echo "--> $P: Found key for HW key $(to_upper $KEY)."
-                cp -p $KEYFOUND "$T/"
+                cp -p "$KEYFOUND" "$T/"
             else
                 echo "--> $P: Requesting public key for HW key $(to_upper $KEY)..."
-                sf_client $SF_DEBUG_ARGS -project $SF_GETPUBKEY_PROJECT_BASE \
+                sf_client $SF_DEBUG_ARGS -project "$SF_GETPUBKEY_PROJECT_BASE" \
                           -param "-signproject $SF_PROJECT" \
                           -epwd "$SF_EPWD" -comments "Requesting $SF_PROJECT" \
                           -url sftp://$SF_USER@$SF_SERVER -pkey "$SF_SSHKEY" \
@@ -556,10 +567,10 @@ then
             if [ -n "$KEYFOUND" ]
             then
                 echo "--> $P: Found key for SW key $(to_upper $KEY)."
-                cp -p $KEYFOUND "$T/"
+                cp -p "$KEYFOUND" "$T/"
             else
                 echo "--> $P: Requesting public key for SW key $(to_upper $KEY)..."
-                sf_client $SF_DEBUG_ARGS -project $SF_GETPUBKEY_PROJECT_BASE \
+                sf_client $SF_DEBUG_ARGS -project "$SF_GETPUBKEY_PROJECT_BASE" \
                           -param "-signproject $SF_PROJECT" \
                           -epwd "$SF_EPWD" -comments "Requesting $SF_PROJECT" \
                           -url sftp://$SF_USER@$SF_SERVER -pkey "$SF_SSHKEY" \
@@ -609,7 +620,7 @@ then
         if [ -f "$T/$SIGFILE" ]
         then
             echo "--> $P: Found signature for HW key $(to_upper $KEY)."
-        elif test -f $KEYFILE && is_private_key $KEYFILE
+        elif test -f "$KEYFILE" && is_private_key "$KEYFILE"
         then
             echo "--> $P: Generating signature for HW key $(to_upper $KEY)..."
             openssl dgst -SHA512 -sign "$KEYFILE" "$T/prefix_hdr" > "$T/$SIGFILE"
@@ -636,7 +647,7 @@ then
         if [ -f "$T/$SIGFILE" ]
         then
             echo "--> $P: Found signature for SW key $(to_upper $KEY)."
-        elif test -f $KEYFILE && is_private_key $KEYFILE
+        elif test -f "$KEYFILE" && is_private_key "$KEYFILE"
         then
             echo "--> $P: Generating signature for SW key $(to_upper $KEY)..."
             openssl dgst -SHA512 -sign "$KEYFILE" "$T/software_hdr" > "$T/$SIGFILE"
@@ -673,7 +684,7 @@ then
             if [ -n "$SIGFOUND" ]
             then
                 echo "--> $P: Found signature for HW key $(to_upper $KEY)."
-                cp -p $SIGFOUND $T/
+                cp -p "$SIGFOUND" "$T/"
             else
                 test "$KEYFILE" == __getkey && continue
                 echo "--> $P: Requesting signature for HW key $(to_upper $KEY)..."
@@ -778,10 +789,10 @@ fi
 #
 if [ $SB_KEEP_CACHE == false ]; then
     echo "--> $P: Removing cache subdir: $T"
-    rm -rf $T
-    T=$(dirname $T)
+    rm -rf "$T"
+    T="$(dirname "$T")"
 
-    if rmdir $T; then
+    if rmdir "$T"; then
         echo "--> $P: Removing cache dir: $T"
     else
         echo "--> $P: Not removing cache dir: $T"
