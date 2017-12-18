@@ -80,10 +80,6 @@ to_upper () {
     echo "$1" | tr a-z A-Z
 }
 
-is_cmd_available () {
-    command -v "$1" &>/dev/null
-}
-
 is_path_full () {
     # If a path has a leading slash, it's a full path, not relative
     echo "$1" | egrep -q ^/
@@ -92,6 +88,10 @@ is_path_full () {
 is_path_dir () {
     # If a path has a trailing slash, it's a dir, not a file
     echo "$1" | egrep -q /$
+}
+
+is_cmd_available () {
+    command -v "$1" &>/dev/null
 }
 
 exportArchive () {
@@ -114,7 +114,7 @@ importArchive () {
         local f="$1"
     fi
 
-    local previous_wd=$PWD
+    local previous_wd="$PWD"
     cd "$TOPDIR" || die "Cannot cd to $TOPDIR"
 
     archpath=$(tar -tf "$f" | head -1)
@@ -140,7 +140,7 @@ importArchive () {
     mv "$archdir/$archsubdir/"* "$archsubdir/"
     rmdir "$archdir/$archsubdir/"
     rmdir "$archdir/"
-    cd $previous_wd
+    cd "$previous_wd" || die "Cannot cd back to ${previous_wd}, is it gone?"
 }
 
 checkKey () {
@@ -354,10 +354,8 @@ fi
 #
 # Check required arguments
 #
-test -z "$PAYLOAD" && die "Input payload required"
-test -z "$OUTPUT" && die "Destination imagefile required"
-
-if [ "$PAYLOAD" == __none ]; then
+if [ -z "$PAYLOAD" ] || [ "$PAYLOAD" == __none ]
+then
     PAYLOAD=/dev/zero
 elif [ ! -f "$PAYLOAD" ]; then
     die "Can't open payload file: $PAYLOAD"
@@ -422,7 +420,8 @@ else
 fi
 
 # Set a scratch file for output, if none provided.
-if [ "$OUTPUT" == __none ]; then
+if [ -z "$OUTPUT" ] || [ "$OUTPUT" == __none ]
+then
     OUTPUT="$SB_SCRATCH_DIR/$(to_lower "$buildID").scratch.out.img"
 fi
 
