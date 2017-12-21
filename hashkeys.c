@@ -209,8 +209,10 @@ int main(int argc, char* argv[])
 
 		switch (opt) {
 		case 'h':
-		case '?':
 			usage(EX_OK);
+			break;
+		case '?':
+			usage(EX_USAGE);
 			break;
 		case 'v':
 			verbose = true;

@@ -371,15 +371,17 @@ int main(int argc, char* argv[])
 
 	while (1) {
 		int opt;
-		opt = getopt_long(argc, argv, "hvdw:a:b:c:p:q:r:A:B:C:P:Q:R:L:I:o:O:f:F:l:",
+		opt = getopt_long(argc, argv, "?hvdw:a:b:c:p:q:r:A:B:C:P:Q:R:L:I:o:O:f:F:l:",
 				opts, &indexptr);
 		if (opt == -1)
 			break;
 
 		switch (opt) {
 		case 'h':
-		case '?':
 			usage(EX_OK);
+			break;
+		case '?':
+			usage(EX_USAGE);
 			break;
 		case 'v':
 			verbose = true;

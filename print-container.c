@@ -600,14 +600,16 @@ int main(int argc, char* argv[])
 
 	while (1) {
 		int opt;
-		opt = getopt_long(argc, argv, "hvdw:sI:", opts, &indexptr);
+		opt = getopt_long(argc, argv, "?hvdw:sI:", opts, &indexptr);
 		if (opt == -1)
 			break;
 
 		switch (opt) {
 		case 'h':
-		case '?':
 			usage(EX_OK);
+			break;
+		case '?':
+			usage(EX_USAGE);
 			break;
 		case 'v':
 			verbose = true;

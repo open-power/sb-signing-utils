@@ -534,7 +534,10 @@ then
                           -epwd "$SF_EPWD" -comments "Requesting $SF_PROJECT" \
                           -url sftp://$SF_USER@$SF_SERVER -pkey "$SF_SSHKEY" \
                           -o "$T/$KEYFILE"
-                # TODO Check return code, fail on error...
+                rc=$?
+
+                test $rc -ne 0 && die "Call to sf_client failed with error: $rc"
+
                 echo "--> $P: Retrieved public key for HW key $(to_upper $KEY)."
             fi
         fi
@@ -571,7 +574,10 @@ then
                           -epwd "$SF_EPWD" -comments "Requesting $SF_PROJECT" \
                           -url sftp://$SF_USER@$SF_SERVER -pkey "$SF_SSHKEY" \
                           -o "$T/$KEYFILE"
-                # TODO Check return code, fail on error...
+                rc=$?
+
+                test $rc -ne 0 && die "Call to sf_client failed with error: $rc"
+
                 echo "--> $P: Retrieved public key for SW key $(to_upper $KEY)."
             fi
         fi
@@ -594,6 +600,9 @@ create-container $HW_KEY_ARGS $SW_KEY_ARGS \
                  --dumpPrefixHdr "$T/prefix_hdr" --dumpSwHdr "$T/software_hdr" \
                  $DEBUG_ARGS \
                  $ADDL_ARGS
+rc=$?
+
+test $rc -ne 0 && die "Call to create-container failed with error: $rc"
 
 #
 # Prepare the HW and SW key signatures
@@ -688,7 +697,10 @@ then
                           -comments "Requesting sig for $SF_PROJECT" \
                           -url sftp://$SF_USER@$SF_SERVER -pkey "$SF_SSHKEY" \
                           -payload  "$T/prefix_hdr" -o "$T/$SIGFILE"
-                # TODO Check return code, fail on error...
+                rc=$?
+
+                test $rc -ne 0 && die "Call to sf_client failed with error: $rc"
+
                 echo "--> $P: Retrieved signature for HW key $(to_upper $KEY)."
             fi
         fi
@@ -719,7 +731,10 @@ then
                       -comments "Requesting sig for $LABEL from $SF_PROJECT" \
                       -url sftp://$SF_USER@$SF_SERVER -pkey "$SF_SSHKEY" \
                       -payload "$T/software_hdr.sha512.bin" -o "$T/$SIGFILE"
-            # TODO Check return code, fail on error...
+            rc=$?
+
+            test $rc -ne 0 && die "Call to sf_client failed with error: $rc"
+
             echo "--> $P: Retrieved signature for SW key $(to_upper $KEY)."
         fi
 
@@ -739,6 +754,9 @@ if [ -n "$HW_SIG_ARGS" -o -n "$SW_SIG_ARGS" ]; then
                      $CONTR_HDR_OUT_OPT "$SB_CONTR_HDR_OUT" \
                      $DEBUG_ARGS \
                      $ADDL_ARGS
+    rc=$?
+
+    test $rc -ne 0 && die "Call to create-container failed with error: $rc"
 
     test -n "$SB_CONTR_HDR_OUT" && \
         echo "--> $P: Container header saved to: $SB_CONTR_HDR_OUT"
