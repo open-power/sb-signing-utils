@@ -68,8 +68,8 @@ is_public_key () {
 }
 
 is_raw_key () {
-    test "$(stat -c%s "$K")" -eq 133 -a \
-         "$(dd if="$K" bs=1 count=1 2>/dev/null | xxd -p)" == "04"
+    test "$(stat -c%s "$1")" -eq 133 -a \
+         "$(dd if="$1" bs=1 count=1 2>/dev/null | xxd -p)" == "04"
 }
 
 to_lower () {
@@ -145,45 +145,34 @@ importArchive () {
 
 checkKey () {
     # The variable name
-    KEY_NAME="$1"
-    # The filename holding the key
-    local K="${!KEY_NAME}"
-    local KEYS=0
-    local PUBKEYS=0
+    local keyname="$1"
+    # The variable's value, typically the filename holding the key
+    local k="${!keyname}"
 
-    if [ -n "$K" ]; then
+    if [ "$k" ]; then
         # Handle the special values __skip, __get, __getkey and __getsig
-        if [ "$K" == __skip -o "$K" == __getsig ]; then
-            KEYS=0
-        elif [ "$K" == __get -o "$K" == __getkey ]; then
-            KEYS=1
-            PUBKEYS=1
+        test "$k" == __skip && return
+        test "$k" == __get && return
+        test "$k" == __getkey && return
+        test "$k" == __getsig && return
 
         # If it's a file, determine what kind of key it contains
-        elif [ -f "$K" ]; then
-            if is_private_key "$K"; then
-                KEYS=1
-            elif is_public_key "$K"; then
-                KEYS=1
-                PUBKEYS=1
-            elif is_raw_key "$K"; then
-                KEYS=1
-                PUBKEYS=1
+        if [ -f "$k" ]; then
+            if is_private_key "$k"; then
+                test "$SB_VERBOSE" && \
+                    echo "--> $P: Key $keyname is a private ECDSA key"
+            elif is_public_key "$k"; then
+                test "$SB_VERBOSE" && \
+                    echo "--> $P: Key $keyname is a public ECDSA key"
+            elif is_raw_key "$k"; then
+                test "$SB_VERBOSE" && \
+                    echo "--> $P: Key $keyname is a RAW public ECDSA key"
             else
-                die "Key $KEY_NAME is neither a public nor private key"
+                die "Key $keyname is neither a public nor private key"
             fi
         else
-            die "Can't open file: $K for $KEY_NAME"
+            die "Can't open file: $k for $keyname"
         fi
-    fi
-
-    # Increment key counts accordingly
-    if [[ $KEY_NAME =~ HW_KEY* ]]; then
-        HW_KEY_COUNT=$(expr $HW_KEY_COUNT + $KEYS)
-        HW_KEY_PUBKEY_COUNT=$(expr $HW_KEY_PUBKEY_COUNT + $PUBKEYS)
-    elif [[ $KEY_NAME =~ SW_KEY* ]]; then
-        SW_KEY_COUNT=$(expr $SW_KEY_COUNT + $KEYS)
-        SW_KEY_PUBKEY_COUNT=$(expr $SW_KEY_PUBKEY_COUNT + $PUBKEYS)
     fi
 }
 
@@ -372,11 +361,6 @@ then
 fi
 
 # Check input keys
-HW_KEY_COUNT=0
-HW_KEY_PUBKEY_COUNT=0
-SW_KEY_COUNT=0
-SW_KEY_PUBKEY_COUNT=0
-
 for KEY in HW_KEY_A HW_KEY_B HW_KEY_C; do
     checkKey $KEY
 done
