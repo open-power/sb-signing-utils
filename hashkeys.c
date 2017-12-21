@@ -35,7 +35,7 @@
 #include <sysexits.h>
 #include <unistd.h>
 
-#include "container.c"
+#include "container-utils.h"
 #include "container.h"
 
 #define BINARY_OUT 0

@@ -29,10 +29,13 @@ bin_PROGRAMS = create-container print-container hashkeys
 
 dist_bin_SCRIPTS = crtSignedContainer.sh sign-with-local-keys.sh
 
-EXTRA_DIST = ccan container.c
+EXTRA_DIST = ccan
+
+noinst_HEADERS = container-utils.h
 
 create_container_SOURCES = \
 	container.h \
+	container-utils.c \
 	create-container.c
 
 create_container_CPPFLAGS = $(AM_CPPFLAGS) -I. -g3 -std=gnu99
@@ -40,6 +43,7 @@ create_container_LDFLAGS =
 create_container_LDADD = -lssl -lcrypto
 
 print_container_SOURCES = \
+	container-utils.c \
 	print-container.c
 
 print_container_CPPFLAGS = $(AM_CPPFLAGS) -I. -g3 -std=gnu99
@@ -47,6 +51,7 @@ print_container_LDFLAGS =
 print_container_LDADD = -lssl -lcrypto
 
 hashkeys_SOURCES = \
+	container-utils.c \
 	hashkeys.c
 
 hashkeys_CPPFLAGS = $(AM_CPPFLAGS) -I. -g3 -std=gnu99

@@ -23,10 +23,6 @@
 #include "ccan/endian/endian.h"
 #include "ccan/short_types/short_types.h"
 
-#define PASSED 1
-#define FAILED 0
-#define UNATTEMPTED -1
-
 #define SECURE_BOOT_HEADERS_SIZE	4096
 #define SHA256_DIGEST_LENGTH		32
 

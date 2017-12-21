@@ -15,41 +15,37 @@
  */
 
 #include "config.h"
-#include "container.h"
 
 #include <regex.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sysexits.h>
+
+#include "ccan/short_types/short_types.h"
+#include "container.h"
+#include "container-utils.h"
 
 extern char *progname;
 
 extern bool verbose, debug;
 extern int wrap;
 
-#define die(status, msg, ...) \
-        { fprintf(stderr, "error: %s.%s() line %d: " msg "\n", progname, \
-        		__func__, __LINE__, __VA_ARGS__); exit(status); }
-
-#define debug_msg(msg, ...) \
-        if (debug) fprintf(stderr, "--> %s.%s(): " msg "\n", progname, \
-        		__func__, __VA_ARGS__);
-
-#define verbose_msg(msg, ...) \
-        if (verbose) fprintf(stdout, "--> %s: " msg "\n", progname, \
-        		__VA_ARGS__);
 
 void hex_print(char *lead, unsigned char *buffer, size_t buflen)
 {
 	unsigned int i, indent = 4;
 	char prelead[100];
+	const char *pad;
+	int col;
+
 	snprintf(prelead, 100, "--> %s: ", progname);
 
-	char *pad = (((strlen(prelead) + strlen(lead)) % 2) == 0) ? "" : " ";
+	pad = (((strlen(prelead) + strlen(lead)) % 2) == 0) ? "" : " ";
 	wrap = ((wrap % 2) == 0) ? wrap : wrap - 1;
 	indent = ((indent % 2) == 0) ? indent : indent - 1;
-	int col = fprintf(stdout, "%s%s%s", prelead, lead, pad);
+	col = fprintf(stdout, "%s%s%s", prelead, lead, pad);
 	for (i = 1; i < buflen + 1; i++) {
 		fprintf(stdout, "%02x", buffer[i - 1]);
 		col = col + 2;

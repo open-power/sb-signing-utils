@@ -39,7 +39,8 @@
 #include <unistd.h>
 
 #include "ccan/endian/endian.h"
-#include "container.c"
+#include "ccan/short_types/short_types.h"
+#include "container-utils.h"
 #include "container.h"
 
 #define CONTAINER_HDR 0
@@ -144,6 +145,10 @@ void getSigRaw(ecc_signature_t *sigraw, char *inFile)
 	struct stat s;
 	void *infile;
 	int r;
+	int rlen, roff, slen, soff;
+	const BIGNUM *sr, *ss;
+	unsigned char outbuf[2 * EC_COORDBYTES];
+	ECDSA_SIG* signature;
 
 	fdin = open(inFile, O_RDONLY);
 	if (fdin <= 0)
@@ -169,12 +174,8 @@ void getSigRaw(ecc_signature_t *sigraw, char *inFile)
 		 * Convert the DER to a signature object, then extract the RAW. */
 		debug_msg("File \"%s\" is a DER signature", inFile);
 
-		int rlen, roff, slen, soff;
-		const BIGNUM *sr, *ss;
-		unsigned char outbuf[2 * EC_COORDBYTES];
-
-		ECDSA_SIG* signature = d2i_ECDSA_SIG(NULL,
-				(const unsigned char **) &infile, 7 + 2 * EC_COORDBYTES);
+		signature = d2i_ECDSA_SIG(NULL,
+					  (const unsigned char **) &infile, 7 + 2 * EC_COORDBYTES);
 
 		memset(&outbuf, 0, sizeof(outbuf));
 
@@ -350,6 +351,8 @@ int main(int argc, char* argv[])
 	off_t l;
 	void *infile;
 	int r;
+	uint32_t data;
+	uint64_t data64;
 	ROM_container_raw *c = (ROM_container_raw*) container;
 	ROM_prefix_header_raw *ph;
 	ROM_prefix_data_raw *pd;
@@ -520,10 +523,9 @@ int main(int argc, char* argv[])
 		if (!isValidHex(params.hw_cs_offset, 4))
 			die(EX_DATAERR, "%s",
 					"Invalid input for hw-cs-offset, expecting a 4 byte hexadecimal value");
-		uint64_t data;
-		sscanf(params.hw_cs_offset, "%lx", &data);
-		ph->code_start_offset = cpu_to_be64(data);
-		verbose_msg("hw-cs-offset = %#010lx", data);
+		sscanf(params.hw_cs_offset, "%lx", &data64);
+		ph->code_start_offset = cpu_to_be64(data64);
+		verbose_msg("hw-cs-offset = %#010lx", data64);
 	} else {
 		ph->code_start_offset = 0;
 	}
@@ -534,7 +536,6 @@ int main(int argc, char* argv[])
 		if (!isValidHex(params.hw_flags, 4))
 			die(EX_DATAERR, "%s",
 					"Invalid input for hw-flags, expecting a 4 byte hexadecimal value");
-		uint32_t data;
 		sscanf(params.hw_flags, "%x", &data);
 		ph->flags = cpu_to_be32(data);
 		verbose_msg("hw-flags = %#010x", data);
@@ -613,10 +614,9 @@ int main(int argc, char* argv[])
 		if (!isValidHex(params.sw_cs_offset, 4))
 			die(EX_DATAERR, "%s",
 					"Invalid input for sw-cs-offset, expecting a 4 byte hexadecimal value");
-		uint64_t data;
-		sscanf(params.sw_cs_offset, "%lx", &data);
-		swh->code_start_offset = cpu_to_be64(data);
-		verbose_msg("sw-cs-offset = %#010lx", data);
+		sscanf(params.sw_cs_offset, "%lx", &data64);
+		swh->code_start_offset = cpu_to_be64(data64);
+		verbose_msg("sw-cs-offset = %#010lx", data64);
 	} else {
 		swh->code_start_offset = 0;
 	}
@@ -637,7 +637,6 @@ int main(int argc, char* argv[])
 		if (!isValidHex(params.sw_flags, 4))
 			die(EX_DATAERR, "%s",
 					"Invalid input for sw-flags, expecting a 4 byte hexadecimal value");
-		uint32_t data;
 		sscanf(params.sw_flags, "%x", &data);
 		swh->flags = cpu_to_be32(data);
 		verbose_msg("sw-flags = %#010x", data);

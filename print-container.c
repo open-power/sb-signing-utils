@@ -40,8 +40,13 @@
 #include <unistd.h>
 
 #include "ccan/endian/endian.h"
-#include "container.c"
+#include "ccan/short_types/short_types.h"
+#include "container-utils.h"
 #include "container.h"
+
+#define PASSED 1
+#define FAILED 0
+#define UNATTEMPTED -1
 
 char *progname;
 
@@ -53,7 +58,7 @@ ecc_key_t ECDSA_KEY_NULL;
 
 typedef struct keyprops {
 	char index;
-	char *name;
+	const char *name;
 	const ecc_key_t *key;
 	const ecc_signature_t *sig;
 } Keyprops;
@@ -351,6 +356,7 @@ static bool verify_container(struct parsed_stb_container c, char * verify)
 
 	void *md = alloca(SHA512_DIGEST_LENGTH);
 	void *p;
+	void *md_verify;
 
 	p = SHA512(c.c->hw_pkey_a, sizeof(ecc_key_t) * 3, md);
 	if (!p)
@@ -358,7 +364,7 @@ static bool verify_container(struct parsed_stb_container c, char * verify)
 	if (verbose) print_bytes((char *) "HW keys hash = ", (uint8_t *) md,
 			SHA512_DIGEST_LENGTH);
 
-	void *md_verify = alloca(SHA512_DIGEST_LENGTH);
+	md_verify = alloca(SHA512_DIGEST_LENGTH);
 	getVerificationHash(verify, md_verify, SHA512_DIGEST_LENGTH);
 
 	if (memcmp((uint8_t *) md_verify, md, SHA512_DIGEST_LENGTH )) {
@@ -378,22 +384,29 @@ static bool verify_signature(const char *moniker, const unsigned char *dgst,
 {
 	int r;
 	bool status = false;
+	BIGNUM *r_bn, *s_bn;
+	ECDSA_SIG* ecdsa_sig;
+	EC_KEY *ec_key;
+	const EC_GROUP *ec_group;
+	unsigned char *buffer;
+	BIGNUM *key_bn;
+	EC_POINT *ec_point;
 
 	// Convert the raw sig to a structure that can be handled by openssl.
 	debug_print((char *) "Raw sig = ", (uint8_t *) sig_raw,
 			sizeof(ecc_signature_t));
 
-	BIGNUM *r_bn = BN_new();
-	BIGNUM *s_bn = BN_new();
+	r_bn = BN_new();
+	s_bn = BN_new();
 
 	BN_bin2bn((const unsigned char*) &sig_raw[0], 66, r_bn);
 	BN_bin2bn((const unsigned char*) &sig_raw[66], 66, s_bn);
 
 #if OPENSSL_VERSION_NUMBER >= 0x10100000L
-	ECDSA_SIG* ecdsa_sig = ECDSA_SIG_new();
+	ecdsa_sig = ECDSA_SIG_new();
 	ECDSA_SIG_set0(ecdsa_sig, r_bn, s_bn);
 #else
-	ECDSA_SIG* ecdsa_sig = malloc(sizeof(ECDSA_SIG));
+	ecdsa_sig = malloc(sizeof(ECDSA_SIG));
 	ecdsa_sig->r = r_bn;
 	ecdsa_sig->s = s_bn;
 #endif
@@ -402,11 +415,11 @@ static bool verify_signature(const char *moniker, const unsigned char *dgst,
 	debug_print((char *) "Raw key = ", (uint8_t *) key_raw,
 			sizeof(ecc_key_t));
 
-	EC_KEY *ec_key = EC_KEY_new();
+	ec_key = EC_KEY_new();
 	if (!ec_key)
 		die(EX_SOFTWARE, "%s", "Cannot EC_KEY_new");
 
-	const EC_GROUP *ec_group = EC_GROUP_new_by_curve_name(NID_secp521r1);
+	ec_group = EC_GROUP_new_by_curve_name(NID_secp521r1);
 	if (!ec_group)
 		die(EX_SOFTWARE, "%s", "Cannot EC_GROUP_new_by_curve_name");
 
@@ -415,14 +428,14 @@ static bool verify_signature(const char *moniker, const unsigned char *dgst,
 		die(EX_SOFTWARE, "%s", "Cannot EC_KEY_set_group");
 
 	// Add prefix 0x04, for uncompressed key.
-	unsigned char *buffer = alloca(sizeof(ecc_key_t) + 1);
+	buffer = alloca(sizeof(ecc_key_t) + 1);
 	*buffer = 0x04;
 	memcpy(buffer + 1, key_raw, sizeof(ecc_key_t));
 
-	BIGNUM *key_bn = BN_new();
+	key_bn = BN_new();
 	BN_bin2bn((const unsigned char*) buffer, EC_COORDBYTES * 2 + 1, key_bn);
 
-	EC_POINT *ec_point = EC_POINT_bn2point(ec_group, key_bn, NULL, NULL);
+	ec_point = EC_POINT_bn2point(ec_group, key_bn, NULL, NULL);
 	if (!ec_point)
 		die(EX_SOFTWARE, "%s", "Cannot EC_POINT_bn2point");
 
@@ -485,6 +498,8 @@ static bool getVerificationHash(char *input, unsigned char *md, int len)
 {
 	char buf[len * 2 + 1 + 2]; // allow trailing \n and leading "0x"
 	char *p;
+	struct stat s;
+	int r;
 
 	if (isValidHex(input, len)) {
 		p = input;
@@ -494,8 +509,7 @@ static bool getVerificationHash(char *input, unsigned char *md, int len)
 			die(EX_NOINPUT, "%s",
 					"Verify requested but no valid hash or hash file provided");
 
-		struct stat s;
-		int r = fstat(fdin, &s);
+		r = fstat(fdin, &s);
 		if (r != 0)
 			die(EX_NOINPUT, "Cannot stat hash file: %s (%s)", input,
 					strerror(errno));
@@ -589,6 +603,7 @@ int main(int argc, char* argv[])
 	int container_status = EX_OK;
 	int validate_status = UNATTEMPTED;
 	int verify_status = UNATTEMPTED;
+	int fdin;
 
 	params.print_container = true;
 
@@ -644,7 +659,7 @@ int main(int argc, char* argv[])
 		}
 	}
 
-	int fdin = open(params.imagefn, O_RDONLY);
+	fdin = open(params.imagefn, O_RDONLY);
 	if (fdin <= 0)
 		die(EX_NOINPUT, "Cannot open container file: %s (%s)", params.imagefn,
 				strerror(errno));
