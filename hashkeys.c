@@ -111,17 +111,19 @@ void getPublicKeyRaw(ecc_key_t *pubkeyraw, char *inFile)
 		if (r != 0)
 			die(EX_NOINPUT, "Cannot stat key file: %s", inFile);
 
-		if (s.st_size == 1 + 2 * EC_COORDBYTES)
+		if (s.st_size == 1 + 2 * EC_COORDBYTES) {
 			infile = mmap(NULL, s.st_size, PROT_READ, MAP_PRIVATE, fdin, 0);
-
+			if (infile == MAP_FAILED)
+				die(EX_OSERR, "Cannot mmap file at fd: %d, size: %lu (%s)",
+						fdin, s.st_size, strerror(errno));
+		}
 		close(fdin);
 
 		if (!infile || (*(unsigned char*) infile != 0x04)) {
 			die(EX_DATAERR,
 					"File \"%s\" is not in expected format (private or public key in PEM, or public key RAW)",
 					inFile);
-		}
-		else
+		} else
 			debug_msg("File \"%s\" is a RAW public key", inFile);
 
 		memcpy(pubkeyData, infile, sizeof(ecc_key_t) + 1);

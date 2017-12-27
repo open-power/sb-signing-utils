@@ -458,23 +458,23 @@ static bool verify_signature(const char *moniker, const unsigned char *dgst,
 
 static bool getPayloadHash(int fdin, unsigned char *md)
 {
-	struct stat payload_st;
-	void *payload;
+	struct stat st;
+	void *file;
 	int r;
 	void *p;
 
-	r = fstat(fdin, &payload_st);
+	r = fstat(fdin, &st);
 	if (r != 0)
 		die(EX_NOINPUT, "Cannot stat payload file at descriptor: %d (%s)", fdin,
 				strerror(errno));
 
-	payload = mmap(NULL, payload_st.st_size - SECURE_BOOT_HEADERS_SIZE,
-			PROT_READ, MAP_PRIVATE, fdin, SECURE_BOOT_HEADERS_SIZE);
-	if (!payload)
-		die(EX_OSERR, "Cannot mmap file at descriptor: %d (%s)", fdin,
-				strerror(errno));
+	file = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fdin, 0);
+	if (file == MAP_FAILED)
+		die(EX_OSERR, "Cannot mmap file at fd: %d, size: %lu (%s)", fdin,
+				st.st_size, strerror(errno));
 
-	p = SHA512(payload, payload_st.st_size - SECURE_BOOT_HEADERS_SIZE, md);
+	p = SHA512(file + SECURE_BOOT_HEADERS_SIZE,
+			st.st_size - SECURE_BOOT_HEADERS_SIZE, md);
 	if (!p)
 		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
 
@@ -483,12 +483,12 @@ static bool getPayloadHash(int fdin, unsigned char *md)
 
 static bool getVerificationHash(char *input, unsigned char *md, int len)
 {
-	char buf[len * 2 + 1 + 2]; // allow trailing \n and leading "0x"
 	char *p;
 
 	if (isValidHex(input, len)) {
 		p = input;
 	} else {
+		char buf[len * 2 + 1 + 2]; // allow trailing \n and leading "0x"
 		int fdin = open(input, O_RDONLY);
 		if (fdin <= 0)
 			die(EX_NOINPUT, "%s",
@@ -644,6 +644,10 @@ int main(int argc, char* argv[])
 		}
 	}
 
+	if (!params.imagefn) {
+		fprintf(stderr, "No --imagefile provided, nothing to do.\n");
+		usage(EX_USAGE);
+	}
 	int fdin = open(params.imagefn, O_RDONLY);
 	if (fdin <= 0)
 		die(EX_NOINPUT, "Cannot open container file: %s (%s)", params.imagefn,
@@ -654,10 +658,18 @@ int main(int argc, char* argv[])
 		die(EX_NOINPUT, "Cannot stat container file: %s (%s)", params.imagefn,
 				strerror(errno));
 
+	if (st.st_size == 0)
+		die(EX_NOINPUT, "%s", "Container file is empty, nothing to do.");
+
+	if (st.st_size < SECURE_BOOT_HEADERS_SIZE)
+		fprintf(stderr,
+				"Warning: container file \"%s\" smaller than minimum header size, file may be incomplete.\n",
+				params.imagefn);
+
 	container = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fdin, 0);
-	if (!container)
-		die(EX_OSERR, "Cannot mmap file: %s (%s)", params.imagefn,
-				strerror(errno));
+	if (container == MAP_FAILED)
+		die(EX_OSERR, "Cannot mmap file at fd: %d, size: %lu (%s)", fdin,
+				st.st_size, strerror(errno));
 
 	if (!stb_is_container(container, SECURE_BOOT_HEADERS_SIZE))
 		die(EX_DATAERR, "%s", "Not a container, missing magic number");

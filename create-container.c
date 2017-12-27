@@ -116,17 +116,19 @@ void getPublicKeyRaw(ecc_key_t *pubkeyraw, char *inFile)
 		if (r != 0)
 			die(EX_NOINPUT, "Cannot stat key file: %s", inFile);
 
-		if (s.st_size == 1 + 2 * EC_COORDBYTES)
+		if (s.st_size == 1 + 2 * EC_COORDBYTES) {
 			infile = mmap(NULL, s.st_size, PROT_READ, MAP_PRIVATE, fdin, 0);
-
+			if (infile == MAP_FAILED)
+				die(EX_OSERR, "Cannot mmap file at fd: %d, size: %lu (%s)",
+						fdin, s.st_size, strerror(errno));
+		}
 		close(fdin);
 
 		if (!infile || (*(unsigned char*) infile != 0x04)) {
 			die(EX_DATAERR,
 					"File \"%s\" is not in expected format (private or public key in PEM, or public key RAW)",
 					inFile);
-		}
-		else
+		} else
 			debug_msg("File \"%s\" is a RAW public key", inFile);
 
 		memcpy(pubkeyData, infile, sizeof(ecc_key_t) + 1);
@@ -153,9 +155,14 @@ void getSigRaw(ecc_signature_t *sigraw, char *inFile)
 	if (r != 0)
 		die(EX_NOINPUT, "Cannot stat sig file: %s", inFile);
 
+	if (s.st_size == 0)
+		die(EX_NOINPUT, "Sig file \"%s\" is empty, something's not right.",
+				inFile);
+
 	infile = mmap(NULL, s.st_size, PROT_READ, MAP_PRIVATE, fdin, 0);
-	if (!infile)
-		die(EX_OSERR, "%s", "Cannot mmap file");
+	if (infile == MAP_FAILED)
+		die(EX_OSERR, "Cannot mmap file at fd: %d, size: %lu (%s)", fdin,
+				s.st_size, strerror(errno));
 
 	close(fdin);
 
@@ -341,14 +348,15 @@ static struct {
 
 int main(int argc, char* argv[])
 {
-	int fdin, fdout;
+	int fdin = -1;
+	int fdout;
 	int indexptr;
 	unsigned int size, offset;
 	void *container = malloc(SECURE_BOOT_HEADERS_SIZE);
 	char *buf = malloc(SECURE_BOOT_HEADERS_SIZE);
 	struct stat payload_st;
 	off_t l;
-	void *infile;
+	void *infile = NULL;
 	int r;
 	ROM_container_raw *c = (ROM_container_raw*) container;
 	ROM_prefix_header_raw *ph;
@@ -464,17 +472,23 @@ int main(int argc, char* argv[])
 		}
 	}
 
-	fdin = open(params.payloadfn, O_RDONLY);
-	if (fdin <= 0)
-		die(EX_NOINPUT, "Cannot open payload file: %s", params.payloadfn);
+	if (params.payloadfn) {
+		fdin = open(params.payloadfn, O_RDONLY);
+		if (fdin <= 0)
+			die(EX_NOINPUT, "Cannot open payload file: %s", params.payloadfn);
 
-	r = fstat(fdin, &payload_st);
-	if (r != 0)
-		die(EX_NOINPUT, "Cannot stat payload file: %s", params.payloadfn);
+		r = fstat(fdin, &payload_st);
+		if (r != 0)
+			die(EX_NOINPUT, "Cannot stat payload file: %s", params.payloadfn);
 
-	infile = mmap(NULL, payload_st.st_size, PROT_READ, MAP_PRIVATE, fdin, 0);
-	if (!infile)
-		die(EX_OSERR, "%s", "Cannot mmap file");
+		if (payload_st.st_size > 0) {
+			infile = mmap(NULL, payload_st.st_size, PROT_READ, MAP_PRIVATE,
+					fdin, 0);
+			if (infile == MAP_FAILED)
+				die(EX_OSERR, "Cannot mmap file at fd: %d, size: %lu (%s)",
+						fdin, payload_st.st_size, strerror(errno));
+		}
+	}
 
 	fdout = open(params.imagefn, O_WRONLY | O_CREAT | O_TRUNC,
 			S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
@@ -717,15 +731,18 @@ int main(int argc, char* argv[])
 	r = write(fdout, container, SECURE_BOOT_HEADERS_SIZE);
 	if (r != 4096)
 		die(EX_SOFTWARE, "Cannot write container (r = %d)", r);
-	r = read(fdin, buf, payload_st.st_size % 4096);
-	r = write(fdout, buf, payload_st.st_size % 4096);
+	if (fdin > 0) {
+		r = read(fdin, buf, payload_st.st_size % 4096);
+		r = write(fdout, buf, payload_st.st_size % 4096);
+	}
 	l = payload_st.st_size - payload_st.st_size % 4096;
 	while (l) {
 		r = read(fdin, buf, 4096);
 		r = write(fdout, buf, 4096);
 		l -= 4096;
 	};
-	close(fdin);
+	if (fdin > 0)
+		close(fdin);
 	close(fdout);
 
 	free(container);
