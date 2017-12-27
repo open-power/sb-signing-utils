@@ -28,9 +28,11 @@ extern char *progname;
 extern bool verbose, debug;
 extern int wrap;
 
+int close_fds();
+
 #define die(status, msg, ...) \
         { fprintf(stderr, "error: %s.%s() line %d: " msg "\n", progname, \
-        		__func__, __LINE__, __VA_ARGS__); exit(status); }
+        		__func__, __LINE__, __VA_ARGS__); close_fds(); exit(status); }
 
 #define debug_msg(msg, ...) \
         if (debug) fprintf(stderr, "--> %s.%s(): " msg "\n", progname, \
@@ -39,6 +41,18 @@ extern int wrap;
 #define verbose_msg(msg, ...) \
         if (verbose) fprintf(stdout, "--> %s: " msg "\n", progname, \
         		__VA_ARGS__);
+
+int close_fds()
+{
+	for (int fd = 3; fd < 16; fd++) {
+		int fd_test = dup(fd);
+		if (fd_test > 0) {
+			close(fd_test);
+			close(fd);
+		}
+	}
+	return 0;
+}
 
 void hex_print(char *lead, unsigned char *buffer, size_t buflen)
 {
@@ -50,6 +64,7 @@ void hex_print(char *lead, unsigned char *buffer, size_t buflen)
 	wrap = ((wrap % 2) == 0) ? wrap : wrap - 1;
 	indent = ((indent % 2) == 0) ? indent : indent - 1;
 	int col = fprintf(stdout, "%s%s%s", prelead, lead, pad);
+
 	for (i = 1; i < buflen + 1; i++) {
 		fprintf(stdout, "%02x", buffer[i - 1]);
 		col = col + 2;
