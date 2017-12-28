@@ -190,7 +190,7 @@ parseIni () {
         then
             # This is a section header, read it
             section=$(echo "$property" | tr -d [] )
-        elif test -n "$value"
+        elif test "$value"
         then
             # This is a property, set it
             eval "${section}_${property}=\"$value\""
@@ -278,23 +278,23 @@ do
 done
 
 # Process config properties from op-build _defconfig
-test -n "$BR2_CONFIG" && source $BR2_CONFIG &> /dev/null
-test -n "$BR2_OPENPOWER_SECUREBOOT_PASS_ON_VALIDATION_ERROR" && SB_PASS_ON_ERROR=Y
+test "$BR2_CONFIG" && source $BR2_CONFIG &> /dev/null
+test "$BR2_OPENPOWER_SECUREBOOT_PASS_ON_VALIDATION_ERROR" && SB_PASS_ON_ERROR=Y
 
 # Determine if validate or verify has been requested via the _defconfig
-if [ -z "$SB_VALIDATE" -a -n "$BR2_OPENPOWER_SECUREBOOT_CONTAINER_VALIDATE" ]
+if [ -z "$SB_VALIDATE" -a "$BR2_OPENPOWER_SECUREBOOT_CONTAINER_VALIDATE" ]
 then
     SB_VALIDATE="$BR2_OPENPOWER_SECUREBOOT_CONTAINER_VALIDATE"
 fi
 
-if [ -z "$SB_VERIFY" -a -n "$BR2_OPENPOWER_SECUREBOOT_CONTAINER_VERIFY" ]
+if [ -z "$SB_VERIFY" -a "$BR2_OPENPOWER_SECUREBOOT_CONTAINER_VERIFY" ]
 then
     SB_VERIFY="$BR2_OPENPOWER_SECUREBOOT_CONTAINER_VERIFY"
 fi
 
 # These are the only env vars that override a command line option
-test -n "$SB_SIGN_MODE" && SIGN_MODE="$(to_lower "$SB_SIGN_MODE")"
-test -n "$SB_PROJECT_INI" && PROJECT_INI="$SB_PROJECT_INI"
+test "$SB_SIGN_MODE" && SIGN_MODE="$(to_lower "$SB_SIGN_MODE")"
+test "$SB_PROJECT_INI" && PROJECT_INI="$SB_PROJECT_INI"
 
 # What op-buid calls development mode, we call local mode
 test "$SIGN_MODE" == development && SIGN_MODE=local
@@ -304,7 +304,7 @@ echo "--> $P: Signing mode: $SIGN_MODE"
 #
 # Parse INI file
 #
-if [ -n "$PROJECT_INI" ]
+if [ "$PROJECT_INI" ]
 then
     test ! -f "$PROJECT_INI" && die "Can't open INI file: $PROJECT_INI"
 
@@ -322,21 +322,21 @@ then
     echo "--> $P: Parsing INI file: $PROJECT_INI"
     parseIni "$PROJECT_INI"
 
-    test -n "$signer_userid" && SF_USER="$signer_userid"
-    test -n "$signer_sshkey_file" && SF_SSHKEY="$signer_sshkey_file"
-    test -n "$signer_epwd_file" && SF_EPWD="$signer_epwd_file"
-    test -n "$server_hostname" && SF_SERVER="$server_hostname"
+    test "$signer_userid" && SF_USER="$signer_userid"
+    test "$signer_sshkey_file" && SF_SSHKEY="$signer_sshkey_file"
+    test "$signer_epwd_file" && SF_EPWD="$signer_epwd_file"
+    test "$server_hostname" && SF_SERVER="$server_hostname"
 
-    test -n "$signtool_validate" && SB_VALIDATE="$signtool_validate"
-    test -n "$signtool_verify" && SB_VERIFY="$signtool_verify"
-    test -n "$signtool_pass_on_validation_error" && \
+    test "$signtool_validate" && SB_VALIDATE="$signtool_validate"
+    test "$signtool_verify" && SB_VERIFY="$signtool_verify"
+    test "$signtool_pass_on_validation_error" && \
         SB_PASS_ON_ERROR="$signtool_pass_on_validation_error"
 
-    test -n "$signproject_hw_signing_project_basename" && \
+    test "$signproject_hw_signing_project_basename" && \
         SF_HW_SIGNING_PROJECT_BASE="$signproject_hw_signing_project_basename"
-    test -n "$signproject_fw_signing_project_basename" && \
+    test "$signproject_fw_signing_project_basename" && \
         SF_FW_SIGNING_PROJECT_BASE="$signproject_fw_signing_project_basename"
-    test -n "$signproject_getpubkey_project_basename" && \
+    test "$signproject_getpubkey_project_basename" && \
         SF_GETPUBKEY_PROJECT_BASE="$signproject_getpubkey_project_basename"
 fi
 
@@ -383,7 +383,7 @@ test ! -d "$SB_SCRATCH_DIR" && die "Scratch directory not found: $SB_SCRATCH_DIR
 
 TOPDIR=$(ls -1dt "$SB_SCRATCH_DIR"/${moniker}_* 2>/dev/null | head -1)
 
-if [ -n "$TOPDIR" ]; then
+if [ "$TOPDIR" ]; then
     crtTime=$(date -d @$(basename "$TOPDIR" | cut -d_ -f2))
     buildID="${TOPDIR##*/}"
     echo "--> $P: Using existing cache dir: $TOPDIR, created: $crtTime"
@@ -412,7 +412,7 @@ fi
 #
 # If --archiveOut requested, construct the path and check it now
 #
-if [ -n "$SB_ARCHIVE_OUT" ]; then
+if [ "$SB_ARCHIVE_OUT" ]; then
 
     path=$SB_ARCHIVE_OUT
 
@@ -436,7 +436,7 @@ fi
 #
 # If --archiveIn requested, import the file(s) now
 #
-if [ -n "$SB_ARCHIVE_IN" ]
+if [ "$SB_ARCHIVE_IN" ]
 then
     IFS=","
     for f in $SB_ARCHIVE_IN
@@ -450,16 +450,16 @@ fi
 #
 # Set arguments for (program) execution
 #
-test -n "$SB_VERBOSE" && DEBUG_ARGS=" -v"
-test -n "$SB_DEBUG" && DEBUG_ARGS="$DEBUG_ARGS -d"
-test -n "$SB_WRAP" && DEBUG_ARGS="$DEBUG_ARGS -w $SB_WRAP"
-test -n "$HW_FLAGS" && ADDL_ARGS="$ADDL_ARGS --hw-flags $HW_FLAGS"
-test -n "$CS_OFFSET" && ADDL_ARGS="$ADDL_ARGS --sw-cs-offset $CS_OFFSET"
-test -n "$LABEL" && ADDL_ARGS="$ADDL_ARGS --label $LABEL"
-test -n "$SB_CONTR_HDR_OUT" && CONTR_HDR_OUT_OPT="--dumpContrHdr"
+test "$SB_VERBOSE" && DEBUG_ARGS=" -v"
+test "$SB_DEBUG" && DEBUG_ARGS="$DEBUG_ARGS -d"
+test "$SB_WRAP" && DEBUG_ARGS="$DEBUG_ARGS -w $SB_WRAP"
+test "$HW_FLAGS" && ADDL_ARGS="$ADDL_ARGS --hw-flags $HW_FLAGS"
+test "$CS_OFFSET" && ADDL_ARGS="$ADDL_ARGS --sw-cs-offset $CS_OFFSET"
+test "$LABEL" && ADDL_ARGS="$ADDL_ARGS --label $LABEL"
+test "$SB_CONTR_HDR_OUT" && CONTR_HDR_OUT_OPT="--dumpContrHdr"
 
-test -n "$SB_VERBOSE" && SF_DEBUG_ARGS=" -v"
-test -n "$SB_DEBUG" && SF_DEBUG_ARGS="$SF_DEBUG_ARGS -d -stdout"
+test "$SB_VERBOSE" && SF_DEBUG_ARGS=" -v"
+test "$SB_DEBUG" && SF_DEBUG_ARGS="$SF_DEBUG_ARGS -d -stdout"
 
 #
 # Set defaults for signframework project basenames
@@ -523,7 +523,7 @@ then
         else
             KEYFOUND=$(find "$TOPDIR" -name $KEYFILE | head -1)
 
-            if [ -n "$KEYFOUND" ]
+            if [ "$KEYFOUND" ]
             then
                 echo "--> $P: Found key for HW key $(to_upper $KEY)."
                 cp -p "$KEYFOUND" "$T/"
@@ -563,7 +563,7 @@ then
         else
             KEYFOUND=$(find "$TOPDIR" -name $KEYFILE | head -1)
 
-            if [ -n "$KEYFOUND" ]
+            if [ "$KEYFOUND" ]
             then
                 echo "--> $P: Found key for SW key $(to_upper $KEY)."
                 cp -p "$KEYFOUND" "$T/"
@@ -586,7 +586,7 @@ then
         SW_KEY_ARGS="$SW_KEY_ARGS -$KEY $T/$KEYFILE"
     done
 
-elif [ -n "$SIGN_MODE" ]
+elif [ "$SIGN_MODE" ]
 then
     die "Unsupported mode: $SIGN_MODE"
 fi
@@ -686,7 +686,7 @@ then
         else
             SIGFOUND=$(find "$TOPDIR" -name $SIGFILE | head -1)
 
-            if [ -n "$SIGFOUND" ]
+            if [ "$SIGFOUND" ]
             then
                 echo "--> $P: Found signature for HW key $(to_upper $KEY)."
                 cp -p "$SIGFOUND" "$T/"
@@ -746,7 +746,7 @@ fi
 #
 # Build the full container
 #
-if [ -n "$HW_SIG_ARGS" -o -n "$SW_SIG_ARGS" ]; then
+if [ "$HW_SIG_ARGS" -o "$SW_SIG_ARGS" ]; then
     echo "--> $P: Have signatures for keys $FOUND adding to container..."
     create-container $HW_KEY_ARGS $SW_KEY_ARGS \
                      $HW_SIG_ARGS $SW_SIG_ARGS \
@@ -758,7 +758,7 @@ if [ -n "$HW_SIG_ARGS" -o -n "$SW_SIG_ARGS" ]; then
 
     test $rc -ne 0 && die "Call to create-container failed with error: $rc"
 
-    test -n "$SB_CONTR_HDR_OUT" && \
+    test "$SB_CONTR_HDR_OUT" && \
         echo "--> $P: Container header saved to: $SB_CONTR_HDR_OUT"
 
 else
@@ -770,7 +770,7 @@ echo "--> $P: Container $LABEL build completed."
 #
 # Export archive
 #
-test -n "$SB_ARCHIVE_OUT" && exportArchive "$SB_ARCHIVE_OUT"
+test "$SB_ARCHIVE_OUT" && exportArchive "$SB_ARCHIVE_OUT"
 
 #
 # Validate, verify the container
@@ -787,10 +787,10 @@ then
     SB_PASS_ON_ERROR=""
 fi
 
-test -n "$SB_VALIDATE" && VALIDATE_OPT="--validate"
-test -n "$SB_VERIFY" && VERIFY_OPT="--verify" && VERIFY_ARGS="$SB_VERIFY"
+test "$SB_VALIDATE" && VALIDATE_OPT="--validate"
+test "$SB_VERIFY" && VERIFY_OPT="--verify" && VERIFY_ARGS="$SB_VERIFY"
 
-if [ -n "$VALIDATE_OPT" -o -n "$VERIFY_OPT" ]; then
+if [ "$VALIDATE_OPT" -o "$VERIFY_OPT" ]; then
     echo
     print-container --imagefile "$OUTPUT" --no-print \
                     $DEBUG_ARGS $VALIDATE_OPT $VERIFY_OPT "$VERIFY_ARGS"
