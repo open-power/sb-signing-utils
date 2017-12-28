@@ -471,7 +471,7 @@ test "$SB_DEBUG" && SF_DEBUG_ARGS="$SF_DEBUG_ARGS -d -stdout"
 #
 # Get the public keys
 #
-if [ "$SIGN_MODE" == "local" ]
+if [ "$SIGN_MODE" == "local" ] || [ "$SIGN_MODE" == "independent" ]
 then
     for KEY in a b c; do
         # This will evaluate the value of HW_KEY_A, HW_KEY_B, HW_KEY_C
@@ -594,22 +594,28 @@ fi
 #
 # Build enough of the container to create the Prefix and Software headers
 #
-echo "--> $P: Generating signing requests..."
-create-container $HW_KEY_ARGS $SW_KEY_ARGS \
-                 --payload "$PAYLOAD" --imagefile "$OUTPUT" \
-                 --dumpPrefixHdr "$T/prefix_hdr" --dumpSwHdr "$T/software_hdr" \
-                 $DEBUG_ARGS \
-                 $ADDL_ARGS
-rc=$?
+if [ "$SIGN_MODE" == "independent" ] && [ "$SB_ARCHIVE_IN" ]
+then
+    echo "--> $P: Attempting to re-use existing signing requests..."
+    # TODO: check that prefix_hdr and software_hdr files are available...
+else
+    echo "--> $P: Generating signing requests..."
+    create-container $HW_KEY_ARGS $SW_KEY_ARGS \
+                     --payload "$PAYLOAD" --imagefile "$OUTPUT" \
+                     --dumpPrefixHdr "$T/prefix_hdr" --dumpSwHdr "$T/software_hdr" \
+                     $DEBUG_ARGS \
+                     $ADDL_ARGS
+    rc=$?
 
-test $rc -ne 0 && die "Call to create-container failed with error: $rc"
+    test $rc -ne 0 && die "Call to create-container failed with error: $rc"
+fi
 
 #
 # Prepare the HW and SW key signatures
 #
 FOUND=""
 
-if [ "$SIGN_MODE" == "local" ]
+if [ "$SIGN_MODE" == "local" ] || [ "$SIGN_MODE" == "independent" ]
 then
     for KEY in a b c; do
         SIGFILE=HW_key_$KEY.sig
