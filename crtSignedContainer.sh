@@ -94,6 +94,18 @@ is_cmd_available () {
     command -v "$1" &>/dev/null
 }
 
+get_date_string () {
+    # Convert a seconds-since-epoch value to presentation format
+    local d
+    d=$(date -d @"$1" 2>/dev/null) && echo "$d" && return
+
+    is_cmd_available perl && \
+        d=$(perl -le "print scalar localtime $1" 2>/dev/null) && \
+            echo "$d" && return
+
+    d=$1 && echo "$d"
+}
+
 exportArchive () {
     cd "$SB_SCRATCH_DIR" || die "Cannot cd to $SB_SCRATCH_DIR"
     if tar -zcf "$SB_ARCHIVE_OUT" "$buildID/$LABEL/"; then
@@ -384,9 +396,9 @@ test ! -d "$SB_SCRATCH_DIR" && die "Scratch directory not found: $SB_SCRATCH_DIR
 TOPDIR=$(ls -1dt "$SB_SCRATCH_DIR"/${moniker}_* 2>/dev/null | head -1)
 
 if [ "$TOPDIR" ]; then
-    crtTime=$(date -d @$(basename "$TOPDIR" | cut -d_ -f2))
     buildID="${TOPDIR##*/}"
-    echo "--> $P: Using existing cache dir: $TOPDIR, created: $crtTime"
+    timestamp="${buildID##*_}"
+    echo "--> $P: Using existing cache dir: $TOPDIR, created: $(get_date_string "$timestamp")"
 else
     buildID="${moniker}_$(date +%s)"
     TOPDIR="$SB_SCRATCH_DIR/$buildID"
