@@ -411,7 +411,7 @@ test ! -d "$SB_SCRATCH_DIR" && die "Scratch directory not found: $SB_SCRATCH_DIR
 
 TOPDIR=$(ls -1dt "$SB_SCRATCH_DIR"/${moniker}_* 2>/dev/null | head -1)
 
-if [ -n "$TOPDIR" ]; then
+if [ "$TOPDIR" ]; then
     buildID="${TOPDIR##*/}"
     timestamp="${buildID##*_}"
     echo "--> $P: Using existing cache dir: $TOPDIR, created: $(get_date_string "$timestamp")"
