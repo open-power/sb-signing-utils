@@ -627,17 +627,36 @@ then
         test "$KEYFILE" == __get -o "$KEYFILE" == __getkey && \
             die "Cannot $KEYFILE $varname in $SIGN_MODE mode"
 
-        # If no signature found, try to generate one.
+        # Look for signature in the local cache dir.
         if [ -f "$T/$SIGFILE" ]
         then
             echo "--> $P: Found signature for HW key $(to_upper $KEY)."
-        elif test -f "$KEYFILE" && is_private_key "$KEYFILE"
-        then
-            echo "--> $P: Generating signature for HW key $(to_upper $KEY)..."
-            openssl dgst -SHA512 -sign "$KEYFILE" "$T/prefix_hdr" > "$T/$SIGFILE"
         else
-            echo "--> $P: No signature found and no private key available for HW key $(to_upper $KEY), skipping."
-            continue
+            # Check elsewhere in the cache.
+            if [ "$SIGN_MODE" == "independent" ] && [ "$SB_ARCHIVE_IN" ]
+            then
+                SIGFOUND=$(find "$TOPDIR" -type f -name $SIGFILE | head -1)
+            else
+                SIGFOUND=""
+            fi
+
+            if [ "$SIGFOUND" ]
+            then
+                echo "--> $P: Found signature for HW key $(to_upper $KEY)."
+                cp -p "$SIGFOUND" "$T/"
+            else
+                # If no signature found, try to generate one.
+                if [ -f "$KEYFILE" ] && is_private_key "$KEYFILE"
+                then
+                    echo "--> $P: Generating signature for HW key $(to_upper $KEY)..."
+                    openssl dgst -SHA512 -sign "$KEYFILE" "$T/prefix_hdr" > "$T/$SIGFILE"
+                    rc=$?
+                    test $rc -ne 0 && die "Call to openssl failed with error: $rc"
+                else
+                    echo "--> $P: No signature found and no private key available for HW key $(to_upper $KEY), skipping."
+                    continue
+                fi
+            fi
         fi
 
         FOUND="${FOUND}$(to_upper $KEY),"
@@ -662,6 +681,8 @@ then
         then
             echo "--> $P: Generating signature for SW key $(to_upper $KEY)..."
             openssl dgst -SHA512 -sign "$KEYFILE" "$T/software_hdr" > "$T/$SIGFILE"
+            rc=$?
+            test $rc -ne 0 && die "Call to openssl failed with error: $rc"
         else
             echo "--> $P: No signature found and no private key available for SW key $(to_upper $KEY), skipping."
             continue
@@ -690,7 +711,7 @@ then
         then
             echo "--> $P: Found signature for HW key $(to_upper $KEY)."
         else
-            SIGFOUND=$(find "$TOPDIR" -name $SIGFILE | head -1)
+            SIGFOUND=$(find "$TOPDIR" -type f -name $SIGFILE | head -1)
 
             if [ "$SIGFOUND" ]
             then
