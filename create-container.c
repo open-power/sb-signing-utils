@@ -488,6 +488,10 @@ int main(int argc, char* argv[])
 				die(EX_OSERR, "Cannot mmap file at fd: %d, size: %lu (%s)",
 						fdin, payload_st.st_size, strerror(errno));
 		}
+	} else {
+		fdin = -1;
+		infile = NULL;
+		payload_st.st_size = 0;
 	}
 
 	fdout = open(params.imagefn, O_WRONLY | O_CREAT | O_TRUNC,
@@ -700,7 +704,7 @@ int main(int argc, char* argv[])
 
 	// Print container stats.
 	size = (uint8_t*) ph - (uint8_t *) c;
-	offset = (uint8_t*) c - (uint8_t *) c;
+	offset = 0;
 	verbose_msg("HW header size        = %4u (%#06x) at offset %4u (%#06x)",
 			size, size, offset, offset);
 	size = (uint8_t*) pd - (uint8_t *) ph;
