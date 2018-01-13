@@ -68,8 +68,11 @@ is_public_key () {
 }
 
 is_raw_key () {
-    test "$(stat -c%s "$1")" -eq 133 -a \
-         "$(dd if="$1" bs=1 count=1 2>/dev/null | xxd -p)" == "04"
+    # A RAW p521 pubkey will be 133 bytes with a leading byte of 0x04,
+    # indicating an uncompressed key.
+    test "$1" && \
+        test "$(stat -c%s "$1")" -eq 133 && \
+        [[ $(dd if="$1" bs=1 count=1 2>/dev/null) == $'\004' ]]
 }
 
 to_lower () {
@@ -215,7 +218,7 @@ parseIni () {
 #
 
 # Check required programs
-for p in date egrep tar xxd openssl sha512sum create-container print-container
+for p in date egrep tar openssl sha512sum create-container print-container
 do
     is_cmd_available $p || \
         die "Required command \"$p\" not available or not found in PATH"
@@ -765,11 +768,10 @@ then
         else
             test "$KEYFILE" == __getkey && continue
             echo "--> $P: Requesting signature for SW key $(to_upper $KEY)..."
-            sha512sum "$T/software_hdr" | cut -d' ' -f1 | xxd -p -r > "$T/software_hdr.sha512.bin"
             sf_client $SF_DEBUG_ARGS -project $SF_PROJECT -epwd "$SF_EPWD" \
                       -comments "Requesting sig for $LABEL from $SF_PROJECT" \
                       -url sftp://$SF_USER@$SF_SERVER -pkey "$SF_SSHKEY" \
-                      -payload "$T/software_hdr.sha512.bin" -o "$T/$SIGFILE"
+                      -payload "$T/software_hdr.md.bin" -o "$T/$SIGFILE"
             rc=$?
 
             test $rc -ne 0 && die "Call to sf_client failed with error: $rc"
@@ -790,7 +792,7 @@ if [ "$HW_SIG_ARGS" -o "$SW_SIG_ARGS" ]; then
     create-container $HW_KEY_ARGS $SW_KEY_ARGS \
                      $HW_SIG_ARGS $SW_SIG_ARGS \
                      --payload "$PAYLOAD" --imagefile "$OUTPUT" \
-                     $CONTR_HDR_OUT_OPT "$SB_CONTR_HDR_OUT" \
+                     $CONTR_HDR_OUT_OPT $SB_CONTR_HDR_OUT \
                      $DEBUG_ARGS \
                      $ADDL_ARGS
     rc=$?

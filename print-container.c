@@ -16,10 +16,13 @@
 
 #include <config.h>
 
+#ifndef _AIX
+#include <getopt.h>
+#endif
+
 #include <alloca.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <getopt.h>
 #include <limits.h>
 #include <openssl/bn.h>
 #include <openssl/ec.h>
@@ -557,6 +560,7 @@ __attribute__((__noreturn__)) static void usage (int status)
 	exit(status);
 }
 
+#ifndef _AIX
 static struct option const opts[] = {
 	{ "help",             no_argument,       0,  'h' },
 	{ "verbose",          no_argument,       0,  'v' },
@@ -564,12 +568,13 @@ static struct option const opts[] = {
 	{ "wrap",             required_argument, 0,  'w' },
 	{ "stats",            no_argument,       0,  's' },
 	{ "imagefile",        required_argument, 0,  'I' },
-	{ "validate",         no_argument,       0,  128 },
-	{ "verify",           required_argument, 0,  129 },
-	{ "no-print",         no_argument,       0,  130 },
-	{ "print",            no_argument,       0,  131 },
+	{ "validate",         no_argument,       0,  '0' },
+	{ "verify",           required_argument, 0,  '1' },
+	{ "no-print",         no_argument,       0,  '2' },
+	{ "print",            no_argument,       0,  '3' },
 	{ NULL, 0, NULL, 0 }
 };
+#endif
 
 static struct {
 	char *imagefn;
@@ -581,7 +586,6 @@ static struct {
 
 int main(int argc, char* argv[])
 {
-	int indexptr;
 	int r;
 	struct stat st;
 	void *container;
@@ -598,9 +602,43 @@ int main(int argc, char* argv[])
 	else
 		progname = argv[0];
 
+#ifdef _AIX
+	for (int i = 1; i < argc; i++) {
+		if (!strcmp(*(argv + i), "--help")) {
+			*(argv + i) = "-h";
+		} else if (!strcmp(*(argv + i), "--verbose")) {
+			*(argv + i) = "-v";
+		} else if (!strcmp(*(argv + i), "--debug")) {
+			*(argv + i) = "-d";
+		} else if (!strcmp(*(argv + i), "--wrap")) {
+			*(argv + i) = "-w";
+		} else if (!strcmp(*(argv + i), "--stats")) {
+			*(argv + i) = "-s";
+		} else if (!strcmp(*(argv + i), "--imagefile")) {
+			*(argv + i) = "-I";
+		} else if (!strcmp(*(argv + i), "--validate")) {
+			*(argv + i) = "-0";
+		} else if (!strcmp(*(argv + i), "--verify")) {
+			*(argv + i) = "-1";
+		} else if (!strcmp(*(argv + i), "--no-print")) {
+			*(argv + i) = "-2";
+		} else if (!strcmp(*(argv + i), "--print")) {
+			*(argv + i) = "-3";
+		} else if (!strncmp(*(argv + i), "--", 2)) {
+			fprintf(stderr, "%s: unrecognized option \'%s\'\n", progname,
+					*(argv + i));
+			usage(EX_OK);
+		}
+	}
+#endif
+
 	while (1) {
 		int opt;
-		opt = getopt_long(argc, argv, "?hvdw:sI:", opts, &indexptr);
+#ifdef _AIX
+		opt = getopt(argc, argv, "??hvdw:sI:01:23");
+#else
+		opt = getopt_long(argc, argv, "?hvdw:sI:01:23", opts, NULL);
+#endif
 		if (opt == -1)
 			break;
 
@@ -627,16 +665,16 @@ int main(int argc, char* argv[])
 		case 'I':
 			params.imagefn = optarg;
 			break;
-		case 128:
+		case '0':
 			params.validate = true;
 			break;
-		case 129:
+		case '1':
 			params.verify = optarg;
 			break;
-		case 130:
+		case '2':
 			params.print_container = false;
 			break;
-		case 131:
+		case '3':
 			params.print_container = true;
 			break;
 		default:
