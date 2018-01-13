@@ -483,12 +483,12 @@ static bool getPayloadHash(int fdin, unsigned char *md)
 
 static bool getVerificationHash(char *input, unsigned char *md, int len)
 {
+	char buf[len * 2 + 1 + 2]; // allow trailing \n and leading "0x"
 	char *p;
 
 	if (isValidHex(input, len)) {
 		p = input;
 	} else {
-		char buf[len * 2 + 1 + 2]; // allow trailing \n and leading "0x"
 		int fdin = open(input, O_RDONLY);
 		if (fdin <= 0)
 			die(EX_NOINPUT, "%s",
