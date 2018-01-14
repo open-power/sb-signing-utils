@@ -16,9 +16,12 @@
 
 #include <config.h>
 
+#ifndef _AIX
+#include <getopt.h>
+#endif
+
 #include <errno.h>
 #include <fcntl.h>
-#include <getopt.h>
 #include <limits.h>
 #include <openssl/bn.h>
 #include <openssl/ec.h>
@@ -208,9 +211,10 @@ void getSigRaw(ecc_signature_t *sigraw, char *inFile)
 
 void writeHdr(void *hdr, const char *outFile, int hdr_type)
 {
-	int fdout;
+	FILE *fp;
 	int r, hdr_sz;
-	unsigned char md[SHA512_DIGEST_LENGTH];
+	unsigned char md_buf[SHA512_DIGEST_LENGTH];
+	unsigned char *md = NULL;
 
 	switch (hdr_type) {
 	case CONTAINER_HDR:
@@ -218,31 +222,59 @@ void writeHdr(void *hdr, const char *outFile, int hdr_type)
 		break;
 	case PREFIX_HDR:
 		hdr_sz = sizeof(ROM_prefix_header_raw);
-		SHA512(hdr, hdr_sz, md);
-		verbose_print((char *) "PR header hash  = ", md, sizeof(md));
+		md = SHA512(hdr, hdr_sz, md_buf);
+		verbose_print((char *) "PR header hash  = ", md_buf, sizeof(md_buf));
 		break;
 	case SOFTWARE_HDR:
 		hdr_sz = sizeof(ROM_sw_header_raw);
-		SHA512(hdr, hdr_sz, md);
-		verbose_print((char *) "SW header hash  = ", md, sizeof(md));
+		md = SHA512(hdr, hdr_sz, md_buf);
+		verbose_print((char *) "SW header hash  = ", md_buf, sizeof(md_buf));
 		break;
 	default:
 		die(EX_SOFTWARE, "Unknown header type (%d)", hdr_type);
 	}
 
-	fdout = open(outFile, O_WRONLY | O_CREAT | O_TRUNC,
-			S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-	if (fdout <= 0)
-		die(EX_CANTCREAT, "Cannot create output file: %s", outFile);
+	fp = fopen(outFile, "w");
+	if (!fp)
+		die(EX_CANTCREAT, "Cannot create output file: %s: %s", outFile,
+				strerror(errno));
 
-	r = write(fdout, (const void *) hdr, hdr_sz);
-	close(fdout);
+	r = fwrite((const void *) hdr, hdr_sz, 1, fp);
+	fclose(fp);
 
-	if (r < hdr_sz)
-		die(EX_SOFTWARE, "Error writing header file (r = %d)", r);
+	if (r != 1)
+		die(EX_SOFTWARE, "Error writing header file: %s: %s", outFile,
+				strerror(errno));
 
-	debug_msg("Wrote %d bytes to %s", r, outFile);
+	debug_msg("Wrote %d bytes to %s", hdr_sz, outFile);
 
+	if (md) {
+		char *fn = malloc(strlen(outFile) + 7);
+
+		sprintf(fn, "%s.md.bin", outFile);
+
+		fp = fopen(fn, "w");
+		if (!fp)
+			die(EX_CANTCREAT, "Cannot create output file: %s: %s", fn,
+					strerror(errno));
+
+		fwrite(md, SHA512_DIGEST_LENGTH, 1, fp);
+		fclose(fp);
+
+		sprintf(fn, "%s.md", outFile);
+
+		fp = fopen(fn, "w");
+		if (!fp)
+			die(EX_CANTCREAT, "Cannot create output file: %s: %s", fn,
+					strerror(errno));
+
+		for (int i = 0; i < SHA512_DIGEST_LENGTH; i++)
+			fprintf(fp, "%02x", md[i]);
+
+		fclose(fp);
+
+		free(fn);
+	}
 	return;
 }
 
@@ -290,6 +322,7 @@ __attribute__((__noreturn__)) void usage (int status)
 	exit(status);
 }
 
+#ifndef _AIX 
 static struct option const opts[] = {
 	{ "help",             no_argument,       0,  'h' },
 	{ "verbose",          no_argument,       0,  'v' },
@@ -314,11 +347,12 @@ static struct option const opts[] = {
 	{ "hw-flags",         required_argument, 0,  'f' },
 	{ "sw-flags",         required_argument, 0,  'F' },
 	{ "label",            required_argument, 0,  'L' },
-	{ "dumpPrefixHdr",    required_argument, 0,  128 },
-	{ "dumpSwHdr",        required_argument, 0,  129 },
-	{ "dumpContrHdr",     required_argument, 0,  130 },
+	{ "dumpContrHdr",     required_argument, 0,  '0' }, 
+	{ "dumpPrefixHdr",    required_argument, 0,  '1' }, 
+	{ "dumpSwHdr",        required_argument, 0,  '2' }, 
 	{ NULL, 0, NULL, 0 }
 };
+#endif 
 
 static struct {
 	char *hw_keyfn_a;
@@ -350,7 +384,6 @@ int main(int argc, char* argv[])
 {
 	int fdin = -1;
 	int fdout;
-	int indexptr;
 	unsigned int size, offset;
 	void *container = malloc(SECURE_BOOT_HEADERS_SIZE);
 	char *buf = malloc(SECURE_BOOT_HEADERS_SIZE);
@@ -377,10 +410,83 @@ int main(int argc, char* argv[])
 
 	memset(container, 0, SECURE_BOOT_HEADERS_SIZE);
 
+#ifdef _AIX
+	// It *should* be safe to operate on argv directly.  If so, just get rid of argvNew...
+	char **argvNew = argv;
+	// If not, can create a new array and copy-in the orig argv...
+//	char **argvNew = malloc(sizeof(char*) * argc);
+//	memcpy(argvNew, argv, sizeof(char*) * argc);
+
+	for (int i = 1; i < argc; i++) {
+		if (!strcmp(*(argvNew + i), "--help")) {
+			*(argvNew + i) = "-h";
+		} else if (!strcmp(*(argvNew + i), "--verbose")) {
+			*(argvNew + i) = "-v";
+		} else if (!strcmp(*(argvNew + i), "--debug")) {
+			*(argvNew + i) = "-d";
+		} else if (!strcmp(*(argvNew + i), "--wrap")) {
+			*(argvNew + i) = "-w";
+		} else if (!strcmp(*(argvNew + i), "--hw_key_a")) {
+			*(argvNew + i) = "-a";
+		} else if (!strcmp(*(argvNew + i), "--hw_key_b")) {
+			*(argvNew + i) = "-b";
+		} else if (!strcmp(*(argvNew + i), "--hw_key_c")) {
+			*(argvNew + i) = "-c";
+		} else if (!strcmp(*(argvNew + i), "--sw_key_p")) {
+			*(argvNew + i) = "-p";
+		} else if (!strcmp(*(argvNew + i), "--sw_key_q")) {
+			*(argvNew + i) = "-q";
+		} else if (!strcmp(*(argvNew + i), "--sw_key_r")) {
+			*(argvNew + i) = "-r";
+		} else if (!strcmp(*(argvNew + i), "--hw_sig_a")) {
+			*(argvNew + i) = "-A";
+		} else if (!strcmp(*(argvNew + i), "--hw_sig_b")) {
+			*(argvNew + i) = "-B";
+		} else if (!strcmp(*(argvNew + i), "--hw_sig_c")) {
+			*(argvNew + i) = "-C";
+		} else if (!strcmp(*(argvNew + i), "--sw_sig_p")) {
+			*(argvNew + i) = "-P";
+		} else if (!strcmp(*(argvNew + i), "--sw_sig_q")) {
+			*(argvNew + i) = "-Q";
+		} else if (!strcmp(*(argvNew + i), "--sw_sig_r")) {
+			*(argvNew + i) = "-R";
+		} else if (!strcmp(*(argvNew + i), "--payload")) {
+			*(argvNew + i) = "-l";
+		} else if (!strcmp(*(argvNew + i), "--imagefile")) {
+			*(argvNew + i) = "-I";
+		} else if (!strcmp(*(argvNew + i), "--hw-cs-offset")) {
+			*(argvNew + i) = "-o";
+		} else if (!strcmp(*(argvNew + i), "--sw-cs-offset")) {
+			*(argvNew + i) = "-O";
+		} else if (!strcmp(*(argvNew + i), "--hw-flags")) {
+			*(argvNew + i) = "-f";
+		} else if (!strcmp(*(argvNew + i), "--sw-flags")) {
+			*(argvNew + i) = "-F";
+		} else if (!strcmp(*(argvNew + i), "--label")) {
+			*(argvNew + i) = "-L";
+		} else if (!strcmp(*(argvNew + i), "--dumpContrHdr")) {
+			*(argvNew + i) = "-0";
+		} else if (!strcmp(*(argvNew + i), "--dumpPrefixHdr")) {
+			*(argvNew + i) = "-1";
+		} else if (!strcmp(*(argvNew + i), "--dumpSwHdr")) {
+			*(argvNew + i) = "-2";
+		} else if (!strncmp(*(argvNew + i), "--", 2)) {
+			fprintf(stderr, "%s: unrecognized option \'%s\'\n", progname,
+					*(argvNew + i));
+			usage(EX_OK);
+		}
+	}
+#endif 
+
 	while (1) {
 		int opt;
-		opt = getopt_long(argc, argv, "?hvdw:a:b:c:p:q:r:A:B:C:P:Q:R:L:I:o:O:f:F:l:",
-				opts, &indexptr);
+#ifdef _AIX 
+		opt = getopt(argc, argv, "?hvdw:a:b:c:p:q:r:A:B:C:P:Q:R:L:I:o:O:f:F:l:0:1:2:"); 
+#else 
+		opt = getopt_long(argc, argv, 
+				"hvdw:a:b:c:p:q:r:A:B:C:P:Q:R:L:I:o:O:f:F:l:0:1:2:", opts, 
+				NULL); 
+#endif 
 		if (opt == -1)
 			break;
 
@@ -458,13 +564,13 @@ int main(int argc, char* argv[])
 		case 'L':
 			params.label = optarg;
 			break;
-		case 128:
+		case '1': 
 			params.prhdrfn = optarg;
 			break;
-		case 129:
+		case '2': 
 			params.swhdrfn = optarg;
 			break;
-		case 130:
+		case '0': 
 			params.cthdrfn = optarg;
 			break;
 		default:

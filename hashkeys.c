@@ -16,9 +16,12 @@
 
 #include <config.h>
 
+#ifndef _AIX
+#include <getopt.h>
+#endif
+
 #include <errno.h>
 #include <fcntl.h>
-#include <getopt.h>
 #include <limits.h>
 #include <openssl/bn.h>
 #include <openssl/ec.h>
@@ -160,6 +163,7 @@ __attribute__((__noreturn__)) void usage (int status)
 	exit(status);
 }
 
+#ifndef _AIX
 static struct option const opts[] = {
 	{ "help",             no_argument,       0,  'h' },
 	{ "verbose",          no_argument,       0,  'v' },
@@ -169,10 +173,11 @@ static struct option const opts[] = {
 	{ "hw_key_b",         required_argument, 0,  'b' },
 	{ "hw_key_c",         required_argument, 0,  'c' },
 	{ "outfile",          required_argument, 0,  'o' },
-	{ "ascii",            no_argument,       0,  128 },
-	{ "binary",           no_argument,       0,  129 },
+	{ "ascii",            no_argument,       0,  '0' },
+	{ "binary",           no_argument,       0,  '1' },
 	{ NULL, 0, NULL, 0 }
 };
+#endif
 
 static struct {
 	char *hw_keyfn_a;
@@ -185,7 +190,6 @@ static struct {
 int main(int argc, char* argv[])
 {
 	FILE *fp;
-	int indexptr;
 	int outform = ASCII_OUT;
 	void *container = malloc(SECURE_BOOT_HEADERS_SIZE);
 	ROM_container_raw *c = (ROM_container_raw*) container;
@@ -202,10 +206,44 @@ int main(int argc, char* argv[])
 
 	memset(container, 0, SECURE_BOOT_HEADERS_SIZE);
 
+#ifdef _AIX
+	for (int i = 1; i < argc; i++) {
+		if (!strcmp(*(argv + i), "--help")) {
+			*(argv + i) = "-h";
+		} else if (!strcmp(*(argv + i), "--verbose")) {
+			*(argv + i) = "-v";
+		} else if (!strcmp(*(argv + i), "--debug")) {
+			*(argv + i) = "-d";
+		} else if (!strcmp(*(argv + i), "--wrap")) {
+			*(argv + i) = "-w";
+		} else if (!strcmp(*(argv + i), "--hw_key_a")) {
+			*(argv + i) = "-a";
+		} else if (!strcmp(*(argv + i), "--hw_key_b")) {
+			*(argv + i) = "-b";
+		} else if (!strcmp(*(argv + i), "--hw_key_c")) {
+			*(argv + i) = "-c";
+		} else if (!strcmp(*(argv + i), "--outfile")) {
+			*(argv + i) = "-o";
+		} else if (!strcmp(*(argv + i), "--ascii")) {
+			*(argv + i) = "-0";
+		} else if (!strcmp(*(argv + i), "--binary")) {
+			*(argv + i) = "-1";
+		} else if (!strncmp(*(argv + i), "--", 2)) {
+			fprintf(stderr, "%s: unrecognized option \'%s\'\n", progname,
+					*(argv + i));
+			usage(EX_OK);
+		}
+	}
+#endif
+
 	while (1) {
 		int opt;
-		opt = getopt_long(argc, argv, "?hvdw:a:b:c:o:",
-				opts, &indexptr);
+#ifdef _AIX
+		opt = getopt(argc, argv, "?hvdw:a:b:c:o:01");
+#else
+		opt = getopt_long(argc, argv, "?hvdw:a:b:c:o:01", opts, NULL);
+#endif
+
 		if (opt == -1)
 			break;
 
@@ -238,10 +276,10 @@ int main(int argc, char* argv[])
 		case 'o':
 			params.outfile = optarg;
 			break;
-		case 128:
+		case '0':
 			outform = ASCII_OUT;
 			break;
-		case 129:
+		case '1':
 			outform = BINARY_OUT;
 			break;
 		default:
