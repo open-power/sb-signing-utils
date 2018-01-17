@@ -155,6 +155,7 @@ __attribute__((__noreturn__)) void usage (int status)
 			" -o, --outfile           file to write HW keys hash (default is stdout)\n"
 			"     --ascii             output in hexascii (default)\n"
 			"     --binary            output in binary\n"
+			"     --pretty            add 0x the start of the string, for --ascii\n"
 			"\n");
 	};
 	exit(status);
@@ -171,6 +172,7 @@ static struct option const opts[] = {
 	{ "outfile",          required_argument, 0,  'o' },
 	{ "ascii",            no_argument,       0,  128 },
 	{ "binary",           no_argument,       0,  129 },
+	{ "pretty",           no_argument,       0,  130 },
 	{ NULL, 0, NULL, 0 }
 };
 
@@ -179,6 +181,7 @@ static struct {
 	char *hw_keyfn_b;
 	char *hw_keyfn_c;
 	char *outfile;
+	bool pretty;
 } params;
 
 
@@ -244,6 +247,9 @@ int main(int argc, char* argv[])
 		case 129:
 			outform = BINARY_OUT;
 			break;
+		case 130:
+			params.pretty = true;
+			break;
 		default:
 			usage(EX_USAGE);
 		}
@@ -288,6 +294,9 @@ int main(int argc, char* argv[])
 		fwrite(md, SHA512_DIGEST_LENGTH, 1, fp);
 
 	} else if (outform == ASCII_OUT) {
+
+        if (params.pretty)
+			fprintf(fp, "%s", "0x");
 
 		for (int i = 0; i < SHA512_DIGEST_LENGTH; i++)
 			fprintf(fp, "%02x", md[i]);
