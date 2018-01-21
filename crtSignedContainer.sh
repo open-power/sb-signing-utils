@@ -218,7 +218,7 @@ parseIni () {
 #
 
 # Check required programs
-for p in date egrep tar xxd openssl sha512sum create-container print-container
+for p in date egrep tar openssl create-container print-container
 do
     is_cmd_available $p || \
         die "Required command \"$p\" not available or not found in PATH"
@@ -768,11 +768,10 @@ then
         else
             test "$KEYFILE" == __getkey && continue
             echo "--> $P: Requesting signature for SW key $(to_upper $KEY)..."
-            sha512sum "$T/software_hdr" | cut -d' ' -f1 | xxd -p -r > "$T/software_hdr.sha512.bin"
             sf_client $SF_DEBUG_ARGS -project $SF_PROJECT -epwd "$SF_EPWD" \
                       -comments "Requesting sig for $LABEL from $SF_PROJECT" \
                       -url sftp://$SF_USER@$SF_SERVER -pkey "$SF_SSHKEY" \
-                      -payload "$T/software_hdr.sha512.bin" -o "$T/$SIGFILE"
+                      -payload "$T/software_hdr.md.bin" -o "$T/$SIGFILE"
             rc=$?
 
             test $rc -ne 0 && die "Call to sf_client failed with error: $rc"

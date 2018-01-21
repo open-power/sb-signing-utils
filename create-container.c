@@ -208,9 +208,10 @@ void getSigRaw(ecc_signature_t *sigraw, char *inFile)
 
 void writeHdr(void *hdr, const char *outFile, int hdr_type)
 {
-	int fdout;
+	FILE *fp;
 	int r, hdr_sz;
-	unsigned char md[SHA512_DIGEST_LENGTH];
+	unsigned char md_buf[SHA512_DIGEST_LENGTH];
+	unsigned char *md = NULL;
 
 	switch (hdr_type) {
 	case CONTAINER_HDR:
@@ -218,31 +219,60 @@ void writeHdr(void *hdr, const char *outFile, int hdr_type)
 		break;
 	case PREFIX_HDR:
 		hdr_sz = sizeof(ROM_prefix_header_raw);
-		SHA512(hdr, hdr_sz, md);
-		verbose_print((char *) "PR header hash  = ", md, sizeof(md));
+		md = SHA512(hdr, hdr_sz, md_buf);
+		verbose_print((char *) "PR header hash  = ", md_buf, sizeof(md_buf));
 		break;
 	case SOFTWARE_HDR:
 		hdr_sz = sizeof(ROM_sw_header_raw);
-		SHA512(hdr, hdr_sz, md);
-		verbose_print((char *) "SW header hash  = ", md, sizeof(md));
+		md = SHA512(hdr, hdr_sz, md_buf);
+		verbose_print((char *) "SW header hash  = ", md_buf, sizeof(md_buf));
 		break;
 	default:
 		die(EX_SOFTWARE, "Unknown header type (%d)", hdr_type);
 	}
 
-	fdout = open(outFile, O_WRONLY | O_CREAT | O_TRUNC,
-			S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-	if (fdout <= 0)
-		die(EX_CANTCREAT, "Cannot create output file: %s", outFile);
+	fp = fopen(outFile, "w");
+	if (!fp)
+		die(EX_CANTCREAT, "Cannot create output file: %s: %s", outFile,
+				strerror(errno));
 
-	r = write(fdout, (const void *) hdr, hdr_sz);
-	close(fdout);
+	r = fwrite((const void *) hdr, hdr_sz, 1, fp);
+	fclose(fp);
 
-	if (r < hdr_sz)
-		die(EX_SOFTWARE, "Error writing header file (r = %d)", r);
+	if (r != 1)
+		die(EX_SOFTWARE, "Error writing header file: %s: %s", outFile,
+				strerror(errno));
 
-	debug_msg("Wrote %d bytes to %s", r, outFile);
+	debug_msg("Wrote %d bytes to %s", hdr_sz, outFile);
 
+	if (md) {
+		char *fn = malloc(strlen(outFile) + 7);
+
+		// Write the message digest in binary.
+		sprintf(fn, "%s.md.bin", outFile);
+
+		fp = fopen(fn, "w");
+		if (!fp)
+			die(EX_CANTCREAT, "Cannot create output file: %s: %s", fn,
+					strerror(errno));
+
+		fwrite(md, SHA512_DIGEST_LENGTH, 1, fp);
+		fclose(fp);
+
+		// Write the message digest in hexascii.
+		sprintf(fn, "%s.md", outFile);
+
+		fp = fopen(fn, "w");
+		if (!fp)
+			die(EX_CANTCREAT, "Cannot create output file: %s: %s", fn,
+					strerror(errno));
+
+		for (int i = 0; i < SHA512_DIGEST_LENGTH; i++)
+			fprintf(fp, "%02x", md[i]);
+
+		fclose(fp);
+		free(fn);
+	}
 	return;
 }
 
