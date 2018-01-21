@@ -27,7 +27,7 @@ ACLOCAL_AMFLAGS = -I m4
 
 bin_PROGRAMS = create-container print-container hashkeys
 
-dist_bin_SCRIPTS = crtSignedContainer.sh sign-with-local-keys.sh
+dist_bin_SCRIPTS = bulkSign.sh crtSignedContainer.sh sign-with-local-keys.sh
 
 EXTRA_DIST = ccan container.c
 
