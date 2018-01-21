@@ -217,13 +217,6 @@ parseIni () {
 # Main
 #
 
-# Check required programs
-for p in date egrep tar openssl create-container print-container
-do
-    is_cmd_available $p || \
-        die "Required command \"$p\" not available or not found in PATH"
-done
-
 # Convert long options to short
 for arg in "$@"; do
   shift
@@ -290,6 +283,13 @@ do
     9) SB_VERIFY="$OPTARG";;
     h|\?) usage;;
   esac
+done
+
+# Check required programs
+for p in date egrep tar openssl create-container print-container
+do
+    is_cmd_available $p || \
+        die "Required command \"$p\" not available or not found in PATH"
 done
 
 # Process config properties from op-build _defconfig
