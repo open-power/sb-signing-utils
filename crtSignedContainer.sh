@@ -68,8 +68,11 @@ is_public_key () {
 }
 
 is_raw_key () {
-    test "$(stat -c%s "$1")" -eq 133 -a \
-         "$(dd if="$1" bs=1 count=1 2>/dev/null | xxd -p)" == "04"
+    # A RAW p521 pubkey will be 133 bytes with a leading byte of 0x04,
+    # indicating an uncompressed key.
+    test "$1" && \
+        test "$(stat -c%s "$1")" -eq 133 && \
+        [[ $(dd if="$1" bs=1 count=1 2>/dev/null) == $'\004' ]]
 }
 
 to_lower () {
