@@ -843,15 +843,8 @@ fi
 # Cleanup
 #
 if [ $SB_KEEP_CACHE == false ]; then
-    echo "--> $P: Removing cache subdir: $T"
-    rm -rf "$T"
-    T="$(dirname "$T")"
-
-    if rmdir "$T"; then
-        echo "--> $P: Removing cache dir: $T"
-    else
-        echo "--> $P: Not removing cache dir: $T"
-    fi
+    echo "--> $P: Removing cache dir: $TOPDIR"
+    rm -rf "$TOPDIR"
 fi
 
 exit $RC
