@@ -16,9 +16,12 @@
 
 #include <config.h>
 
+#ifndef _AIX
+#include <getopt.h>
+#endif
+
 #include <errno.h>
 #include <fcntl.h>
-#include <getopt.h>
 #include <limits.h>
 #include <openssl/bn.h>
 #include <openssl/ec.h>
@@ -320,6 +323,7 @@ __attribute__((__noreturn__)) void usage (int status)
 	exit(status);
 }
 
+#ifndef _AIX 
 static struct option const opts[] = {
 	{ "help",             no_argument,       0,  'h' },
 	{ "verbose",          no_argument,       0,  'v' },
@@ -344,11 +348,12 @@ static struct option const opts[] = {
 	{ "hw-flags",         required_argument, 0,  'f' },
 	{ "sw-flags",         required_argument, 0,  'F' },
 	{ "label",            required_argument, 0,  'L' },
-	{ "dumpPrefixHdr",    required_argument, 0,  128 },
-	{ "dumpSwHdr",        required_argument, 0,  129 },
-	{ "dumpContrHdr",     required_argument, 0,  130 },
+	{ "dumpContrHdr",     required_argument, 0,  '0' }, 
+	{ "dumpPrefixHdr",    required_argument, 0,  '1' }, 
+	{ "dumpSwHdr",        required_argument, 0,  '2' }, 
 	{ NULL, 0, NULL, 0 }
 };
+#endif 
 
 static struct {
 	char *hw_keyfn_a;
@@ -380,7 +385,6 @@ int main(int argc, char* argv[])
 {
 	int fdin = -1;
 	int fdout;
-	int indexptr;
 	unsigned int size, offset;
 	void *container = malloc(SECURE_BOOT_HEADERS_SIZE);
 	char *buf = malloc(SECURE_BOOT_HEADERS_SIZE);
@@ -407,10 +411,77 @@ int main(int argc, char* argv[])
 
 	memset(container, 0, SECURE_BOOT_HEADERS_SIZE);
 
+#ifdef _AIX
+	for (int i = 1; i < argc; i++) {
+		if (!strcmp(*(argv + i), "--help")) {
+			*(argv + i) = "-h";
+		} else if (!strcmp(*(argv + i), "--verbose")) {
+			*(argv + i) = "-v";
+		} else if (!strcmp(*(argv + i), "--debug")) {
+			*(argv + i) = "-d";
+		} else if (!strcmp(*(argv + i), "--wrap")) {
+			*(argv + i) = "-w";
+		} else if (!strcmp(*(argv + i), "--hw_key_a")) {
+			*(argv + i) = "-a";
+		} else if (!strcmp(*(argv + i), "--hw_key_b")) {
+			*(argv + i) = "-b";
+		} else if (!strcmp(*(argv + i), "--hw_key_c")) {
+			*(argv + i) = "-c";
+		} else if (!strcmp(*(argv + i), "--sw_key_p")) {
+			*(argv + i) = "-p";
+		} else if (!strcmp(*(argv + i), "--sw_key_q")) {
+			*(argv + i) = "-q";
+		} else if (!strcmp(*(argv + i), "--sw_key_r")) {
+			*(argv + i) = "-r";
+		} else if (!strcmp(*(argv + i), "--hw_sig_a")) {
+			*(argv + i) = "-A";
+		} else if (!strcmp(*(argv + i), "--hw_sig_b")) {
+			*(argv + i) = "-B";
+		} else if (!strcmp(*(argv + i), "--hw_sig_c")) {
+			*(argv + i) = "-C";
+		} else if (!strcmp(*(argv + i), "--sw_sig_p")) {
+			*(argv + i) = "-P";
+		} else if (!strcmp(*(argv + i), "--sw_sig_q")) {
+			*(argv + i) = "-Q";
+		} else if (!strcmp(*(argv + i), "--sw_sig_r")) {
+			*(argv + i) = "-R";
+		} else if (!strcmp(*(argv + i), "--payload")) {
+			*(argv + i) = "-l";
+		} else if (!strcmp(*(argv + i), "--imagefile")) {
+			*(argv + i) = "-I";
+		} else if (!strcmp(*(argv + i), "--hw-cs-offset")) {
+			*(argv + i) = "-o";
+		} else if (!strcmp(*(argv + i), "--sw-cs-offset")) {
+			*(argv + i) = "-O";
+		} else if (!strcmp(*(argv + i), "--hw-flags")) {
+			*(argv + i) = "-f";
+		} else if (!strcmp(*(argv + i), "--sw-flags")) {
+			*(argv + i) = "-F";
+		} else if (!strcmp(*(argv + i), "--label")) {
+			*(argv + i) = "-L";
+		} else if (!strcmp(*(argv + i), "--dumpContrHdr")) {
+			*(argv + i) = "-0";
+		} else if (!strcmp(*(argv + i), "--dumpPrefixHdr")) {
+			*(argv + i) = "-1";
+		} else if (!strcmp(*(argv + i), "--dumpSwHdr")) {
+			*(argv + i) = "-2";
+		} else if (!strncmp(*(argv + i), "--", 2)) {
+			fprintf(stderr, "%s: unrecognized option \'%s\'\n", progname,
+					*(argv + i));
+			usage(EX_OK);
+		}
+	}
+#endif 
+
 	while (1) {
 		int opt;
-		opt = getopt_long(argc, argv, "?hvdw:a:b:c:p:q:r:A:B:C:P:Q:R:L:I:o:O:f:F:l:",
-				opts, &indexptr);
+#ifdef _AIX 
+		opt = getopt(argc, argv, "?hvdw:a:b:c:p:q:r:A:B:C:P:Q:R:L:I:o:O:f:F:l:0:1:2:"); 
+#else 
+		opt = getopt_long(argc, argv, 
+				"hvdw:a:b:c:p:q:r:A:B:C:P:Q:R:L:I:o:O:f:F:l:0:1:2:", opts, 
+				NULL); 
+#endif 
 		if (opt == -1)
 			break;
 
@@ -488,13 +559,13 @@ int main(int argc, char* argv[])
 		case 'L':
 			params.label = optarg;
 			break;
-		case 128:
+		case '1': 
 			params.prhdrfn = optarg;
 			break;
-		case 129:
+		case '2': 
 			params.swhdrfn = optarg;
 			break;
-		case 130:
+		case '0': 
 			params.cthdrfn = optarg;
 			break;
 		default:
