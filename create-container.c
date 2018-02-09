@@ -249,7 +249,7 @@ void writeHdr(void *hdr, const char *outFile, int hdr_type)
 	debug_msg("Wrote %d bytes to %s", hdr_sz, outFile);
 
 	if (md) {
-		char *fn = malloc(strlen(outFile) + 7);
+		char *fn = malloc(strlen(outFile) + 8);
 
 		// Write the message digest in binary.
 		sprintf(fn, "%s.md.bin", outFile);
