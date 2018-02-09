@@ -792,9 +792,8 @@ if [ "$HW_SIG_ARGS" -o "$SW_SIG_ARGS" ]; then
     create-container $HW_KEY_ARGS $SW_KEY_ARGS \
                      $HW_SIG_ARGS $SW_SIG_ARGS \
                      --payload "$PAYLOAD" --imagefile "$OUTPUT" \
-                     $CONTR_HDR_OUT_OPT "$SB_CONTR_HDR_OUT" \
-                     $DEBUG_ARGS \
-                     $ADDL_ARGS
+                     $DEBUG_ARGS $ADDL_ARGS \
+                     $CONTR_HDR_OUT_OPT "$SB_CONTR_HDR_OUT"
     rc=$?
 
     test $rc -ne 0 && die "Call to create-container failed with error: $rc"
