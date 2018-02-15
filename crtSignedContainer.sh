@@ -60,11 +60,11 @@ die () {
 }
 
 is_private_key () {
-    openssl ec -pubout -in "$1" &>/dev/null
+    openssl ec -pubout -in "$1"
 }
 
 is_public_key () {
-    openssl ec -pubin -pubout -in "$1" &>/dev/null
+    openssl ec -pubin -pubout -in "$1"
 }
 
 is_raw_key () {
@@ -72,7 +72,7 @@ is_raw_key () {
     # indicating an uncompressed key.
     test "$1" && \
         test "$(stat -c%s "$1")" -eq 133 && \
-        [[ $(dd if="$1" bs=1 count=1 2>/dev/null) == $'\004' ]]
+        [[ $(dd if="$1" bs=1 count=1) == $'\004' ]]
 }
 
 to_lower () {
@@ -94,7 +94,7 @@ is_path_dir () {
 }
 
 is_cmd_available () {
-    command -v "$1" &>/dev/null
+    command -v "$1"
 }
 
 get_date_string () {
@@ -315,6 +315,8 @@ test "$SB_PROJECT_INI" && PROJECT_INI="$SB_PROJECT_INI"
 test "$SIGN_MODE" == development && SIGN_MODE=local
 
 echo "--> $P: Signing mode: $SIGN_MODE"
+echo "OpenSSL version:"
+openssl version
 
 #
 # Parse INI file
