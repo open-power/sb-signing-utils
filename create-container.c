@@ -389,7 +389,6 @@ int main(int argc, char* argv[])
 	void *container = malloc(SECURE_BOOT_HEADERS_SIZE);
 	char *buf = malloc(SECURE_BOOT_HEADERS_SIZE);
 	struct stat payload_st;
-	off_t l;
 	void *infile = NULL;
 	int r;
 	ROM_container_raw *c = (ROM_container_raw*) container;
@@ -833,23 +832,19 @@ int main(int argc, char* argv[])
 			be64_to_cpu(c->container_size), be64_to_cpu(c->container_size));
 
 	// Write container.
-	r = write(fdout, container, SECURE_BOOT_HEADERS_SIZE);
-	if (r != 4096)
-		die(EX_SOFTWARE, "Cannot write container (r = %d)", r);
-	if (fdin > 0) {
-		r = read(fdin, buf, payload_st.st_size % 4096);
-		r = write(fdout, buf, payload_st.st_size % 4096);
-	}
-	l = payload_st.st_size - payload_st.st_size % 4096;
-	while (l) {
-		r = read(fdin, buf, 4096);
-		r = write(fdout, buf, 4096);
-		l -= 4096;
-	};
-	if (fdin > 0)
-		close(fdin);
-	close(fdout);
+	if ((r = write(fdout, container, SECURE_BOOT_HEADERS_SIZE)) != 4096)
+		die(EX_SOFTWARE, "Cannot write container header (r = %d) (%s)", r,
+				strerror(errno));
 
+	if (fdin > 0) {
+		if ((r = write(fdout, infile, payload_st.st_size))
+				!= payload_st.st_size)
+			die(EX_SOFTWARE, "Cannot write container payload (r = %d) (%s)", r,
+					strerror(errno));
+
+		close(fdin);
+	}
+	close(fdout);
 	free(container);
 	free(buf);
 	return 0;
