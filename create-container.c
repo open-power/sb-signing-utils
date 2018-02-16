@@ -323,7 +323,7 @@ __attribute__((__noreturn__)) void usage (int status)
 	exit(status);
 }
 
-#ifndef _AIX 
+#ifndef _AIX
 static struct option const opts[] = {
 	{ "help",             no_argument,       0,  'h' },
 	{ "verbose",          no_argument,       0,  'v' },
@@ -348,12 +348,12 @@ static struct option const opts[] = {
 	{ "hw-flags",         required_argument, 0,  'f' },
 	{ "sw-flags",         required_argument, 0,  'F' },
 	{ "label",            required_argument, 0,  'L' },
-	{ "dumpContrHdr",     required_argument, 0,  '0' }, 
-	{ "dumpPrefixHdr",    required_argument, 0,  '1' }, 
-	{ "dumpSwHdr",        required_argument, 0,  '2' }, 
+	{ "dumpContrHdr",     required_argument, 0,  '0' },
+	{ "dumpPrefixHdr",    required_argument, 0,  '1' },
+	{ "dumpSwHdr",        required_argument, 0,  '2' },
 	{ NULL, 0, NULL, 0 }
 };
-#endif 
+#endif
 
 static struct {
 	char *hw_keyfn_a;
@@ -471,17 +471,17 @@ int main(int argc, char* argv[])
 			usage(EX_OK);
 		}
 	}
-#endif 
+#endif
 
 	while (1) {
 		int opt;
-#ifdef _AIX 
-		opt = getopt(argc, argv, "?hvdw:a:b:c:p:q:r:A:B:C:P:Q:R:L:I:o:O:f:F:l:0:1:2:"); 
-#else 
-		opt = getopt_long(argc, argv, 
-				"hvdw:a:b:c:p:q:r:A:B:C:P:Q:R:L:I:o:O:f:F:l:0:1:2:", opts, 
-				NULL); 
-#endif 
+#ifdef _AIX
+		opt = getopt(argc, argv, "?hvdw:a:b:c:p:q:r:A:B:C:P:Q:R:L:I:o:O:f:F:l:0:1:2:");
+#else
+		opt = getopt_long(argc, argv,
+				"hvdw:a:b:c:p:q:r:A:B:C:P:Q:R:L:I:o:O:f:F:l:0:1:2:", opts,
+				NULL);
+#endif
 		if (opt == -1)
 			break;
 
@@ -559,13 +559,13 @@ int main(int argc, char* argv[])
 		case 'L':
 			params.label = optarg;
 			break;
-		case '1': 
+		case '1':
 			params.prhdrfn = optarg;
 			break;
-		case '2': 
+		case '2':
 			params.swhdrfn = optarg;
 			break;
-		case '0': 
+		case '0':
 			params.cthdrfn = optarg;
 			break;
 		default:
