@@ -29,26 +29,27 @@ bin_PROGRAMS = create-container print-container hashkeys
 
 dist_bin_SCRIPTS = bulkSign.sh crtSignedContainer.sh sign-with-local-keys.sh
 
-EXTRA_DIST = ccan container.c
+EXTRA_DIST = ccan container.c m4/gnulib-cache.m4
 
 create_container_SOURCES = \
 	container.h \
 	create-container.c
 
-create_container_CPPFLAGS = $(AM_CPPFLAGS) -I. -g3 -std=gnu99
+create_container_CPPFLAGS = $(AM_CPPFLAGS) -I. -I$(top_srcdir)/lib -g3 -std=gnu99
 create_container_LDFLAGS =
-create_container_LDADD = -lssl -lcrypto
+create_container_LDADD = -lssl -lcrypto @LIBINTL@ $(top_builddir)/lib/libgnu.a
 
 print_container_SOURCES = \
 	print-container.c
 
-print_container_CPPFLAGS = $(AM_CPPFLAGS) -I. -g3 -std=gnu99
+print_container_CPPFLAGS = $(AM_CPPFLAGS) -I. -I$(top_srcdir)/lib -g3 -std=gnu99
 print_container_LDFLAGS =
-print_container_LDADD = -lssl -lcrypto
+print_container_LDADD = -lssl -lcrypto @LIBINTL@ $(top_builddir)/lib/libgnu.a
 
 hashkeys_SOURCES = \
 	hashkeys.c
 
-hashkeys_CPPFLAGS = $(AM_CPPFLAGS) -I. -g3 -std=gnu99
+hashkeys_CPPFLAGS = $(AM_CPPFLAGS) -I. -I$(top_srcdir)/lib -g3 -std=gnu99
 hashkeys_LDFLAGS =
-hashkeys_LDADD = -lssl -lcrypto
+hashkeys_LDADD = -lssl -lcrypto @LIBINTL@ $(top_builddir)/lib/libgnu.a
+SUBDIRS = lib

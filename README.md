@@ -90,8 +90,15 @@ The scripts "build_all.sh" and "clean_all.sh" are included in the project
 project, and demonstrate how to build the project from source. The scripts
 support the GNU toolchain enabled method of building, and a
 "lite" method of building.
+If building for AIX, the GNU method is required.
 
-To build with full GNU toolchain support, run "build_all.sh" passing
+To build with full GNU toolchain support, resolve gnulib dependencies
+by running the "gnulib-tool". The tool can be cloned from 
+git://git.savannah.gnu.org/gnulib.git
+
+$ gnulib-tool --update
+
+Then run "build_all.sh" passing
 "gnu" on the command-line:
 
 $ build_all.sh gnu
