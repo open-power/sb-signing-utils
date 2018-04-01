@@ -292,21 +292,6 @@ do
         die "Required command \"$p\" not available or not found in PATH"
 done
 
-# Process config properties from op-build _defconfig
-test "$BR2_CONFIG" && source $BR2_CONFIG &> /dev/null
-test "$BR2_OPENPOWER_SECUREBOOT_PASS_ON_VALIDATION_ERROR" && SB_PASS_ON_ERROR=Y
-
-# Determine if validate or verify has been requested via the _defconfig
-if [ -z "$SB_VALIDATE" -a "$BR2_OPENPOWER_SECUREBOOT_CONTAINER_VALIDATE" ]
-then
-    SB_VALIDATE="$BR2_OPENPOWER_SECUREBOOT_CONTAINER_VALIDATE"
-fi
-
-if [ -z "$SB_VERIFY" -a "$BR2_OPENPOWER_SECUREBOOT_CONTAINER_VERIFY" ]
-then
-    SB_VERIFY="$BR2_OPENPOWER_SECUREBOOT_CONTAINER_VERIFY"
-fi
-
 # These are the only env vars that override a command line option
 test "$SB_SIGN_MODE" && SIGN_MODE="$(to_lower "$SB_SIGN_MODE")"
 test "$SB_PROJECT_INI" && PROJECT_INI="$SB_PROJECT_INI"
