@@ -304,6 +304,12 @@ echo "--> $P: Signing mode: $SIGN_MODE"
 #
 # Parse INI file
 #
+if [ "$(to_upper "$LABEL")" == SBKTRAND ]
+then
+    # Key transistion container may have its own ini file
+    test "$SB_PROJECT_INI_TRANS" && PROJECT_INI=$SB_PROJECT_INI_TRANS
+fi
+
 if [ "$PROJECT_INI" ]
 then
     test ! -f "$PROJECT_INI" && die "Can't open INI file: $PROJECT_INI"
@@ -314,6 +320,7 @@ then
     server_hostname=""
     signtool_validate=""
     signtool_verify=""
+    signtool_verify_trans=""
     signtool_pass_on_validation_error=""
     signproject_hw_signing_project_basename=""
     signproject_fw_signing_project_basename=""
@@ -329,6 +336,7 @@ then
 
     test "$signtool_validate" && SB_VALIDATE="$signtool_validate"
     test "$signtool_verify" && SB_VERIFY="$signtool_verify"
+    test "$signtool_verify_trans" && SB_VERIFY_TRANS="$signtool_verify_trans"
     test "$signtool_pass_on_validation_error" && \
         SB_PASS_ON_ERROR="$signtool_pass_on_validation_error"
 
@@ -810,6 +818,12 @@ if [ "$(to_upper $SB_PASS_ON_ERROR)" != Y ] && \
    [ "$(to_upper $SB_PASS_ON_ERROR)" != TRUE ]
 then
     SB_PASS_ON_ERROR=""
+fi
+
+if [ "$(to_upper "$LABEL")" == SBKTRAND ]
+then
+    # Key transistion container may have its own verify value
+    test "$SB_VERIFY_TRANS" && SB_VERIFY=$SB_VERIFY_TRANS
 fi
 
 test "$SB_VALIDATE" && VALIDATE_OPT="--validate"
