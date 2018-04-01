@@ -772,7 +772,7 @@ fi
 #
 # Build the full container
 #
-if [ "$HW_SIG_ARGS" -o "$SW_SIG_ARGS" ]; then
+if [ "$HW_SIG_ARGS" ] || [ "$SW_SIG_ARGS" ]; then
     echo "--> $P: Have signatures for keys $FOUND adding to container..."
     create-container $HW_KEY_ARGS $SW_KEY_ARGS \
                      $HW_SIG_ARGS $SW_SIG_ARGS \
@@ -800,14 +800,14 @@ test "$SB_ARCHIVE_OUT" && exportArchive "$SB_ARCHIVE_OUT"
 #
 # Validate, verify the container
 #
-if [ "$(to_upper $SB_VALIDATE)" != Y -a \
-     "$(to_upper $SB_VALIDATE)" != TRUE ]
+if [ "$(to_upper $SB_VALIDATE)" != Y ] && \
+   [ "$(to_upper $SB_VALIDATE)" != TRUE ]
 then
     SB_VALIDATE=""
 fi
 
-if [ "$(to_upper $SB_PASS_ON_ERROR)" != Y -a \
-     "$(to_upper $SB_PASS_ON_ERROR)" != TRUE ]
+if [ "$(to_upper $SB_PASS_ON_ERROR)" != Y ] && \
+   [ "$(to_upper $SB_PASS_ON_ERROR)" != TRUE ]
 then
     SB_PASS_ON_ERROR=""
 fi
@@ -815,7 +815,7 @@ fi
 test "$SB_VALIDATE" && VALIDATE_OPT="--validate"
 test "$SB_VERIFY" && VERIFY_OPT="--verify" && VERIFY_ARGS="$SB_VERIFY"
 
-if [ "$VALIDATE_OPT" -o "$VERIFY_OPT" ]; then
+if [ "$VALIDATE_OPT" ] || [ "$VERIFY_OPT" ]; then
     echo
     print-container --imagefile "$OUTPUT" --no-print \
                     $DEBUG_ARGS $VALIDATE_OPT $VERIFY_OPT "$VERIFY_ARGS"
