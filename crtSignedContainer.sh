@@ -415,6 +415,9 @@ fi
 if [ -z "$OUTPUT" ] || [ "$OUTPUT" == __none ]
 then
     OUTPUT="$SB_SCRATCH_DIR/$(to_lower "$buildID").scratch.out.img"
+    OUTPUT_SCRATCH=true
+else
+    OUTPUT_SCRATCH=false
 fi
 
 #
@@ -843,6 +846,10 @@ fi
 if [ $SB_KEEP_CACHE == false ]; then
     echo "--> $P: Removing cache dir: $TOPDIR"
     rm -rf "$TOPDIR"
+fi
+
+if [ $OUTPUT_SCRATCH == true ]; then
+    rm "$OUTPUT"
 fi
 
 exit $RC
