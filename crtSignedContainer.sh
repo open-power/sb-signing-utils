@@ -141,7 +141,8 @@ importArchive () {
 
     if [ -d "$archsubdir" ]; then
         # We already have this subdir in the cache, make a backup
-        cp -rpT "$archsubdir" "$archsubdir.save"
+        rm -rf "$archsubdir.save"
+        cp -rp "$archsubdir" "$archsubdir.save"
     else
         # We don't yet have a subdir by this name, create it
         mkdir "$archsubdir"
