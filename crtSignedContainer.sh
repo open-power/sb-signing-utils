@@ -685,12 +685,16 @@ then
         test "$KEYFILE" == __get -o "$KEYFILE" == __getkey && \
             die "Cannot $KEYFILE $varname in $SIGN_MODE mode"
 
-        # If no signature found, try to generate one.
-        if [ -f "$T/$SIGFILE" ]
+        # Look for a signature in the local cache dir, if found use it.
+        # (but never reuse a sig for SBKT, the payload is always regenerated)
+        if [ -f "$T/$SIGFILE" ] && \
+           [ "$(to_upper "$LABEL")" != SBKT ] && \
+           [ "$(to_upper "$LABEL")" != SBKTRAND ]
         then
             echo "--> $P: Found signature for SW key $(to_upper $KEY)."
         elif test -f "$KEYFILE" && is_private_key "$KEYFILE"
         then
+            # No signature found, try to generate one.
             echo "--> $P: Generating signature for SW key $(to_upper $KEY)..."
             openssl dgst -SHA512 -sign "$KEYFILE" "$T/software_hdr" > "$T/$SIGFILE"
             rc=$?
@@ -758,11 +762,14 @@ then
         test -z "$KEYFILE" && break
         test "$KEYFILE" == __skip && break
 
-        # If no signature in the current dir, request one.
-        if [ -f "$T/$SIGFILE" ]
+        # Look for a signature in the local cache dir, if found use it.
+        if [ -f "$T/$SIGFILE" ] && \
+           [ "$(to_upper "$LABEL")" != SBKT ] && \
+           [ "$(to_upper "$LABEL")" != SBKTRAND ]
         then
             echo "--> $P: Found signature for SW key $(to_upper $KEY)."
         else
+            # No signature found, request one.
             test "$KEYFILE" == __getkey && continue
             echo "--> $P: Requesting signature for SW key $(to_upper $KEY)..."
             sf_client $SF_DEBUG_ARGS -project $SF_PROJECT -epwd "$SF_EPWD" \
