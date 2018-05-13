@@ -23,6 +23,9 @@
 #include "ccan/endian/endian.h"
 #include "ccan/short_types/short_types.h"
 
+#define min(x, y) ((x) < (y) ? (x) : (y))
+#define max(x, y) ((x) > (y) ? (x) : (y))
+
 #define PASSED 1
 #define FAILED 0
 #define UNATTEMPTED -1
