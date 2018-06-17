@@ -61,9 +61,17 @@ typedef struct keyprops {
 	const ecc_signature_t *sig;
 } Keyprops;
 
+static struct {
+	char *imagefn;
+	bool validate;
+	bool ignore_remainder;
+	char *verify;
+	bool print_container;
+} params;
+
 static void usage(int status);
 
-static bool getPayloadHash(int fdin, unsigned char *md);
+static bool getPayloadHash(int fdin, uint64_t pl_sz_expected, unsigned char *md);
 static bool getVerificationHash(char *input, unsigned char *md, int len);
 static bool verify_signature(const char *moniker, const unsigned char *dgst,
 		int dgst_len, const ecc_signature_t sig_raw, const ecc_key_t key_raw);
@@ -313,7 +321,8 @@ static bool validate_container(struct parsed_stb_container c, int fdin)
 	if (verbose) printf("\n");
 
 	// Verify Payload hash.
-	status = getPayloadHash(fdin, md) && status;
+	status = getPayloadHash(fdin, be64_to_cpu(c.sh->payload_size), md)
+			&& status;
 	if (verbose) print_bytes((char *) "Payload hash = ", (uint8_t *) md,
 			SHA512_DIGEST_LENGTH);
 
@@ -459,7 +468,7 @@ static bool verify_signature(const char *moniker, const unsigned char *dgst,
 	return status;
 }
 
-static bool getPayloadHash(int fdin, unsigned char *md)
+static bool getPayloadHash(int fdin, uint64_t pl_sz_expected, unsigned char *md)
 {
 	struct stat st;
 	void *file;
@@ -471,13 +480,20 @@ static bool getPayloadHash(int fdin, unsigned char *md)
 		die(EX_NOINPUT, "Cannot stat payload file at descriptor: %d (%s)", fdin,
 				strerror(errno));
 
+	uint64_t pl_sz_actual = max(0, st.st_size - SECURE_BOOT_HEADERS_SIZE);
+
+	if (verbose && (pl_sz_expected != pl_sz_actual))
+		printf("Payload expected size = %lu, actual size = %lu\n\n",
+				pl_sz_expected, pl_sz_actual);
+
 	file = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fdin, 0);
 	if (file == MAP_FAILED)
 		die(EX_OSERR, "Cannot mmap file at fd: %d, size: %lu (%s)", fdin,
 				st.st_size, strerror(errno));
 
 	p = SHA512(file + SECURE_BOOT_HEADERS_SIZE,
-			st.st_size - SECURE_BOOT_HEADERS_SIZE, md);
+			(params.ignore_remainder ?
+					min(pl_sz_actual, pl_sz_expected) : pl_sz_actual), md);
 	if (!p)
 		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
 
@@ -553,6 +569,9 @@ __attribute__((__noreturn__)) static void usage (int status)
 			" -s, --stats             additionally print container stats\n"
 			" -I, --imagefile         containerized image to display (input)\n"
 			"     --validate          perform all checks to ensure is container valid for secure boot\n"
+			"     --validate-ignore-remainder\n"
+			"                         use the payload size in the container header when calculating\n"
+			"                         payload hash, and ignore any trailing bytes or padding.\n"
 			"     --verify            value, or filename containing value, of the HW Keys hash to\n"
 			"                         verify the container against. must be valid 64 byte hexascii.\n"
 			"\n");
@@ -572,16 +591,10 @@ static struct option const opts[] = {
 	{ "verify",           required_argument, 0,  '1' },
 	{ "no-print",         no_argument,       0,  '2' },
 	{ "print",            no_argument,       0,  '3' },
+	{ "validate-ignore-remainder", no_argument, 0, '4' },
 	{ NULL, 0, NULL, 0 }
 };
 #endif
-
-static struct {
-	char *imagefn;
-	bool validate;
-	char *verify;
-	bool print_container;
-} params;
 
 
 int main(int argc, char* argv[])
@@ -624,6 +637,8 @@ int main(int argc, char* argv[])
 			*(argv + i) = "-2";
 		} else if (!strcmp(*(argv + i), "--print")) {
 			*(argv + i) = "-3";
+		} else if (!strcmp(*(argv + i), "--validate-ignore-remainder")) {
+			*(argv + i) = "-4";
 		} else if (!strncmp(*(argv + i), "--", 2)) {
 			fprintf(stderr, "%s: unrecognized option \'%s\'\n", progname,
 					*(argv + i));
@@ -676,6 +691,9 @@ int main(int argc, char* argv[])
 			break;
 		case '3':
 			params.print_container = true;
+			break;
+		case '4':
+			params.ignore_remainder = true;
 			break;
 		default:
 			usage(EX_USAGE);
