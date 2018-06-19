@@ -110,6 +110,26 @@ get_date_string () {
 }
 
 exportArchive () {
+    # If project basename is set, prepare the export for import to a system
+    # using the same project basename.
+    if [ "$SIGN_MODE" == "local" ] || \
+       [ "$SIGN_MODE" == "independent" ] && \
+       [ "$SF_HW_SIGNING_PROJECT_BASE" ]
+    then
+        cd "$T" || die "Cannot cd to $T"
+        for KEY in a b c; do
+            cp -p &>/dev/null "HW_key_$KEY.pub" \
+                "project.${SF_HW_SIGNING_PROJECT_BASE}_${KEY}.HW_key_${KEY}.pub"
+            cp -p &>/dev/null "HW_key_$KEY.raw" \
+                "project.${SF_HW_SIGNING_PROJECT_BASE}_${KEY}.HW_key_${KEY}.raw"
+            cp -p &>/dev/null "HW_key_$KEY.sig" \
+                "project.${SF_HW_SIGNING_PROJECT_BASE}_${KEY}.HW_sig_${KEY}.sig"
+            cp -p &>/dev/null "HW_key_$KEY.raw" \
+                "project.${SF_HW_SIGNING_PROJECT_BASE}_${KEY}.HW_sig_${KEY}.raw"
+        done
+    fi
+
+	# Create the archive.
     cd "$SB_SCRATCH_DIR" || die "Cannot cd to $SB_SCRATCH_DIR"
     if tar -zcf "$SB_ARCHIVE_OUT" "$buildID/$LABEL/"; then
         echo "--> $P: Archive saved to: $SB_ARCHIVE_OUT"
@@ -476,9 +496,12 @@ test "$SB_DEBUG" && SF_DEBUG_ARGS="$SF_DEBUG_ARGS -d -stdout"
 #
 # Set defaults for signframework project basenames
 #
+if [ "$SIGN_MODE" == "production" ]
+then
 : "${SF_HW_SIGNING_PROJECT_BASE:=sign_ecc_pwr_hw_key}"
 : "${SF_FW_SIGNING_PROJECT_BASE:=sign_ecc_pwr_fw_key_op_bld}"
 : "${SF_GETPUBKEY_PROJECT_BASE:=getpubkeyecc}"
+fi
 
 #
 # Get the public keys
@@ -497,6 +520,17 @@ then
 
         # Add to HW_KEY_ARGS
         HW_KEY_ARGS="$HW_KEY_ARGS -$KEY $KEYFILE"
+
+        # Copy the pubkey to the cache.
+        if [ -f "$KEYFILE" ]; then
+            if is_private_key "$KEYFILE"; then
+                openssl ec -in "$KEYFILE" -pubout -out "$T/HW_key_$KEY.pub" &>/dev/null
+            elif is_public_key "$KEYFILE"; then
+                cp -p "$KEYFILE" "$T/HW_key_$KEY.pub"
+            elif is_raw_key "$KEYFILE"; then
+                cp -p "$KEYFILE" "$T/HW_key_$KEY.raw"
+            fi
+        fi
     done
 
     for KEY in p q r; do
@@ -526,33 +560,48 @@ then
         # Currently we use it only to check if __skip was specified.
 
         SF_PROJECT=${SF_HW_SIGNING_PROJECT_BASE}_${KEY}
-        KEYFILE=project.$SF_PROJECT.HW_key_$KEY.raw
+        KEYFILE_BASE=project.$SF_PROJECT.HW_key_$KEY
 
-        # If no keyfile in the current dir, try to find one. If none found, try to get one.
-        if [ -f "$T/$KEYFILE" ]
-        then
-            echo "--> $P: Found key for HW key $(to_upper $KEY)."
-        else
-            KEYFOUND=$(find "$TOPDIR" -name $KEYFILE | head -1)
+        KEYFOUND=""
+        while [ -z "$KEYFOUND" ]
+        do
+            for KEYFILE in "$KEYFILE_BASE.pub" "$KEYFILE_BASE.raw"
+            do
+                # Look for key in the component cache.
+                KEYFOUND=$(find "$T" -name $KEYFILE | head -1)
+                if [ "$KEYFOUND" ]; then
+                    test "$SB_VERBOSE" && msg=" ($KEYFILE)"
+                    echo "--> $P: Found key for HW key $(to_upper $KEY).${msg}"
+                    break 2
+                fi
 
-            if [ "$KEYFOUND" ]
-            then
-                echo "--> $P: Found key for HW key $(to_upper $KEY)."
-                cp -p "$KEYFOUND" "$T/"
-            else
-                echo "--> $P: Requesting public key for HW key $(to_upper $KEY)..."
-                sf_client $SF_DEBUG_ARGS -project "$SF_GETPUBKEY_PROJECT_BASE" \
-                          -param "-signproject $SF_PROJECT" \
-                          -epwd "$SF_EPWD" -comments "Requesting $SF_PROJECT" \
-                          -url sftp://$SF_USER@$SF_SERVER -pkey "$SF_SSHKEY" \
-                          -o "$T/$KEYFILE"
-                rc=$?
+                # If not in the component cache, look elsewhere in the cache.
+                KEYFOUND=$(find "$TOPDIR" -name $KEYFILE | head -1)
+                if [ "$KEYFOUND" ]; then
+                    test "$SB_VERBOSE" && msg=" ($KEYFILE)"
+                    echo "--> $P: Found key for HW key $(to_upper $KEY).${msg}"
+                    cp -p "$KEYFOUND" "$T/"
+                    break 2
+                fi
+            done
 
-                test $rc -ne 0 && die "Call to sf_client failed with error: $rc"
+            # No key found, request one.
+            KEYFILE="$KEYFILE_BASE.raw"
+            echo "--> $P: Requesting public key for HW key $(to_upper $KEY)..."
+            sf_client $SF_DEBUG_ARGS -project "$SF_GETPUBKEY_PROJECT_BASE" \
+                        -param "-signproject $SF_PROJECT" \
+                        -epwd "$SF_EPWD" -comments "Requesting $SF_PROJECT" \
+                        -url sftp://$SF_USER@$SF_SERVER -pkey "$SF_SSHKEY" \
+                        -o "$T/$KEYFILE"
+            rc=$?
 
-                echo "--> $P: Retrieved public key for HW key $(to_upper $KEY)."
-            fi
-        fi
+            test $rc -ne 0 && die "Call to sf_client failed with error: $rc"
+
+            KEYFOUND=$(find "$T" -name $KEYFILE)
+            test -z "$KEYFOUND" && die "Unable to retrieve HW key $(to_upper $KEY)."
+
+            echo "--> $P: Retrieved public key for HW key $(to_upper $KEY)."
+        done
 
         # Add to HW_KEY_ARGS
         HW_KEY_ARGS="$HW_KEY_ARGS -$KEY $T/$KEYFILE"
@@ -571,13 +620,15 @@ then
 
         if [ -f "$T/$KEYFILE" ]
         then
-            echo "--> $P: Found key for SW key $(to_upper $KEY)."
+            test "$SB_VERBOSE" && msg=" ($KEYFILE)"
+            echo "--> $P: Found key for SW key $(to_upper $KEY).${msg}"
         else
             KEYFOUND=$(find "$TOPDIR" -name $KEYFILE | head -1)
 
             if [ "$KEYFOUND" ]
             then
-                echo "--> $P: Found key for SW key $(to_upper $KEY)."
+                test "$SB_VERBOSE" && msg=" ($KEYFILE)"
+                echo "--> $P: Found key for SW key $(to_upper $KEY).${msg}"
                 cp -p "$KEYFOUND" "$T/"
             else
                 echo "--> $P: Requesting public key for SW key $(to_upper $KEY)..."
@@ -642,7 +693,8 @@ then
         # Look for signature in the local cache dir.
         if [ -f "$T/$SIGFILE" ]
         then
-            echo "--> $P: Found signature for HW key $(to_upper $KEY)."
+            test "$SB_VERBOSE" && msg=" ($SIGFILE)"
+            echo "--> $P: Found signature for HW key $(to_upper $KEY).${msg}"
         else
             # Check elsewhere in the cache.
             if [ "$SIGN_MODE" == "independent" ] && [ "$SB_ARCHIVE_IN" ]
@@ -654,7 +706,8 @@ then
 
             if [ "$SIGFOUND" ]
             then
-                echo "--> $P: Found signature for HW key $(to_upper $KEY)."
+                test "$SB_VERBOSE" && msg=" ($SIGFILE)"
+                echo "--> $P: Found signature for HW key $(to_upper $KEY).${msg}"
                 cp -p "$SIGFOUND" "$T/"
             else
                 # If no signature found, try to generate one.
@@ -691,7 +744,8 @@ then
            [ "$(to_upper "$LABEL")" != SBKT ] && \
            [ "$(to_upper "$LABEL")" != SBKTRAND ]
         then
-            echo "--> $P: Found signature for SW key $(to_upper $KEY)."
+            test "$SB_VERBOSE" && msg=" ($SIGFILE)"
+            echo "--> $P: Found signature for SW key $(to_upper $KEY).${msg}"
         elif test -f "$KEYFILE" && is_private_key "$KEYFILE"
         then
             # No signature found, try to generate one.
@@ -711,9 +765,6 @@ then
 elif [ "$SIGN_MODE" == "production" ]
 then
     for KEY in a b c; do
-        SF_PROJECT=${SF_HW_SIGNING_PROJECT_BASE}_${KEY}
-        SIGFILE=project.$SF_PROJECT.HW_sig_$KEY.raw
-
         varname=HW_KEY_$(to_upper $KEY); KEYFILE=${!varname}
 
         # Handle the special values, or empty value
@@ -722,31 +773,50 @@ then
         # TODO: Add full support for user-specified keys in Production mode.
         # Currently we use it only to check if __skip or __getkey was specified.
 
-        # If no signature in the current dir, try to find one. If none found, request one.
-        if [ -f "$T/$SIGFILE" ]
-        then
-            echo "--> $P: Found signature for HW key $(to_upper $KEY)."
-        else
-            SIGFOUND=$(find "$TOPDIR" -type f -name $SIGFILE | head -1)
+        SF_PROJECT=${SF_HW_SIGNING_PROJECT_BASE}_${KEY}
+        SIGFILE_BASE=project.$SF_PROJECT.HW_sig_$KEY
 
-            if [ "$SIGFOUND" ]
-            then
-                echo "--> $P: Found signature for HW key $(to_upper $KEY)."
-                cp -p "$SIGFOUND" "$T/"
-            else
-                test "$KEYFILE" == __getkey && continue
-                echo "--> $P: Requesting signature for HW key $(to_upper $KEY)..."
-                sf_client $SF_DEBUG_ARGS -project $SF_PROJECT -epwd "$SF_EPWD" \
-                          -comments "Requesting sig for $SF_PROJECT" \
-                          -url sftp://$SF_USER@$SF_SERVER -pkey "$SF_SSHKEY" \
-                          -payload  "$T/prefix_hdr" -o "$T/$SIGFILE"
-                rc=$?
+        SIGFOUND=""
+        while [ -z "$SIGFOUND" ]
+        do
+            for SIGFILE in "$SIGFILE_BASE.sig" "$SIGFILE_BASE.raw"
+            do
+                # Look for sig in the component cache.
+                SIGFOUND=$(find "$T" -name $SIGFILE | head -1)
+                if [ "$SIGFOUND" ]; then
+                    test "$SB_VERBOSE" && msg=" ($SIGFILE)"
+                    echo "--> $P: Found sig for HW key $(to_upper $KEY).${msg}"
+                    break 2
+                fi
 
-                test $rc -ne 0 && die "Call to sf_client failed with error: $rc"
+                # If not in the component cache, look elsewhere in the cache.
+                SIGFOUND=$(find "$TOPDIR" -name $SIGFILE | head -1)
+                if [ "$SIGFOUND" ]; then
+                    test "$SB_VERBOSE" && msg=" ($SIGFILE)"
+                    echo "--> $P: Found sig for HW key $(to_upper $KEY).${msg}"
+                    cp -p "$SIGFOUND" "$T/"
+                    break 2
+                fi
+            done
 
-                echo "--> $P: Retrieved signature for HW key $(to_upper $KEY)."
-            fi
-        fi
+            # No signature found, request one.
+            test "$KEYFILE" == __getkey && break
+
+            SIGFILE="$SIGFILE_BASE.raw"
+            echo "--> $P: Requesting signature for HW key $(to_upper $KEY)..."
+            sf_client $SF_DEBUG_ARGS -project $SF_PROJECT -epwd "$SF_EPWD" \
+                        -comments "Requesting sig for $SF_PROJECT" \
+                        -url sftp://$SF_USER@$SF_SERVER -pkey "$SF_SSHKEY" \
+                        -payload  "$T/prefix_hdr" -o "$T/$SIGFILE"
+            rc=$?
+
+            test $rc -ne 0 && die "Call to sf_client failed with error: $rc"
+
+            SIGFOUND=$(find "$T" -name $SIGFILE)
+            test -z "$SIGFOUND" && die "Unable to retrieve sig for HW key $(to_upper $KEY)."
+
+            echo "--> $P: Retrieved signature for HW key $(to_upper $KEY)."
+        done
 
         FOUND="${FOUND}$(to_upper $KEY),"
         HW_SIG_ARGS="$HW_SIG_ARGS -$(to_upper $KEY) $T/$SIGFILE"
@@ -767,7 +837,8 @@ then
            [ "$(to_upper "$LABEL")" != SBKT ] && \
            [ "$(to_upper "$LABEL")" != SBKTRAND ]
         then
-            echo "--> $P: Found signature for SW key $(to_upper $KEY)."
+            test "$SB_VERBOSE" && msg=" ($SIGFILE)"
+            echo "--> $P: Found signature for SW key $(to_upper $KEY).${msg}"
         else
             # No signature found, request one.
             test "$KEYFILE" == __getkey && continue
