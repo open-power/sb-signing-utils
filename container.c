@@ -48,7 +48,7 @@ int close_fds()
 {
 	for (int fd = 3; fd < 16; fd++) {
 		int fd_test = dup(fd);
-		if (fd_test > 0) {
+		if (fd_test >= 0) {
 			close(fd_test);
 			close(fd);
 		}
@@ -96,7 +96,6 @@ void debug_print(char *lead, unsigned char *buffer, size_t buflen)
  * - len = 0 means validate input of arbitrary length.
 */
 int isValidHex(char *input, int len) {
-	int r;
 	size_t maxlen = 512; // sane limit
 	regex_t regexpr;
 	char pattern[48];
@@ -113,10 +112,10 @@ int isValidHex(char *input, int len) {
 
 	sprintf(pattern, "^(0x|0X)?[a-fA-F0-9]%s$", multiplier);
 
-	if ((r = regcomp(&regexpr, pattern, REG_EXTENDED | REG_NOSUB)))
+	if ((regcomp(&regexpr, pattern, REG_EXTENDED | REG_NOSUB)))
 		die(EX_SOFTWARE, "%s", "failure to compile regex");
 
-	if (!(r = regexec(&regexpr, input, 0, NULL, 0)))
+	if (!(regexec(&regexpr, input, 0, NULL, 0)))
 		result = true;
 
 	regfree(&regexpr);
@@ -130,7 +129,6 @@ int isValidHex(char *input, int len) {
  * - NOTE: not all ascii chars are allowed here.
  */
 int isValidAscii(char *input, int len) {
-	int r;
 	size_t maxlen = 256; // sane limit
 	regex_t regexpr;
 	char pattern[48];
@@ -147,10 +145,10 @@ int isValidAscii(char *input, int len) {
 
 	sprintf(pattern, "^[a-zA-Z0-9_+-]%s$", multiplier);
 
-	if ((r = regcomp(&regexpr, pattern, REG_EXTENDED | REG_NOSUB)))
+	if ((regcomp(&regexpr, pattern, REG_EXTENDED | REG_NOSUB)))
 		die(EX_SOFTWARE, "%s", "failure to compile regex");
 
-	if (!(r = regexec(&regexpr, input, 0, NULL, 0)))
+	if (!(regexec(&regexpr, input, 0, NULL, 0)))
 		result = true;
 
 	regfree(&regexpr);

@@ -502,6 +502,9 @@ static bool getPayloadHash(int fdin, uint64_t pl_sz_expected, unsigned char *md)
 
 static bool getVerificationHash(char *input, unsigned char *md, int len)
 {
+	if (len < 0)
+		die(EX_NOINPUT, "%s", "Expected len > 0");
+
 	char buf[len * 2 + 1 + 2]; // allow trailing \n and leading "0x"
 	char *p;
 
