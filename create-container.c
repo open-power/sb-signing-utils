@@ -383,7 +383,6 @@ static struct {
 
 int main(int argc, char* argv[])
 {
-	int fdin = -1;
 	int fdout;
 	unsigned int size, offset;
 	void *container = malloc(SECURE_BOOT_HEADERS_SIZE);
@@ -573,7 +572,7 @@ int main(int argc, char* argv[])
 	}
 
 	if (params.payloadfn) {
-		fdin = open(params.payloadfn, O_RDONLY);
+		int fdin = open(params.payloadfn, O_RDONLY);
 		if (fdin <= 0)
 			die(EX_NOINPUT, "Cannot open payload file: %s", params.payloadfn);
 
@@ -588,11 +587,11 @@ int main(int argc, char* argv[])
 				die(EX_OSERR, "Cannot mmap file at fd: %d, size: %lu (%s)",
 						fdin, payload_st.st_size, strerror(errno));
 		}
-	} else {
-		fdin = -1;
-		infile = NULL;
-		payload_st.st_size = 0;
+		close(fdin);
 	}
+
+	if (!infile)
+		payload_st.st_size = 0;
 
 	fdout = open(params.imagefn, O_WRONLY | O_CREAT | O_TRUNC,
 			S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
@@ -836,13 +835,11 @@ int main(int argc, char* argv[])
 		die(EX_SOFTWARE, "Cannot write container header (r = %d) (%s)", r,
 				strerror(errno));
 
-	if (fdin > 0) {
+	if (infile) {
 		if ((r = write(fdout, infile, payload_st.st_size))
 				!= payload_st.st_size)
 			die(EX_SOFTWARE, "Cannot write container payload (r = %d) (%s)", r,
 					strerror(errno));
-
-		close(fdin);
 	}
 	close(fdout);
 	free(container);
