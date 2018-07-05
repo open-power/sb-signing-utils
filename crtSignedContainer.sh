@@ -112,21 +112,36 @@ get_date_string () {
 exportArchive () {
     # If project basename is set, prepare the export for import to a system
     # using the same project basename.
-    if [ "$SIGN_MODE" == "local" ] || \
-       [ "$SIGN_MODE" == "independent" ] && \
-       [ "$SF_HW_SIGNING_PROJECT_BASE" ]
+    if [ "$SIGN_MODE" == "local" ] ||  [ "$SIGN_MODE" == "independent" ]
     then
-        cd "$T" || die "Cannot cd to $T"
-        for KEY in a b c; do
-            cp -p &>/dev/null "HW_key_$KEY.pub" \
-                "project.${SF_HW_SIGNING_PROJECT_BASE}_${KEY}.HW_key_${KEY}.pub"
-            cp -p &>/dev/null "HW_key_$KEY.raw" \
-                "project.${SF_HW_SIGNING_PROJECT_BASE}_${KEY}.HW_key_${KEY}.raw"
-            cp -p &>/dev/null "HW_key_$KEY.sig" \
-                "project.${SF_HW_SIGNING_PROJECT_BASE}_${KEY}.HW_sig_${KEY}.sig"
-            cp -p &>/dev/null "HW_key_$KEY.raw" \
-                "project.${SF_HW_SIGNING_PROJECT_BASE}_${KEY}.HW_sig_${KEY}.raw"
-        done
+        if [ "$SF_HW_SIGNING_PROJECT_BASE" ]
+        then
+            echo "--> $P: Exporting HW keys and sigs for project: $SF_HW_SIGNING_PROJECT_BASE"
+            cd "$T" || die "Cannot cd to $T"
+            for KEY in a b c; do
+                cp -p &>/dev/null "HW_key_$KEY.pub" \
+                    "project.${SF_HW_SIGNING_PROJECT_BASE}_${KEY}.HW_key_${KEY}.pub"
+                cp -p &>/dev/null "HW_key_$KEY.raw" \
+                    "project.${SF_HW_SIGNING_PROJECT_BASE}_${KEY}.HW_key_${KEY}.raw"
+                cp -p &>/dev/null "HW_key_$KEY.sig" \
+                    "project.${SF_HW_SIGNING_PROJECT_BASE}_${KEY}.HW_sig_${KEY}.sig"
+                cp -p &>/dev/null "HW_key_$KEY.raw" \
+                    "project.${SF_HW_SIGNING_PROJECT_BASE}_${KEY}.HW_sig_${KEY}.raw"
+            done
+        fi
+        if [ "$SF_FW_SIGNING_PROJECT_BASE" ]
+        then
+            echo "--> $P: Exporting FW keys and sigs for project: $SF_FW_SIGNING_PROJECT_BASE"
+            cd "$T" || die "Cannot cd to $T"
+            for KEY in p q r; do
+                cp -p &>/dev/null "SW_key_$KEY.pub" \
+                    "project.${SF_FW_SIGNING_PROJECT_BASE}_${KEY}.SW_key_${KEY}.pub"
+                cp -p &>/dev/null "SW_key_$KEY.raw" \
+                    "project.${SF_FW_SIGNING_PROJECT_BASE}_${KEY}.SW_key_${KEY}.raw"
+                mv &>/dev/null "SW_key_$KEY.sig" \
+                    "project.${SF_FW_SIGNING_PROJECT_BASE}_${KEY}.SW_sig_${KEY}.sig"
+            done
+        fi
     fi
 
 	# Create the archive.
@@ -232,6 +247,29 @@ parseIni () {
             eval "${section}_${property}=\"$value\""
         fi
     done < "$1"
+}
+
+findArtifact () {
+    local f
+    local found
+
+    for f in "$@"
+    do
+        # Look for artifact in the local cache
+        found=$(find "$T" -name "$f" | head -1)
+        if [ "$found" ]; then
+            echo "$f"
+            return
+        fi
+
+        # If not found, look elsewhere in the cache
+        found=$(find "$TOPDIR" -name "$f" | head -1)
+        if [ "$found" ]; then
+            cp -p "$found" "$T/"
+            echo "$f"
+            return
+        fi
+    done
 }
 
 #
@@ -515,22 +553,40 @@ then
         # Handle the special values, or empty value
         test -z "$KEYFILE" && continue
         test "$KEYFILE" == __skip && continue
-        test "$KEYFILE" == __get -o "$KEYFILE" == __getkey && \
-            die "Cannot $KEYFILE $varname in $SIGN_MODE mode"
+        if [ "$KEYFILE" == __get ] || [ "$KEYFILE" == __getkey ]
+        then
+            # We expect a key of of this signing project to be imported.
+            test -z "$SF_HW_SIGNING_PROJECT_BASE" && \
+                die "__get or __getkey requested but no project basename provided for HW key $(to_upper $KEY)."
+
+            SF_PROJECT=${SF_HW_SIGNING_PROJECT_BASE}_${KEY}
+            KEYFILE_BASE=project.$SF_PROJECT.HW_key_$KEY
+
+            KEYFILE=$(findArtifact "$KEYFILE_BASE.pub" "$KEYFILE_BASE.raw")
+
+            if [ "$KEYFILE" ]; then
+                test "$SB_VERBOSE" && msg=" ($KEYFILE)"
+                echo "--> $P: Found key for HW key $(to_upper $KEY).${msg}"
+                KEYFILE="$T/$KEYFILE"
+            else
+                die "__get or __getkey requested but no imported key found for HW key $(to_upper $KEY)."
+            fi
+        else
+            # The user provided KEYFILE should point to file on disk.
+            # Copy the pubkey to the cache.
+            if [ -f "$KEYFILE" ]; then
+                if is_private_key "$KEYFILE"; then
+                    openssl ec -in "$KEYFILE" -pubout -out "$T/HW_key_$KEY.pub" &>/dev/null
+                elif is_public_key "$KEYFILE"; then
+                    cp -p "$KEYFILE" "$T/HW_key_$KEY.pub"
+                elif is_raw_key "$KEYFILE"; then
+                    cp -p "$KEYFILE" "$T/HW_key_$KEY.raw"
+                fi
+            fi
+        fi
 
         # Add to HW_KEY_ARGS
         HW_KEY_ARGS="$HW_KEY_ARGS -$KEY $KEYFILE"
-
-        # Copy the pubkey to the cache.
-        if [ -f "$KEYFILE" ]; then
-            if is_private_key "$KEYFILE"; then
-                openssl ec -in "$KEYFILE" -pubout -out "$T/HW_key_$KEY.pub" &>/dev/null
-            elif is_public_key "$KEYFILE"; then
-                cp -p "$KEYFILE" "$T/HW_key_$KEY.pub"
-            elif is_raw_key "$KEYFILE"; then
-                cp -p "$KEYFILE" "$T/HW_key_$KEY.raw"
-            fi
-        fi
     done
 
     for KEY in p q r; do
@@ -540,8 +596,37 @@ then
         # Handle the special values, or empty value
         test -z "$KEYFILE" && break
         test "$KEYFILE" == __skip && break
-        test "$KEYFILE" == __get -o "$KEYFILE" == __getkey && \
-            die "Cannot $KEYFILE $varname in $SIGN_MODE mode"
+        if [ "$KEYFILE" == __get ] || [ "$KEYFILE" == __getkey ]
+        then
+            # We expect a key of of this signing project to be imported.
+            test -z "$SF_FW_SIGNING_PROJECT_BASE" && \
+                die "__get or __getkey requested but no project basename provided for SW key $(to_upper $KEY)."
+
+            SF_PROJECT=${SF_FW_SIGNING_PROJECT_BASE}_${KEY}
+            KEYFILE_BASE=project.$SF_PROJECT.SW_key_$KEY
+
+            KEYFILE=$(findArtifact "$KEYFILE_BASE.pub" "$KEYFILE_BASE.raw")
+
+            if [ "$KEYFILE" ]; then
+                test "$SB_VERBOSE" && msg=" ($KEYFILE)"
+                echo "--> $P: Found key for SW key $(to_upper $KEY).${msg}"
+                KEYFILE="$T/$KEYFILE"
+            else
+                die "__get or __getkey requested but no imported key found for SW key $(to_upper $KEY)."
+            fi
+        else
+            # The user provided KEYFILE should point to file on disk.
+            # Copy the pubkey to the cache.
+            if [ -f "$KEYFILE" ]; then
+                if is_private_key "$KEYFILE"; then
+                    openssl ec -in "$KEYFILE" -pubout -out "$T/SW_key_$KEY.pub" &>/dev/null
+                elif is_public_key "$KEYFILE"; then
+                    cp -p "$KEYFILE" "$T/SW_key_$KEY.pub"
+                elif is_raw_key "$KEYFILE"; then
+                    cp -p "$KEYFILE" "$T/SW_key_$KEY.raw"
+                fi
+            fi
+        fi
 
         # Add to SW_KEY_ARGS
         SW_KEY_ARGS="$SW_KEY_ARGS -$KEY $KEYFILE"
@@ -562,29 +647,12 @@ then
         SF_PROJECT=${SF_HW_SIGNING_PROJECT_BASE}_${KEY}
         KEYFILE_BASE=project.$SF_PROJECT.HW_key_$KEY
 
-        KEYFOUND=""
-        while [ -z "$KEYFOUND" ]
-        do
-            for KEYFILE in "$KEYFILE_BASE.pub" "$KEYFILE_BASE.raw"
-            do
-                # Look for key in the component cache.
-                KEYFOUND=$(find "$T" -name $KEYFILE | head -1)
-                if [ "$KEYFOUND" ]; then
-                    test "$SB_VERBOSE" && msg=" ($KEYFILE)"
-                    echo "--> $P: Found key for HW key $(to_upper $KEY).${msg}"
-                    break 2
-                fi
+        KEYFILE=$(findArtifact "$KEYFILE_BASE.pub" "$KEYFILE_BASE.raw")
 
-                # If not in the component cache, look elsewhere in the cache.
-                KEYFOUND=$(find "$TOPDIR" -name $KEYFILE | head -1)
-                if [ "$KEYFOUND" ]; then
-                    test "$SB_VERBOSE" && msg=" ($KEYFILE)"
-                    echo "--> $P: Found key for HW key $(to_upper $KEY).${msg}"
-                    cp -p "$KEYFOUND" "$T/"
-                    break 2
-                fi
-            done
-
+        if [ "$KEYFILE" ]; then
+            test "$SB_VERBOSE" && msg=" ($KEYFILE)"
+            echo "--> $P: Found key for HW key $(to_upper $KEY).${msg}"
+        else
             # No key found, request one.
             KEYFILE="$KEYFILE_BASE.raw"
             echo "--> $P: Requesting public key for HW key $(to_upper $KEY)..."
@@ -597,11 +665,11 @@ then
 
             test $rc -ne 0 && die "Call to sf_client failed with error: $rc"
 
-            KEYFOUND=$(find "$T" -name $KEYFILE)
-            test -z "$KEYFOUND" && die "Unable to retrieve HW key $(to_upper $KEY)."
+            test "$(find "$T" -name $KEYFILE)" || \
+                die "Unable to retrieve HW key $(to_upper $KEY)."
 
             echo "--> $P: Retrieved public key for HW key $(to_upper $KEY)."
-        done
+        fi
 
         # Add to HW_KEY_ARGS
         HW_KEY_ARGS="$HW_KEY_ARGS -$KEY $T/$KEYFILE"
@@ -616,33 +684,30 @@ then
         test "$KEYFILE" == __getsig && continue
 
         SF_PROJECT=${SF_FW_SIGNING_PROJECT_BASE}_${KEY}
-        KEYFILE=project.$SF_PROJECT.SW_key_$KEY.raw
+        KEYFILE_BASE=project.$SF_PROJECT.SW_key_$KEY
 
-        if [ -f "$T/$KEYFILE" ]
-        then
+        KEYFILE=$(findArtifact "$KEYFILE_BASE.pub" "$KEYFILE_BASE.raw")
+
+        if [ "$KEYFILE" ]; then
             test "$SB_VERBOSE" && msg=" ($KEYFILE)"
             echo "--> $P: Found key for SW key $(to_upper $KEY).${msg}"
         else
-            KEYFOUND=$(find "$TOPDIR" -name $KEYFILE | head -1)
+            # No key found, request one.
+            KEYFILE="$KEYFILE_BASE.raw"
+            echo "--> $P: Requesting public key for SW key $(to_upper $KEY)..."
+            sf_client $SF_DEBUG_ARGS -project "$SF_GETPUBKEY_PROJECT_BASE" \
+                        -param "-signproject $SF_PROJECT" \
+                        -epwd "$SF_EPWD" -comments "Requesting $SF_PROJECT" \
+                        -url sftp://$SF_USER@$SF_SERVER -pkey "$SF_SSHKEY" \
+                        -o "$T/$KEYFILE"
+            rc=$?
 
-            if [ "$KEYFOUND" ]
-            then
-                test "$SB_VERBOSE" && msg=" ($KEYFILE)"
-                echo "--> $P: Found key for SW key $(to_upper $KEY).${msg}"
-                cp -p "$KEYFOUND" "$T/"
-            else
-                echo "--> $P: Requesting public key for SW key $(to_upper $KEY)..."
-                sf_client $SF_DEBUG_ARGS -project "$SF_GETPUBKEY_PROJECT_BASE" \
-                          -param "-signproject $SF_PROJECT" \
-                          -epwd "$SF_EPWD" -comments "Requesting $SF_PROJECT" \
-                          -url sftp://$SF_USER@$SF_SERVER -pkey "$SF_SSHKEY" \
-                          -o "$T/$KEYFILE"
-                rc=$?
+            test $rc -ne 0 && die "Call to sf_client failed with error: $rc"
 
-                test $rc -ne 0 && die "Call to sf_client failed with error: $rc"
+            test "$(find "$T" -name $KEYFILE)" || \
+                die "Unable to retrieve SW key $(to_upper $KEY)."
 
-                echo "--> $P: Retrieved public key for SW key $(to_upper $KEY)."
-            fi
+            echo "--> $P: Retrieved public key for SW key $(to_upper $KEY)."
         fi
 
         # Add to SW_KEY_ARGS
@@ -665,7 +730,8 @@ else
     echo "--> $P: Generating signing requests..."
     create-container $HW_KEY_ARGS $SW_KEY_ARGS \
                      --payload "$PAYLOAD" --imagefile "$OUTPUT" \
-                     --dumpPrefixHdr "$T/prefix_hdr" --dumpSwHdr "$T/software_hdr" \
+                     --dumpPrefixHdr "$T/prefix_hdr" \
+                     --dumpSwHdr "$T/software_hdr" \
                      $DEBUG_ARGS \
                      $ADDL_ARGS
     rc=$?
@@ -681,16 +747,38 @@ FOUND=""
 if [ "$SIGN_MODE" == "local" ] || [ "$SIGN_MODE" == "independent" ]
 then
     for KEY in a b c; do
-        SIGFILE=HW_key_$KEY.sig
         varname=HW_KEY_$(to_upper $KEY); KEYFILE=${!varname}
 
         # Handle the special values, or empty value
         test -z "$KEYFILE" && continue
         test "$KEYFILE" == __skip && continue
-        test "$KEYFILE" == __get -o "$KEYFILE" == __getkey && \
-            die "Cannot $KEYFILE $varname in $SIGN_MODE mode"
+
+        if [ "$KEYFILE" == __get ] || [ "$KEYFILE" == __getsig ]
+        then
+            # We expect a sig of of this signing project to be imported.
+            test -z "$SF_HW_SIGNING_PROJECT_BASE" && \
+                die "__get or __getsig requested but no project basename provided for HW key $(to_upper $KEY)."
+
+            SF_PROJECT=${SF_HW_SIGNING_PROJECT_BASE}_${KEY}
+            SIGFILE_BASE=project.$SF_PROJECT.HW_sig_$KEY
+
+            SIGFILE=$(findArtifact "$SIGFILE_BASE.sig" "$SIGFILE_BASE.raw")
+
+            if [ "$SIGFILE" ]; then
+                test "$SB_VERBOSE" && msg=" ($SIGFILE)"
+                echo "--> $P: Found sig for HW key $(to_upper $KEY).${msg}"
+            else
+                die "__get or __getsig requested but no imported sig found for HW key $(to_upper $KEY)."
+            fi
+
+            FOUND="${FOUND}$(to_upper $KEY),"
+            HW_SIG_ARGS="$HW_SIG_ARGS -$(to_upper $KEY) $T/$SIGFILE"
+            continue
+        fi
 
         # Look for signature in the local cache dir.
+        SIGFILE=HW_key_$KEY.sig
+
         if [ -f "$T/$SIGFILE" ]
         then
             test "$SB_VERBOSE" && msg=" ($SIGFILE)"
@@ -735,8 +823,6 @@ then
         # Handle the special values, or empty value
         test -z "$KEYFILE" && break
         test "$KEYFILE" == __skip && break
-        test "$KEYFILE" == __get -o "$KEYFILE" == __getkey && \
-            die "Cannot $KEYFILE $varname in $SIGN_MODE mode"
 
         # Look for a signature in the local cache dir, if found use it.
         # (but never reuse a sig for SBKT, the payload is always regenerated)
@@ -776,29 +862,12 @@ then
         SF_PROJECT=${SF_HW_SIGNING_PROJECT_BASE}_${KEY}
         SIGFILE_BASE=project.$SF_PROJECT.HW_sig_$KEY
 
-        SIGFOUND=""
-        while [ -z "$SIGFOUND" ]
-        do
-            for SIGFILE in "$SIGFILE_BASE.sig" "$SIGFILE_BASE.raw"
-            do
-                # Look for sig in the component cache.
-                SIGFOUND=$(find "$T" -name $SIGFILE | head -1)
-                if [ "$SIGFOUND" ]; then
-                    test "$SB_VERBOSE" && msg=" ($SIGFILE)"
-                    echo "--> $P: Found sig for HW key $(to_upper $KEY).${msg}"
-                    break 2
-                fi
+        SIGFILE=$(findArtifact "$SIGFILE_BASE.sig" "$SIGFILE_BASE.raw")
 
-                # If not in the component cache, look elsewhere in the cache.
-                SIGFOUND=$(find "$TOPDIR" -name $SIGFILE | head -1)
-                if [ "$SIGFOUND" ]; then
-                    test "$SB_VERBOSE" && msg=" ($SIGFILE)"
-                    echo "--> $P: Found sig for HW key $(to_upper $KEY).${msg}"
-                    cp -p "$SIGFOUND" "$T/"
-                    break 2
-                fi
-            done
-
+        if [ "$SIGFILE" ]; then
+            test "$SB_VERBOSE" && msg=" ($SIGFILE)"
+            echo "--> $P: Found sig for HW key $(to_upper $KEY).${msg}"
+        else
             # No signature found, request one.
             test "$KEYFILE" == __getkey && break
 
@@ -812,11 +881,11 @@ then
 
             test $rc -ne 0 && die "Call to sf_client failed with error: $rc"
 
-            SIGFOUND=$(find "$T" -name $SIGFILE)
-            test -z "$SIGFOUND" && die "Unable to retrieve sig for HW key $(to_upper $KEY)."
+            test "$(find "$T" -name $SIGFILE)" || \
+                die "Unable to retrieve sig for HW key $(to_upper $KEY)."
 
             echo "--> $P: Retrieved signature for HW key $(to_upper $KEY)."
-        done
+        fi
 
         FOUND="${FOUND}$(to_upper $KEY),"
         HW_SIG_ARGS="$HW_SIG_ARGS -$(to_upper $KEY) $T/$SIGFILE"
