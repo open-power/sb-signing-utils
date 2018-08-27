@@ -7,6 +7,7 @@
 P=${0##*/}
 
 SIGN_MODE=local
+KMS=signframework
 
 HW_KEY_ARGS=""
 SW_KEY_ARGS=""
@@ -39,6 +40,8 @@ usage () {
     echo "	-o, --code-start-offset code start offset for software header in hex"
     echo "	-f, --flags             prefix header flags in hex"
     echo "	-m, --mode              signing mode: local, independent or production"
+    echo "	-k, --kms               key management system for retrieving keys and signatures"
+    echo "	                        (choices are \"signframework\" or \"pkcs11\")"
     echo "	-s, --scratchDir        scratch directory to use for file caching, etc."
     echo "	-L, --label             name or identifier of the module being built (8 char max)"
     echo "	    --contrHdrOut       file write container header only (w/o payload)"
@@ -252,9 +255,19 @@ parseIni () {
 findArtifact () {
     local f
     local found
+    local scope
 
     for f in "$@"
     do
+        # If filename starts with ./ search only this component cache.
+        if [ "${f:0:2}" == "./" ]
+        then
+            f="${f:2}"
+            scope=local
+        else
+            scope=global
+        fi
+
         # Look for artifact in the local cache
         found=$(find "$T" -name "$f" | head -1)
         if [ "$found" ]; then
@@ -262,7 +275,9 @@ findArtifact () {
             return
         fi
 
-        # If not found, look elsewhere in the cache
+        test "$scope" == "local" && continue
+
+        # Look elsewhere in the cache
         found=$(find "$TOPDIR" -name "$f" | head -1)
         if [ "$found" ]; then
             cp -p "$found" "$T/"
@@ -300,6 +315,7 @@ for arg in "$@"; do
     "--code-start-offset") set -- "$@" "-o" ;;
     "--protectedPayload")  set -- "$@" "-l" ;;
     "--out")        set -- "$@" "-i" ;;
+    "--kms")        set -- "$@" "-k" ;;
     "--mode")       set -- "$@" "-m" ;;
     "--scratchDir") set -- "$@" "-s" ;;
     "--label")      set -- "$@" "-L" ;;
@@ -315,7 +331,7 @@ for arg in "$@"; do
 done
 
 # Process command-line arguments
-while getopts -- ?hdvw:a:b:c:p:q:r:f:o:l:i:m:s:L:4:5:6:7:89: opt
+while getopts -- ?hdvw:a:b:c:p:q:r:f:o:l:i:m:k:s:L:4:5:6:7:89: opt
 do
   case "${opt:?}" in
     v) SB_VERBOSE="TRUE";;
@@ -331,6 +347,7 @@ do
     o) CS_OFFSET="$OPTARG";;
     l) PAYLOAD="$OPTARG";;
     i) OUTPUT="$OPTARG";;
+    k) KMS="$(to_lower "$OPTARG")";;
     m) SIGN_MODE="$(to_lower "$OPTARG")";;
     s) SB_SCRATCH_DIR="$OPTARG";;
     L) LABEL="$OPTARG";;
@@ -352,10 +369,11 @@ do
 done
 
 # These are the only env vars that override a command line option
+test "$SB_KMS" && KMS="$(to_lower "$SB_KMS")"
 test "$SB_SIGN_MODE" && SIGN_MODE="$(to_lower "$SB_SIGN_MODE")"
 test "$SB_PROJECT_INI" && PROJECT_INI="$SB_PROJECT_INI"
 
-# What op-buid calls development mode, we call local mode
+# What op-build calls development mode, we call local mode
 test "$SIGN_MODE" == development && SIGN_MODE=local
 
 echo "--> $P: Signing mode: $SIGN_MODE"
@@ -365,7 +383,7 @@ echo "--> $P: Signing mode: $SIGN_MODE"
 #
 if [ "$(to_upper "$LABEL")" == SBKTRAND ]
 then
-    # Key transistion container may have its own ini file
+    # Key transition container may have its own ini file
     test "$SB_PROJECT_INI_TRANS" && PROJECT_INI=$SB_PROJECT_INI_TRANS
 fi
 
@@ -384,6 +402,8 @@ then
     signproject_hw_signing_project_basename=""
     signproject_fw_signing_project_basename=""
     signproject_getpubkey_project_basename=""
+    pkcs11_module=""
+    pkcs11_token=""
 
     echo "--> $P: Parsing INI file: $PROJECT_INI"
     parseIni "$PROJECT_INI"
@@ -405,6 +425,9 @@ then
         SF_FW_SIGNING_PROJECT_BASE="$signproject_fw_signing_project_basename"
     test "$signproject_getpubkey_project_basename" && \
         SF_GETPUBKEY_PROJECT_BASE="$signproject_getpubkey_project_basename"
+
+    test "$pkcs11_module" && SB_PKCS11_MODULE="$pkcs11_module"
+    test "$pkcs11_token" && SB_PKCS11_TOKEN="$pkcs11_token"
 fi
 
 #
@@ -542,6 +565,12 @@ then
 fi
 
 #
+# Set defaults for PKCS11
+#
+: "${SB_PKCS11_MODULE:=/usr/lib64/pkcs11/libsofthsm2.so}"
+: "${SB_PKCS11_TOKEN:=P9Signing}"
+
+#
 # Get the public keys
 #
 if [ "$SIGN_MODE" == "local" ] || [ "$SIGN_MODE" == "independent" ]
@@ -654,16 +683,33 @@ then
             echo "--> $P: Found key for HW key $(to_upper $KEY).${msg}"
         else
             # No key found, request one.
-            KEYFILE="$KEYFILE_BASE.raw"
             echo "--> $P: Requesting public key for HW key $(to_upper $KEY)..."
-            sf_client $SF_DEBUG_ARGS -project "$SF_GETPUBKEY_PROJECT_BASE" \
-                        -param "-signproject $SF_PROJECT" \
-                        -epwd "$SF_EPWD" -comments "Requesting $SF_PROJECT" \
-                        -url sftp://$SF_USER@$SF_SERVER -pkey "$SF_SSHKEY" \
-                        -o "$T/$KEYFILE"
-            rc=$?
 
-            test $rc -ne 0 && die "Call to sf_client failed with error: $rc"
+            if [ "$KMS" == "signframework" ]
+            then
+                # Output is pubkey in raw format
+                KEYFILE="$KEYFILE_BASE.raw"
+                sf_client $SF_DEBUG_ARGS -project "$SF_GETPUBKEY_PROJECT_BASE" \
+                          -param "-signproject $SF_PROJECT" \
+                          -epwd "$SF_EPWD" -comments "Requesting $SF_PROJECT" \
+                          -url sftp://$SF_USER@$SF_SERVER -pkey "$SF_SSHKEY" \
+                          -o "$T/$KEYFILE"
+
+            elif [ "$KMS" == "pkcs11" ]
+            then
+                # Output is pubkey in PEM format
+                KEYFILE="$KEYFILE_BASE.pub"
+                pkcs11-tool --module $SB_PKCS11_MODULE \
+                            --token-label $SB_PKCS11_TOKEN \
+                            --read-object --type pubkey --label $SF_PROJECT | \
+                    openssl ec -inform der -pubout -pubin > "$T/$KEYFILE"
+
+            else
+                die "Unsupported KMS: $KMS"
+            fi
+
+            rc=$?
+            test $rc -ne 0 && die "Call to KMS client failed with error: $rc"
 
             test "$(find "$T" -name $KEYFILE)" || \
                 die "Unable to retrieve HW key $(to_upper $KEY)."
@@ -693,16 +739,28 @@ then
             echo "--> $P: Found key for SW key $(to_upper $KEY).${msg}"
         else
             # No key found, request one.
-            KEYFILE="$KEYFILE_BASE.raw"
             echo "--> $P: Requesting public key for SW key $(to_upper $KEY)..."
-            sf_client $SF_DEBUG_ARGS -project "$SF_GETPUBKEY_PROJECT_BASE" \
-                        -param "-signproject $SF_PROJECT" \
-                        -epwd "$SF_EPWD" -comments "Requesting $SF_PROJECT" \
-                        -url sftp://$SF_USER@$SF_SERVER -pkey "$SF_SSHKEY" \
-                        -o "$T/$KEYFILE"
-            rc=$?
 
-            test $rc -ne 0 && die "Call to sf_client failed with error: $rc"
+            if [ "$KMS" == "signframework" ]
+            then
+                KEYFILE="$KEYFILE_BASE.raw"
+                sf_client $SF_DEBUG_ARGS -project "$SF_GETPUBKEY_PROJECT_BASE" \
+                          -param "-signproject $SF_PROJECT" \
+                          -epwd "$SF_EPWD" -comments "Requesting $SF_PROJECT" \
+                          -url sftp://$SF_USER@$SF_SERVER -pkey "$SF_SSHKEY" \
+                          -o "$T/$KEYFILE"
+
+            elif [ "$KMS" == "pkcs11" ]
+            then
+                KEYFILE="$KEYFILE_BASE.pub"
+                pkcs11-tool --module $SB_PKCS11_MODULE \
+                            --token-label $SB_PKCS11_TOKEN \
+                            --read-object --type pubkey --label $SF_PROJECT | \
+                    openssl ec -inform der -pubout -pubin > "$T/$KEYFILE"
+            fi
+
+            rc=$?
+            test $rc -ne 0 && die "Call to KMS client failed with error: $rc"
 
             test "$(find "$T" -name $KEYFILE)" || \
                 die "Unable to retrieve SW key $(to_upper $KEY)."
@@ -869,17 +927,29 @@ then
             echo "--> $P: Found sig for HW key $(to_upper $KEY).${msg}"
         else
             # No signature found, request one.
-            test "$KEYFILE" == __getkey && break
-
-            SIGFILE="$SIGFILE_BASE.raw"
+            test "$KEYFILE" == __getkey && break  # (unless instructed not to)
             echo "--> $P: Requesting signature for HW key $(to_upper $KEY)..."
-            sf_client $SF_DEBUG_ARGS -project $SF_PROJECT -epwd "$SF_EPWD" \
-                        -comments "Requesting sig for $SF_PROJECT" \
-                        -url sftp://$SF_USER@$SF_SERVER -pkey "$SF_SSHKEY" \
-                        -payload  "$T/prefix_hdr" -o "$T/$SIGFILE"
-            rc=$?
 
-            test $rc -ne 0 && die "Call to sf_client failed with error: $rc"
+            if [ "$KMS" == "signframework" ]
+            then
+                # Output is signature in raw format
+                SIGFILE="$SIGFILE_BASE.raw"
+                sf_client $SF_DEBUG_ARGS -project $SF_PROJECT -epwd "$SF_EPWD" \
+                          -comments "Requesting sig for $SF_PROJECT" \
+                          -url sftp://$SF_USER@$SF_SERVER -pkey "$SF_SSHKEY" \
+                          -payload  "$T/prefix_hdr" -o "$T/$SIGFILE"
+
+            elif [ "$KMS" == "pkcs11" ]
+            then
+                # Output is signature in DER format
+                SIGFILE="$SIGFILE_BASE.sig"
+                /bin/openssl dgst -engine pkcs11 -keyform engine \
+                             -sign "pkcs11:token=$SB_PKCS11_TOKEN;object=$SF_PROJECT" \
+                             -sha512 -out "$T/$SIGFILE" "$T/prefix_hdr"
+            fi
+
+            rc=$?
+            test $rc -ne 0 && die "Call to KMS client failed with error: $rc"
 
             test "$(find "$T" -name $SIGFILE)" || \
                 die "Unable to retrieve sig for HW key $(to_upper $KEY)."
@@ -892,33 +962,56 @@ then
     done
 
     for KEY in p q r; do
-        SF_PROJECT=${SF_FW_SIGNING_PROJECT_BASE}_${KEY}
-        SIGFILE=project.$SF_PROJECT.SW_sig_$KEY.raw
-
         varname=SW_KEY_$(to_upper $KEY); KEYFILE=${!varname}
 
         # Handle the special values, or empty value
         test -z "$KEYFILE" && break
         test "$KEYFILE" == __skip && break
 
+        SF_PROJECT=${SF_FW_SIGNING_PROJECT_BASE}_${KEY}
+        SIGFILE_BASE=project.$SF_PROJECT.SW_sig_$KEY
+
         # Look for a signature in the local cache dir, if found use it.
-        if [ -f "$T/$SIGFILE" ] && \
-           [ "$(to_upper "$LABEL")" != SBKT ] && \
-           [ "$(to_upper "$LABEL")" != SBKTRAND ]
+        # (but never reuse a sig for SBKT, the payload is always regenerated)
+        if [ "$(to_upper "$LABEL")" == SBKT ] || \
+           [ "$(to_upper "$LABEL")" == SBKTRAND ]
         then
+            SIGFILE=""
+        else
+            SIGFILE=$(findArtifact "./$SIGFILE_BASE.sig" "./$SIGFILE_BASE.raw")
+        fi
+
+        if [ "$SIGFILE" ]; then
             test "$SB_VERBOSE" && msg=" ($SIGFILE)"
-            echo "--> $P: Found signature for SW key $(to_upper $KEY).${msg}"
+            echo "--> $P: Found sig for SW key $(to_upper $KEY).${msg}"
         else
             # No signature found, request one.
-            test "$KEYFILE" == __getkey && continue
+            test "$KEYFILE" == __getkey && break  # (unless instructed not to)
             echo "--> $P: Requesting signature for SW key $(to_upper $KEY)..."
-            sf_client $SF_DEBUG_ARGS -project $SF_PROJECT -epwd "$SF_EPWD" \
-                      -comments "Requesting sig for $LABEL from $SF_PROJECT" \
-                      -url sftp://$SF_USER@$SF_SERVER -pkey "$SF_SSHKEY" \
-                      -payload "$T/software_hdr.md.bin" -o "$T/$SIGFILE"
-            rc=$?
 
-            test $rc -ne 0 && die "Call to sf_client failed with error: $rc"
+            if [ "$KMS" == "signframework" ]
+            then
+                # Output is signature in raw format
+                SIGFILE="$SIGFILE_BASE.raw"
+                sf_client $SF_DEBUG_ARGS -project $SF_PROJECT -epwd "$SF_EPWD" \
+                          -comments "Requesting sig for $LABEL from $SF_PROJECT" \
+                          -url sftp://$SF_USER@$SF_SERVER -pkey "$SF_SSHKEY" \
+                          -payload "$T/software_hdr.md.bin" -o "$T/$SIGFILE"
+
+            elif [ "$KMS" == "pkcs11" ]
+            then
+                # Output is signature in DER format
+                SIGFILE="$SIGFILE_BASE.sig"
+                /bin/openssl dgst -engine pkcs11 -keyform engine \
+                             -sign "pkcs11:token=$SB_PKCS11_TOKEN;object=$SF_PROJECT" \
+                             -sha512 -out "$T/$SIGFILE" "$T/software_hdr"
+            fi
+
+            rc=$?
+            test $rc -ne 0 && die "Call to KMS client failed with error: $rc"
+
+            test "$(find "$T" -name $SIGFILE)" || \
+                die "Unable to retrieve sig for SW key $(to_upper $KEY)."
 
             echo "--> $P: Retrieved signature for SW key $(to_upper $KEY)."
         fi
@@ -973,7 +1066,7 @@ fi
 
 if [ "$(to_upper "$LABEL")" == SBKTRAND ]
 then
-    # Key transistion container may have its own verify value
+    # Key transition container may have its own verify value
     test "$SB_VERIFY_TRANS" && SB_VERIFY=$SB_VERIFY_TRANS
 fi
 
