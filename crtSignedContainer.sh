@@ -464,7 +464,7 @@ done
 #
 : "${TMPDIR:=/tmp}"
 : "${SB_SCRATCH_DIR:=$TMPDIR}"
-: "${SB_KEEP_CACHE:=true}"
+: "${SB_KEEP_CACHE:=false}"
 : "${LABEL:=IMAGE}"
 
 moniker="SIGNTOOL"
