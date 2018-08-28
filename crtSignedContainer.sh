@@ -702,7 +702,7 @@ then
                 pkcs11-tool --module $SB_PKCS11_MODULE \
                             --token-label $SB_PKCS11_TOKEN \
                             --read-object --type pubkey --label $SF_PROJECT | \
-                    openssl ec -inform der -pubout -pubin > "$T/$KEYFILE"
+                    openssl ec -inform der -pubin -pubout -out "$T/$KEYFILE" &>/dev/null
 
             else
                 die "Unsupported KMS: $KMS"
@@ -756,7 +756,7 @@ then
                 pkcs11-tool --module $SB_PKCS11_MODULE \
                             --token-label $SB_PKCS11_TOKEN \
                             --read-object --type pubkey --label $SF_PROJECT | \
-                    openssl ec -inform der -pubout -pubin > "$T/$KEYFILE"
+                    openssl ec -inform der -pubin -pubout -out "$T/$KEYFILE" &>/dev/null
             fi
 
             rc=$?
