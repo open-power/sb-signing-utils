@@ -96,6 +96,21 @@ is_path_dir () {
     echo "$1" | egrep -q /$
 }
 
+make_bool () {
+    # Sanitize boolean values so that on input:
+    # - True = set to "true" or "y", case insensitive
+    # - False = set to any other string, or unset
+    # On output:
+    # - True = set to a non-zero length string
+    # - False = set to a zero length string
+    if [ "$(to_lower "$1")" == true ] || [ "$(to_lower "$1")" == y ]
+    then
+        echo true
+    else
+        echo ""
+    fi
+}
+
 is_cmd_available () {
     command -v "$1" &>/dev/null
 }
@@ -361,6 +376,10 @@ do
     is_cmd_available $p || \
         die "Required command \"$p\" not available or not found in PATH"
 done
+
+# Sanitize boolean values
+SB_VERBOSE="$(make_bool "$SB_VERBOSE")"
+SB_DEBUG="$(make_bool "$SB_DEBUG")"
 
 # These are the only env vars that override a command line option
 test "$SB_KMS" && KMS="$(to_lower "$SB_KMS")"
@@ -1079,7 +1098,8 @@ fi
 # Cleanup
 #
 if [ $SB_KEEP_CACHE == false ]; then
-    echo "--> $P: Removing cache dir: $TOPDIR"
+    test "$SB_VERBOSE" && \
+        echo "--> $P: Removing cache dir: $TOPDIR"
     rm -rf "$TOPDIR"
 fi
 
