@@ -508,6 +508,10 @@ static bool getVerificationHash(char *input, unsigned char *md, int len)
 	char buf[len * 2 + 1 + 2]; // allow trailing \n and leading "0x"
 	char *p;
 
+	// Initializing makes it clear to source code analyzers that the scope of
+	// buf cannot be reduced; but p must be updated appropriately below.
+	p = (char *) buf;
+
 	if (isValidHex(input, len)) {
 		p = input;
 	} else {
