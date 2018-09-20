@@ -314,6 +314,12 @@ for arg in "$@"; do
     "--verbose")    set -- "$@" "-v" ;;
     "--debug")      set -- "$@" "-d" ;;
     "--wrap")       set -- "$@" "-w" ;;
+    "--hwPrivKeyA") set -- "$@" "-a" ;;
+    "--hwPrivKeyB") set -- "$@" "-b" ;;
+    "--hwPrivKeyC") set -- "$@" "-c" ;;
+    "--swPrivKeyP") set -- "$@" "-p" ;;
+    "--swPrivKeyQ") set -- "$@" "-q" ;;
+    "--swPrivKeyR") set -- "$@" "-r" ;;
     "--hwKeyA") set -- "$@" "-a" ;;
     "--hwKeyB") set -- "$@" "-b" ;;
     "--hwKeyC") set -- "$@" "-c" ;;
