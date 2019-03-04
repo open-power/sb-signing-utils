@@ -39,6 +39,7 @@ usage () {
     echo "	-i, --out               file to write containerized payload"
     echo "	-o, --code-start-offset code start offset for software header in hex"
     echo "	-f, --flags             prefix header flags in hex"
+    echo "	-F, --sw-flags          prefix software header flags in hex"
     echo "	-m, --mode              signing mode: local, independent or production"
     echo "	-k, --kms               key management system for retrieving keys and signatures"
     echo "	                        (choices are \"signframework\" or \"pkcs11\")"
@@ -327,6 +328,7 @@ for arg in "$@"; do
     "--swKeyQ") set -- "$@" "-q" ;;
     "--swKeyR") set -- "$@" "-r" ;;
     "--flags")      set -- "$@" "-f" ;;
+    "--sw-flags")   set -- "$@" "-F" ;;
     "--code-start-offset") set -- "$@" "-o" ;;
     "--protectedPayload")  set -- "$@" "-l" ;;
     "--out")        set -- "$@" "-i" ;;
@@ -346,7 +348,7 @@ for arg in "$@"; do
 done
 
 # Process command-line arguments
-while getopts -- ?hdvw:a:b:c:p:q:r:f:o:l:i:m:k:s:L:4:5:6:7:89: opt
+while getopts -- ?hdvw:a:b:c:p:q:r:f:F:o:l:i:m:k:s:L:4:5:6:7:89: opt
 do
   case "${opt:?}" in
     v) SB_VERBOSE="TRUE";;
@@ -359,6 +361,7 @@ do
     q) SW_KEY_Q="$OPTARG";;
     r) SW_KEY_R="$OPTARG";;
     f) HW_FLAGS="$OPTARG";;
+    F) SW_FLAGS="$OPTARG";;
     o) CS_OFFSET="$OPTARG";;
     l) PAYLOAD="$OPTARG";;
     i) OUTPUT="$OPTARG";;
@@ -566,6 +569,7 @@ test "$SB_VERBOSE" && DEBUG_ARGS=" -v"
 test "$SB_DEBUG" && DEBUG_ARGS="$DEBUG_ARGS -d"
 test "$SB_WRAP" && DEBUG_ARGS="$DEBUG_ARGS -w $SB_WRAP"
 test "$HW_FLAGS" && ADDL_ARGS="$ADDL_ARGS --hw-flags $HW_FLAGS"
+test "$SW_FLAGS" && ADDL_ARGS="$ADDL_ARGS --sw-flags $SW_FLAGS"
 test "$CS_OFFSET" && ADDL_ARGS="$ADDL_ARGS --sw-cs-offset $CS_OFFSET"
 test "$LABEL" && ADDL_ARGS="$ADDL_ARGS --label $LABEL"
 test "$SB_CONTR_HDR_OUT" && CONTR_HDR_OUT_OPT="--dumpContrHdr"
