@@ -454,8 +454,6 @@ static bool verify_signature(const char *moniker, const unsigned char *dgst,
 		die(EX_SOFTWARE, "%s", "Cannot ECDSA_do_verify");
 	}
 
-	BN_free(r_bn);
-	BN_free(s_bn);
 	BN_free(key_bn);
 
 	EC_KEY_free(ec_key);
@@ -463,6 +461,8 @@ static bool verify_signature(const char *moniker, const unsigned char *dgst,
 #if OPENSSL_VERSION_NUMBER >= 0x10100000L
 	ECDSA_SIG_free(ecdsa_sig);
 #else
+	BN_free(r_bn);
+	BN_free(s_bn);
 	free(ecdsa_sig);
 #endif
 	return status;
