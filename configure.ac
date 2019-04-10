@@ -1,7 +1,7 @@
 # autoconf script
 
 AC_PREREQ([2.65])
-AC_INIT(sb-signtool, 0.8, matthew.vaught@ibm.com)
+AC_INIT(sb-signtool, 0.9-preview, matthew.vaught@ibm.com)
 AM_INIT_AUTOMAKE([foreign])
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_MACRO_DIR([m4])
