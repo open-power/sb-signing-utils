@@ -51,7 +51,8 @@
 
 char *progname;
 
-bool verbose, debug;
+bool verbose = false;
+bool debug = false;
 int wrap = 100;
 
 void usage(int status);
@@ -315,6 +316,7 @@ __attribute__((__noreturn__)) void usage (int status)
 			"     --dumpPrefixHdr     file to dump Prefix header blob (to be signed)\n"
 			"     --dumpSwHdr         file to dump Software header blob (to be signed)\n"
 			"     --dumpContrHdr      file to dump full Container header (w/o payload)\n"
+			" -S, --security-version  Integer, sets the security version container field\n"
 			"Note:\n"
 			"- Keys A,B,C,P,Q,R must be valid p521 ECC keys. Keys may be provided as public\n"
 			"  or private key in PEM format, or public key in uncompressed raw format.\n"
@@ -351,6 +353,7 @@ static struct option const opts[] = {
 	{ "dumpContrHdr",     required_argument, 0,  '0' },
 	{ "dumpPrefixHdr",    required_argument, 0,  '1' },
 	{ "dumpSwHdr",        required_argument, 0,  '2' },
+	{ "security-version", required_argument, 0,  'S' },
 	{ NULL, 0, NULL, 0 }
 };
 #endif
@@ -378,6 +381,7 @@ static struct {
 	char *prhdrfn;
 	char *swhdrfn;
 	char *cthdrfn;
+    uint8_t security_version;
 } params;
 
 
@@ -463,6 +467,8 @@ int main(int argc, char* argv[])
 			*(argv + i) = "-1";
 		} else if (!strcmp(*(argv + i), "--dumpSwHdr")) {
 			*(argv + i) = "-2";
+		} else if (!strcmp(*(argv + i), "--security-version")) {
+			*(argv + i) = "-S";
 		} else if (!strncmp(*(argv + i), "--", 2)) {
 			fprintf(stderr, "%s: unrecognized option \'%s\'\n", progname,
 					*(argv + i));
@@ -474,14 +480,17 @@ int main(int argc, char* argv[])
 	while (1) {
 		int opt;
 #ifdef _AIX
-		opt = getopt(argc, argv, "?hvdw:a:b:c:p:q:r:A:B:C:P:Q:R:L:I:o:O:f:F:l:0:1:2:");
+		opt = getopt(argc, argv, "?hvdw:a:b:c:p:q:r:A:B:C:P:Q:R:L:I:o:O:f:F:l:0:1:2:S:");
 #else
 		opt = getopt_long(argc, argv,
-				"hvdw:a:b:c:p:q:r:A:B:C:P:Q:R:L:I:o:O:f:F:l:0:1:2:", opts,
+				"hvdw:a:b:c:p:q:r:A:B:C:P:Q:R:L:I:o:O:f:F:l:0:1:2:S:", opts,
 				NULL);
 #endif
 		if (opt == -1)
 			break;
+
+        // Set the values for optional args
+        params.security_version = 0;
 
 		switch (opt) {
 		case 'h':
@@ -566,6 +575,19 @@ int main(int argc, char* argv[])
 		case '0':
 			params.cthdrfn = optarg;
 			break;
+        case 'S':
+        {
+            int value = atoi(optarg);
+            if(value < 0 || value >= 256)
+            {
+                die(EX_DATAERR, "security-version (%d) must fit into a 1-byte field", value);
+            }
+            else
+            {
+                params.security_version = (uint8_t)value;
+            }
+            break;
+        }
 		default:
 			usage(EX_USAGE);
 		}
@@ -761,7 +783,7 @@ int main(int argc, char* argv[])
 	} else {
 		swh->flags = cpu_to_be32(0x00000000);
 	}
-	swh->reserved_0 = 0;
+	swh->security_version = params.security_version;
 	swh->payload_size = cpu_to_be64(payload_st.st_size);
 
 	// Calculate the payload hash.

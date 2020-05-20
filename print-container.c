@@ -233,7 +233,7 @@ static void display_container(struct parsed_stb_container c)
 	printf("reserved:          %08lx\n", be64_to_cpu(c.sh->reserved));
 	printf("reserved (ASCII):  %.8s\n", (char *) &(c.sh->reserved));
 	printf("flags:             %08x\n", be32_to_cpu(c.sh->flags));
-	printf("reserved_0:        %02x\n", c.sh->reserved_0);
+	printf("security_version:  %02x\n", c.sh->security_version);
 	printf("payload_size:      %08lx (%lu)\n", be64_to_cpu(c.sh->payload_size),
 			be64_to_cpu(c.sh->payload_size));
 	print_bytes((char *) "payload_hash:      ", (uint8_t *) c.sh->payload_hash,

@@ -103,7 +103,7 @@ typedef struct {
 	be64 code_start_offset;
 	be64 reserved;
 	be32 flags;
-	uint8_t reserved_0;
+	uint8_t security_version;
 	be64 payload_size;
 	sha2_hash_t payload_hash;
 	uint8_t ecid_count;

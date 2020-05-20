@@ -54,6 +54,7 @@ usage () {
     echo "	                        value, or filename containing value, of the HW Keys hash"
     echo "	    --sign-project-config   INI file containing configuration properties (options"
     echo "	                            set here override those set via cmdline or environment)"
+    echo "	-S, --security-version  Integer, sets the security version container field"
     echo ""
     exit 1
 }
@@ -338,6 +339,7 @@ for arg in "$@"; do
     "--label")      set -- "$@" "-L" ;;
     "--sign-project-FW-token")   set -- "$@" "-L" ;;
     "--sign-project-config")   set -- "$@" "-4" ;;
+    "--security-version")   set -- "$@" "-S" ;;
     "--contrHdrOut") set -- "$@" "-5" ;;
     "--archiveIn")  set -- "$@" "-6" ;;
     "--archiveOut") set -- "$@" "-7" ;;
@@ -348,7 +350,7 @@ for arg in "$@"; do
 done
 
 # Process command-line arguments
-while getopts -- ?hdvw:a:b:c:p:q:r:f:F:o:l:i:m:k:s:L:4:5:6:7:89: opt
+while getopts -- ?hdvw:a:b:c:p:q:r:f:F:o:l:i:m:k:s:L:S:4:5:6:7:89: opt
 do
   case "${opt:?}" in
     v) SB_VERBOSE="TRUE";;
@@ -369,6 +371,7 @@ do
     m) SIGN_MODE="$(to_lower "$OPTARG")";;
     s) SB_SCRATCH_DIR="$OPTARG";;
     L) LABEL="$OPTARG";;
+    S) SECURITY_VERSION="$OPTARG";;
     4) PROJECT_INI="$OPTARG";;
     5) SB_CONTR_HDR_OUT="$OPTARG";;
     6) SB_ARCHIVE_IN="$OPTARG";;
@@ -572,6 +575,7 @@ test "$HW_FLAGS" && ADDL_ARGS="$ADDL_ARGS --hw-flags $HW_FLAGS"
 test "$SW_FLAGS" && ADDL_ARGS="$ADDL_ARGS --sw-flags $SW_FLAGS"
 test "$CS_OFFSET" && ADDL_ARGS="$ADDL_ARGS --sw-cs-offset $CS_OFFSET"
 test "$LABEL" && ADDL_ARGS="$ADDL_ARGS --label $LABEL"
+test "$SECURITY_VERSION" && ADDL_ARGS="$ADDL_ARGS --security-version $SECURITY_VERSION"
 test "$SB_CONTR_HDR_OUT" && CONTR_HDR_OUT_OPT="--dumpContrHdr"
 
 test "$SB_VERBOSE" && SF_DEBUG_ARGS=" -v"
