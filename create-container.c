@@ -413,6 +413,9 @@ int main(int argc, char* argv[])
 
 	memset(container, 0, SECURE_BOOT_HEADERS_SIZE);
 
+	// Set the default values for non-pointer optional args
+	params.security_version = 0;
+
 #ifdef _AIX
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(*(argv + i), "--help")) {
@@ -488,9 +491,6 @@ int main(int argc, char* argv[])
 #endif
 		if (opt == -1)
 			break;
-
-        // Set the values for optional args
-        params.security_version = 0;
 
 		switch (opt) {
 		case 'h':
