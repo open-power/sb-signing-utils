@@ -8,6 +8,7 @@ P=${0##*/}
 
 SIGN_MODE=local
 KMS=signframework
+CONTAINER_VERSION=1
 
 HW_KEY_ARGS=""
 SW_KEY_ARGS=""
@@ -16,6 +17,7 @@ SW_SIG_ARGS=""
 VERIFY_ARGS=""
 DEBUG_ARGS=""
 ADDL_ARGS=""
+DIGEST_ARG="-sha512"
 
 RC=0
 
@@ -32,9 +34,11 @@ usage () {
     echo "	-a, --hwKeyA            file containing HW key A private key in PEM format"
     echo "	-b, --hwKeyB            file containing HW key B private key in PEM format"
     echo "	-c, --hwKeyC            file containing HW key C private key in PEM format"
+    echo "	-d, --hwKeyD            file containing HW key D private key in PEM format"
     echo "	-p, --swKeyP            file containing SW key P private key in PEM format"
     echo "	-q, --swKeyQ            file containing SW key Q private key in PEM format"
     echo "	-r, --swKeyR            file containing SW key R private key in PEM format"
+    echo "	-s, --swKeyS            file containing SW key S private key in PEM format"
     echo "	-l, --protectedPayload  file containing the payload to be signed"
     echo "	-i, --out               file to write containerized payload"
     echo "	-o, --code-start-offset code start offset for software header in hex"
@@ -55,6 +59,7 @@ usage () {
     echo "	    --sign-project-config   INI file containing configuration properties (options"
     echo "	                            set here override those set via cmdline or environment)"
     echo "	-S, --security-version  Integer, sets the security version container field"
+    echo "  -V, --container-version Container version to generate (1, 2)"
     echo ""
     exit 1
 }
@@ -138,7 +143,7 @@ exportArchive () {
         then
             echo "--> $P: Exporting HW keys and sigs for project: $SF_HW_SIGNING_PROJECT_BASE"
             cd "$T" || die "Cannot cd to $T"
-            for KEY in a b c; do
+            for KEY in a b c d; do
                 cp -p &>/dev/null "HW_key_$KEY.pub" \
                     "project.${SF_HW_SIGNING_PROJECT_BASE}_${KEY}.HW_key_${KEY}.pub"
                 cp -p &>/dev/null "HW_key_$KEY.raw" \
@@ -153,7 +158,7 @@ exportArchive () {
         then
             echo "--> $P: Exporting FW keys and sigs for project: $SF_FW_SIGNING_PROJECT_BASE"
             cd "$T" || die "Cannot cd to $T"
-            for KEY in p q r; do
+            for KEY in p q r s; do
                 cp -p &>/dev/null "SW_key_$KEY.pub" \
                     "project.${SF_FW_SIGNING_PROJECT_BASE}_${KEY}.SW_key_${KEY}.pub"
                 cp -p &>/dev/null "SW_key_$KEY.raw" \
@@ -345,12 +350,13 @@ for arg in "$@"; do
     "--archiveOut") set -- "$@" "-7" ;;
     "--validate")   set -- "$@" "-8" ;;
     "--verify")     set -- "$@" "-9" ;;
+    "--container-version") set -- "$@" "-V" ;;
     *)              set -- "$@" "$arg"
   esac
 done
 
 # Process command-line arguments
-while getopts -- ?hdvw:a:b:c:p:q:r:f:F:o:l:i:m:k:s:L:S:4:5:6:7:89: opt
+while getopts -- ?hdvw:a:b:c:p:q:r:f:F:o:l:i:m:k:s:L:S:V:4:5:6:7:89: opt
 do
   case "${opt:?}" in
     v) SB_VERBOSE="TRUE";;
@@ -378,6 +384,7 @@ do
     7) SB_ARCHIVE_OUT="$OPTARG";;
     8) SB_VALIDATE="TRUE";;
     9) SB_VERIFY="$OPTARG";;
+    V) CONTAINER_VERSION="$OPTARG";;
     h|\?) usage;;
   esac
 done
@@ -476,11 +483,11 @@ then
 fi
 
 # Check input keys
-for KEY in HW_KEY_A HW_KEY_B HW_KEY_C; do
+for KEY in HW_KEY_A HW_KEY_B HW_KEY_C HW_KEY_D; do
     checkKey $KEY
 done
 
-for KEY in SW_KEY_P SW_KEY_Q SW_KEY_R; do
+for KEY in SW_KEY_P SW_KEY_Q SW_KEY_R SW_KEY_S; do
     checkKey $KEY
 done
 
@@ -577,9 +584,11 @@ test "$CS_OFFSET" && ADDL_ARGS="$ADDL_ARGS --sw-cs-offset $CS_OFFSET"
 test "$LABEL" && ADDL_ARGS="$ADDL_ARGS --label $LABEL"
 test "$SECURITY_VERSION" && ADDL_ARGS="$ADDL_ARGS --security-version $SECURITY_VERSION"
 test "$SB_CONTR_HDR_OUT" && CONTR_HDR_OUT_OPT="--dumpContrHdr"
+test "$CONTAINER_VERSION" && ADDL_ARGS="$ADDL_ARGS --container-version $CONTAINER_VERSION"
 
 test "$SB_VERBOSE" && SF_DEBUG_ARGS=" -v"
 test "$SB_DEBUG" && SF_DEBUG_ARGS="$SF_DEBUG_ARGS -d -stdout"
+test $CONTAINER_VERSION == 2 && DIGEST_ARG="-sha3-512"
 
 #
 # Set defaults for signframework project basenames
@@ -602,8 +611,8 @@ fi
 #
 if [ "$SIGN_MODE" == "local" ] || [ "$SIGN_MODE" == "independent" ]
 then
-    for KEY in a b c; do
-        # This will evaluate the value of HW_KEY_A, HW_KEY_B, HW_KEY_C
+    for KEY in a b c d; do
+        # This will evaluate the value of HW_KEY_A, HW_KEY_B, HW_KEY_C, HW_KEY_D
         varname=HW_KEY_$(to_upper $KEY); KEYFILE=${!varname}
 
         # Handle the special values, or empty value
@@ -645,8 +654,8 @@ then
         HW_KEY_ARGS="$HW_KEY_ARGS -$KEY $KEYFILE"
     done
 
-    for KEY in p q r; do
-        # Find the value of SW_KEY_P, SW_KEY_Q, SW_KEY_R
+    for KEY in p q r s; do
+        # Find the value of SW_KEY_P, SW_KEY_Q, SW_KEY_R, SW_KEY_S
         varname=SW_KEY_$(to_upper $KEY); KEYFILE=${!varname}
 
         # Handle the special values, or empty value
@@ -690,7 +699,7 @@ then
 
 elif [ "$SIGN_MODE" == "production" ]
 then
-    for KEY in a b c; do
+    for KEY in a b c d; do
         varname=HW_KEY_$(to_upper $KEY); KEYFILE=${!varname}
 
         # Handle the special values, or empty value
@@ -748,7 +757,7 @@ then
         HW_KEY_ARGS="$HW_KEY_ARGS -$KEY $T/$KEYFILE"
     done
 
-    for KEY in p q r; do
+    for KEY in p q r s; do
         varname=SW_KEY_$(to_upper $KEY); KEYFILE=${!varname}
 
         # Handle the special values, or empty value
@@ -813,6 +822,13 @@ then
     # TODO: check that prefix_hdr and software_hdr files are available...
 else
     echo "--> $P: Generating signing requests..."
+    test "$SB_VERBOSE" && \
+        echo create-container $HW_KEY_ARGS $SW_KEY_ARGS \
+                     --payload "$PAYLOAD" --imagefile "$OUTPUT" \
+                     --dumpPrefixHdr "$T/prefix_hdr" \
+                     --dumpSwHdr "$T/software_hdr" \
+                     $DEBUG_ARGS \
+                     $ADDL_ARGS
     create-container $HW_KEY_ARGS $SW_KEY_ARGS \
                      --payload "$PAYLOAD" --imagefile "$OUTPUT" \
                      --dumpPrefixHdr "$T/prefix_hdr" \
@@ -831,7 +847,7 @@ FOUND=""
 
 if [ "$SIGN_MODE" == "local" ] || [ "$SIGN_MODE" == "independent" ]
 then
-    for KEY in a b c; do
+    for KEY in a b c d; do
         varname=HW_KEY_$(to_upper $KEY); KEYFILE=${!varname}
 
         # Handle the special values, or empty value
@@ -887,7 +903,7 @@ then
                 if [ -f "$KEYFILE" ] && is_private_key "$KEYFILE"
                 then
                     echo "--> $P: Generating signature for HW key $(to_upper $KEY)..."
-                    openssl dgst -SHA512 -sign "$KEYFILE" "$T/prefix_hdr" > "$T/$SIGFILE"
+                    openssl dgst $DIGEST_ARG -sign "$KEYFILE" "$T/prefix_hdr" > "$T/$SIGFILE"
                     rc=$?
                     test $rc -ne 0 && die "Call to openssl failed with error: $rc"
                 else
@@ -901,7 +917,7 @@ then
         HW_SIG_ARGS="$HW_SIG_ARGS -$(to_upper $KEY) $T/$SIGFILE"
     done
 
-    for KEY in p q r; do
+    for KEY in p q r s; do
         SIGFILE=SW_key_$KEY.sig
         varname=SW_KEY_$(to_upper $KEY); KEYFILE=${!varname}
 
@@ -921,7 +937,7 @@ then
         then
             # No signature found, try to generate one.
             echo "--> $P: Generating signature for SW key $(to_upper $KEY)..."
-            openssl dgst -SHA512 -sign "$KEYFILE" "$T/software_hdr" > "$T/$SIGFILE"
+            openssl dgst $DIGEST_ARG -sign "$KEYFILE" "$T/software_hdr" > "$T/$SIGFILE"
             rc=$?
             test $rc -ne 0 && die "Call to openssl failed with error: $rc"
         else
@@ -935,7 +951,7 @@ then
 
 elif [ "$SIGN_MODE" == "production" ]
 then
-    for KEY in a b c; do
+    for KEY in a b c d; do
         varname=HW_KEY_$(to_upper $KEY); KEYFILE=${!varname}
 
         # Handle the special values, or empty value
@@ -972,7 +988,7 @@ then
                 SIGFILE="$SIGFILE_BASE.sig"
                 /bin/openssl dgst -engine pkcs11 -keyform engine \
                              -sign "pkcs11:token=$SB_PKCS11_TOKEN;object=$SF_PROJECT" \
-                             -sha512 -out "$T/$SIGFILE" "$T/prefix_hdr"
+                             $DIGEST_ARG -out "$T/$SIGFILE" "$T/prefix_hdr"
             fi
 
             rc=$?
@@ -988,7 +1004,7 @@ then
         HW_SIG_ARGS="$HW_SIG_ARGS -$(to_upper $KEY) $T/$SIGFILE"
     done
 
-    for KEY in p q r; do
+    for KEY in p q r s; do
         varname=SW_KEY_$(to_upper $KEY); KEYFILE=${!varname}
 
         # Handle the special values, or empty value
@@ -1031,7 +1047,7 @@ then
                 SIGFILE="$SIGFILE_BASE.sig"
                 /bin/openssl dgst -engine pkcs11 -keyform engine \
                              -sign "pkcs11:token=$SB_PKCS11_TOKEN;object=$SF_PROJECT" \
-                             -sha512 -out "$T/$SIGFILE" "$T/software_hdr"
+                             $DIGEST_ARG -out "$T/$SIGFILE" "$T/software_hdr"
             fi
 
             rc=$?
@@ -1102,6 +1118,9 @@ test "$SB_VERIFY" && VERIFY_OPT="--verify" && VERIFY_ARGS="$SB_VERIFY"
 
 if [ "$VALIDATE_OPT" ] || [ "$VERIFY_OPT" ]; then
     echo
+    test "$SB_VERBOSE" && \
+        echo print-container --imagefile "$OUTPUT" --no-print \
+             $DEBUG_ARGS $VALIDATE_OPT $VERIFY_OPT "$VERIFY_ARGS"
     print-container --imagefile "$OUTPUT" --no-print \
                     $DEBUG_ARGS $VALIDATE_OPT $VERIFY_OPT "$VERIFY_ARGS"
 

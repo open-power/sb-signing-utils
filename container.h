@@ -31,6 +31,7 @@
 #define UNATTEMPTED -1
 
 #define SECURE_BOOT_HEADERS_SIZE	4096
+#define SECURE_BOOT_HEADERS_V2_SIZE	15*1024
 #define SHA256_DIGEST_LENGTH		32
 
 /*
@@ -52,13 +53,18 @@ typedef uint8_t sha2_byte; // Exactly 1 byte
 typedef uint8_t ecc_key_t[2*EC_COORDBYTES];
 typedef uint8_t ecc_signature_t[2*EC_COORDBYTES];
 
+#define DILITHIUM_PUB_KEY_LENGTH 2336
+#define DILITHIUM_SIG_LENGTH 4668
+typedef uint8_t dilithium_key_t[DILITHIUM_PUB_KEY_LENGTH];
+typedef uint8_t dilithium_signature_t[DILITHIUM_SIG_LENGTH];
+
 /* From trusted_boot_rom/src/ROM.h */
 #define ROM_MAGIC_NUMBER	0x17082011
 
 typedef struct {
 	be16 version;		/* (1: see versions above) */
-	uint8_t hash_alg;	/* (1: SHA-512) */
-	uint8_t sig_alg;	/* (1: SHA-512/ECDSA-521) */
+	uint8_t hash_alg;	/* (1: SHA-512 2: SHA3-512) */
+	uint8_t sig_alg;	/* (1: SHA-512/ECDSA-521) 2: SHA3-512 ECDSA-521/Dilithium r2 8/7 */
 }__attribute__((packed)) ROM_version_raw;
 
 typedef struct {
@@ -121,6 +127,65 @@ typedef struct {
 	/* followed by unprotected sw payload_text */
 }__attribute__((packed)) ROM_sw_sig_raw;
 
+
+/* CONTAINER VERSION 2 */
+typedef struct {
+	ROM_version_raw ver_alg;
+	be64 reserved;
+	be32 flags;
+	uint8_t sw_key_count;
+	be64 payload_size;
+	sha2_hash_t payload_hash;
+	uint8_t ecid[ECID_SIZE];
+	uint8_t reserved2[3];
+	/* followed by prefix data (sig,keys) key raw */
+}__attribute__((packed)) ROM_prefix_header_v2_raw;
+
+typedef struct {
+	ecc_signature_t hw_sig_a;
+	dilithium_signature_t hw_sig_d;
+	ecc_key_t sw_pkey_p;
+	dilithium_key_t sw_pkey_s;
+}__attribute__((packed)) ROM_prefix_data_v2_raw;
+
+typedef struct {
+	ROM_version_raw ver_alg;
+	be64 reserved;
+	be64 component_id;
+	be32 flags;
+	uint8_t security_version;
+	be64 payload_size;
+	be64 unprotected_payload_size;
+	sha2_hash_t payload_hash;
+	uint8_t ecid[ECID_SIZE];
+	uint8_t reserved2[7];
+	/* followed by sw sig raw */
+}__attribute__((packed)) ROM_sw_header_v2_raw;
+
+typedef struct {
+	ecc_signature_t sw_sig_p;
+	dilithium_signature_t sw_sig_s;
+	/* followed by zero's padding to 15K */
+	/* followed by protected sw payload_data */
+	/* followed by unprotected sw payload_text */
+}__attribute__((packed)) ROM_sw_sig_v2_raw;
+
+typedef struct {
+	be32 magic_number;	/* (17082011) */
+	be16 version;		/* (2: see versions above) */
+	be64 container_size;	/* filled by caller */
+	uint8_t reserved[6];
+	ecc_key_t hw_pkey_a;
+	dilithium_key_t hw_pkey_d;
+	ROM_prefix_header_v2_raw prefix;
+	ROM_prefix_data_v2_raw   prefix_data;
+	ROM_sw_header_v2_raw     swheader;
+	ROM_sw_sig_v2_raw        sw_data;
+	/* followed by optional unprotected payload data */
+}__attribute__((packed)) ROM_container_v2_raw;
+
+
+
 typedef enum { ROM_DONE, ROM_FAILED, PHYP_PARTIAL } ROM_response;
 
 typedef struct {
@@ -138,6 +203,16 @@ struct parsed_stb_container {
 	const ROM_prefix_data_raw *pd;
 	const ROM_sw_header_raw *sh;
 	const ROM_sw_sig_raw *ssig;
+};
+
+struct parsed_stb_container_v2 {
+	const void *buf;
+	size_t bufsz;
+	const ROM_container_v2_raw *c;
+	const ROM_prefix_header_v2_raw *ph;
+	const ROM_prefix_data_v2_raw *pd;
+	const ROM_sw_header_v2_raw *sh;
+	const ROM_sw_sig_v2_raw *ssig;
 };
 
 #endif /* __STB_CONTAINER_H */

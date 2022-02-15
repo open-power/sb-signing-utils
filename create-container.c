@@ -57,6 +57,18 @@ int wrap = 100;
 
 void usage(int status);
 
+unsigned char *sha3_512(const unsigned char *data, size_t len, unsigned char *md)
+{
+	const EVP_MD* alg = EVP_sha3_512();
+	uint32_t md_len = SHA512_DIGEST_LENGTH;
+	EVP_MD_CTX* ctx = EVP_MD_CTX_new();
+	EVP_DigestInit_ex(ctx, alg, NULL);
+	EVP_DigestUpdate(ctx, data, len);
+	EVP_DigestFinal_ex(ctx, md, &md_len);
+	EVP_MD_CTX_destroy(ctx);
+	return md;
+}
+
 void getPublicKeyRaw(ecc_key_t *pubkeyraw, char *inFile)
 {
 	EVP_PKEY* pkey;
@@ -210,29 +222,50 @@ void getSigRaw(ecc_signature_t *sigraw, char *inFile)
 	return;
 }
 
-void writeHdr(void *hdr, const char *outFile, int hdr_type)
+void writeHdr(void *hdr, const char *outFile, int hdr_type, int container_version)
 {
 	FILE *fp;
 	int r, hdr_sz;
 	unsigned char md_buf[SHA512_DIGEST_LENGTH];
 	unsigned char *md = NULL;
 
-	switch (hdr_type) {
-	case CONTAINER_HDR:
-		hdr_sz = SECURE_BOOT_HEADERS_SIZE;
-		break;
-	case PREFIX_HDR:
-		hdr_sz = sizeof(ROM_prefix_header_raw);
-		md = SHA512(hdr, hdr_sz, md_buf);
-		verbose_print((char *) "PR header hash  = ", md_buf, sizeof(md_buf));
-		break;
-	case SOFTWARE_HDR:
-		hdr_sz = sizeof(ROM_sw_header_raw);
-		md = SHA512(hdr, hdr_sz, md_buf);
-		verbose_print((char *) "SW header hash  = ", md_buf, sizeof(md_buf));
-		break;
-	default:
-		die(EX_SOFTWARE, "Unknown header type (%d)", hdr_type);
+	if (container_version == 2)
+	{
+		switch (hdr_type) {
+		  case CONTAINER_HDR:
+		    hdr_sz = SECURE_BOOT_HEADERS_V2_SIZE;
+		    break;
+		  case PREFIX_HDR:
+		    hdr_sz = sizeof(ROM_prefix_header_v2_raw);
+		    md = sha3_512(hdr, hdr_sz, md_buf);
+		    verbose_print((char *) "PR header hash  = ", md_buf, sizeof(md_buf));
+		    break;
+		  case SOFTWARE_HDR:
+		    hdr_sz = sizeof(ROM_sw_header_v2_raw);
+		    md = sha3_512(hdr, hdr_sz, md_buf);
+		    verbose_print((char *) "SW header hash  = ", md_buf, sizeof(md_buf));
+		    break;
+		  default:
+		    die(EX_SOFTWARE, "Unknown header type (%d)", hdr_type);
+		}
+	} else {
+		switch (hdr_type) {
+		  case CONTAINER_HDR:
+		    hdr_sz = SECURE_BOOT_HEADERS_SIZE;
+		    break;
+		  case PREFIX_HDR:
+		    hdr_sz = sizeof(ROM_prefix_header_raw);
+		    md = SHA512(hdr, hdr_sz, md_buf);
+		    verbose_print((char *) "PR header hash  = ", md_buf, sizeof(md_buf));
+		    break;
+		  case SOFTWARE_HDR:
+		    hdr_sz = sizeof(ROM_sw_header_raw);
+		    md = SHA512(hdr, hdr_sz, md_buf);
+		    verbose_print((char *) "SW header hash  = ", md_buf, sizeof(md_buf));
+		    break;
+		  default:
+		    die(EX_SOFTWARE, "Unknown header type (%d)", hdr_type);
+		}
 	}
 
 	fp = fopen(outFile, "w");
@@ -292,20 +325,24 @@ __attribute__((__noreturn__)) void usage (int status)
 			"Options:\n"
 			" -h, --help              display this message and exit\n"
 			" -v, --verbose           show verbose output\n"
-			" -d, --debug             show additional debug output\n"
+			"     --debug             show additional debug output\n"
 			" -w, --wrap              column to wrap long output in verbose mode\n"
 			" -a, --hw_key_a          file containing HW key A key in PEM or RAW format\n"
 			" -b, --hw_key_b          file containing HW key B key in PEM or RAW format\n"
 			" -c, --hw_key_c          file containing HW key C key in PEM or RAW format\n"
+			" -d, --hw_key_d          file containing HW key D key in PEM or RAW format\n"
 			" -p, --sw_key_p          file containing SW key P key in PEM or RAW format\n"
 			" -q, --sw_key_q          file containing SW key Q key in PEM or RAW format\n"
 			" -r, --sw_key_r          file containing SW key R key in PEM or RAW format\n"
+			" -s, --sw_key_s          file containing SW key S key in PEM or RAW format\n"
 			" -A, --hw_sig_a          file containing HW key A signature in DER format\n"
 			" -B, --hw_sig_b          file containing HW key B signature in DER format\n"
 			" -C, --hw_sig_c          file containing HW key C signature in DER format\n"
+			" -D, --hw_sig_d          file containing HW key D signature in DER format\n"
 			" -P, --sw_sig_p          file containing SW key P signature in DER format\n"
 			" -Q, --sw_sig_q          file containing SW key Q signature in DER format\n"
 			" -R, --sw_sig_r          file containing SW key R signature in DER format\n"
+			"     --sw_sig_s          file containing SW key S signature in DER format\n"
 			" -l, --payload           file containing the payload to be signed\n"
 			" -I, --imagefile         file to write containerized image (output)\n"
 			" -o, --hw-cs-offset      code start offset for prefix header in hex\n"
@@ -317,8 +354,11 @@ __attribute__((__noreturn__)) void usage (int status)
 			"     --dumpSwHdr         file to dump Software header blob (to be signed)\n"
 			"     --dumpContrHdr      file to dump full Container header (w/o payload)\n"
 			" -S, --security-version  Integer, sets the security version container field\n"
+			" -V, --container-version Container version to generate (1, 2)\n"
 			"Note:\n"
 			"- Keys A,B,C,P,Q,R must be valid p521 ECC keys. Keys may be provided as public\n"
+			"  or private key in PEM format, or public key in uncompressed raw format.\n"
+			"- Keys D,S must be valid Dilithium r2 8/7 keys. Keys may be provided as public\n"
 			"  or private key in PEM format, or public key in uncompressed raw format.\n"
 			"\n");
 	};
@@ -334,15 +374,19 @@ static struct option const opts[] = {
 	{ "hw_key_a",         required_argument, 0,  'a' },
 	{ "hw_key_b",         required_argument, 0,  'b' },
 	{ "hw_key_c",         required_argument, 0,  'c' },
+	{ "hw_key_d",         required_argument, 0,  'c' },
 	{ "sw_key_p",         required_argument, 0,  'p' },
 	{ "sw_key_q",         required_argument, 0,  'q' },
 	{ "sw_key_r",         required_argument, 0,  'r' },
+	{ "sw_key_s",         required_argument, 0,  'r' },
 	{ "hw_sig_a",         required_argument, 0,  'A' },
 	{ "hw_sig_b",         required_argument, 0,  'B' },
 	{ "hw_sig_c",         required_argument, 0,  'C' },
+	{ "hw_sig_d",         required_argument, 0,  'C' },
 	{ "sw_sig_p",         required_argument, 0,  'P' },
 	{ "sw_sig_q",         required_argument, 0,  'Q' },
 	{ "sw_sig_r",         required_argument, 0,  'R' },
+	{ "sw_sig_s",         required_argument, 0,  '3' },
 	{ "payload",          required_argument, 0,  'l' },
 	{ "imagefile",        required_argument, 0,  'I' },
 	{ "hw-cs-offset",     required_argument, 0,  'o' },
@@ -354,6 +398,7 @@ static struct option const opts[] = {
 	{ "dumpPrefixHdr",    required_argument, 0,  '1' },
 	{ "dumpSwHdr",        required_argument, 0,  '2' },
 	{ "security-version", required_argument, 0,  'S' },
+	{ "container-version",required_argument, 0,  'V' },
 	{ NULL, 0, NULL, 0 }
 };
 #endif
@@ -362,15 +407,19 @@ static struct {
 	char *hw_keyfn_a;
 	char *hw_keyfn_b;
 	char *hw_keyfn_c;
+	char *hw_keyfn_d;
 	char *sw_keyfn_p;
 	char *sw_keyfn_q;
 	char *sw_keyfn_r;
+	char *sw_keyfn_s;
 	char *hw_sigfn_a;
 	char *hw_sigfn_b;
 	char *hw_sigfn_c;
+	char *hw_sigfn_d;
 	char *sw_sigfn_p;
 	char *sw_sigfn_q;
 	char *sw_sigfn_r;
+	char *sw_sigfn_s;
 	char *imagefn;
 	char *payloadfn;
 	char *hw_cs_offset;
@@ -381,7 +430,8 @@ static struct {
 	char *prhdrfn;
 	char *swhdrfn;
 	char *cthdrfn;
-    uint8_t security_version;
+	uint8_t security_version;
+	uint8_t container_version;
 } params;
 
 
@@ -389,8 +439,8 @@ int main(int argc, char* argv[])
 {
 	int fdout;
 	unsigned int size, offset;
-	void *container = malloc(SECURE_BOOT_HEADERS_SIZE);
-	char *buf = malloc(SECURE_BOOT_HEADERS_SIZE);
+	void *container = malloc(SECURE_BOOT_HEADERS_V2_SIZE);
+	char *buf = malloc(SECURE_BOOT_HEADERS_V2_SIZE);
 	struct stat payload_st;
 	void *infile = NULL;
 	int r;
@@ -399,6 +449,11 @@ int main(int argc, char* argv[])
 	ROM_prefix_data_raw *pd;
 	ROM_sw_header_raw *swh;
 	ROM_sw_sig_raw *ssig;
+	ROM_container_v2_raw *c_v2 = (ROM_container_v2_raw*) container;
+	ROM_prefix_header_v2_raw *ph_v2;
+	ROM_prefix_data_v2_raw *pd_v2;
+	ROM_sw_header_v2_raw *swh_v2;
+	ROM_sw_sig_v2_raw *ssig_v2;
 
 	unsigned char md[SHA512_DIGEST_LENGTH];
 	void *p;
@@ -411,10 +466,11 @@ int main(int argc, char* argv[])
 	else
 		progname = argv[0];
 
-	memset(container, 0, SECURE_BOOT_HEADERS_SIZE);
+	memset(container, 0, SECURE_BOOT_HEADERS_V2_SIZE);
 
 	// Set the default values for non-pointer optional args
 	params.security_version = 0;
+	params.container_version = 1;
 
 #ifdef _AIX
 	for (int i = 1; i < argc; i++) {
@@ -423,7 +479,7 @@ int main(int argc, char* argv[])
 		} else if (!strcmp(*(argv + i), "--verbose")) {
 			*(argv + i) = "-v";
 		} else if (!strcmp(*(argv + i), "--debug")) {
-			*(argv + i) = "-d";
+			*(argv + i) = "-4";
 		} else if (!strcmp(*(argv + i), "--wrap")) {
 			*(argv + i) = "-w";
 		} else if (!strcmp(*(argv + i), "--hw_key_a")) {
@@ -432,12 +488,16 @@ int main(int argc, char* argv[])
 			*(argv + i) = "-b";
 		} else if (!strcmp(*(argv + i), "--hw_key_c")) {
 			*(argv + i) = "-c";
+		} else if (!strcmp(*(argv + i), "--hw_key_d")) {
+			*(argv + i) = "-d";
 		} else if (!strcmp(*(argv + i), "--sw_key_p")) {
 			*(argv + i) = "-p";
 		} else if (!strcmp(*(argv + i), "--sw_key_q")) {
 			*(argv + i) = "-q";
 		} else if (!strcmp(*(argv + i), "--sw_key_r")) {
 			*(argv + i) = "-r";
+		} else if (!strcmp(*(argv + i), "--sw_key_s")) {
+			*(argv + i) = "-s";
 		} else if (!strcmp(*(argv + i), "--hw_sig_a")) {
 			*(argv + i) = "-A";
 		} else if (!strcmp(*(argv + i), "--hw_sig_b")) {
@@ -450,6 +510,8 @@ int main(int argc, char* argv[])
 			*(argv + i) = "-Q";
 		} else if (!strcmp(*(argv + i), "--sw_sig_r")) {
 			*(argv + i) = "-R";
+		} else if (!strcmp(*(argv + i), "--sw_sig_s")) {
+			*(argv + i) = "-3";
 		} else if (!strcmp(*(argv + i), "--payload")) {
 			*(argv + i) = "-l";
 		} else if (!strcmp(*(argv + i), "--imagefile")) {
@@ -472,6 +534,8 @@ int main(int argc, char* argv[])
 			*(argv + i) = "-2";
 		} else if (!strcmp(*(argv + i), "--security-version")) {
 			*(argv + i) = "-S";
+		} else if (!strcmp(*(argv + i), "--container-version")) {
+			*(argv + i) = "-V";
 		} else if (!strncmp(*(argv + i), "--", 2)) {
 			fprintf(stderr, "%s: unrecognized option \'%s\'\n", progname,
 					*(argv + i));
@@ -483,10 +547,10 @@ int main(int argc, char* argv[])
 	while (1) {
 		int opt;
 #ifdef _AIX
-		opt = getopt(argc, argv, "?hvdw:a:b:c:p:q:r:A:B:C:P:Q:R:L:I:o:O:f:F:l:0:1:2:S:");
+		opt = getopt(argc, argv, "?hv4w:a:b:c:d:p:q:r:s:A:B:C:D:P:Q:R:3:L:I:o:O:f:F:l:0:1:2:S:V:");
 #else
 		opt = getopt_long(argc, argv,
-				"hvdw:a:b:c:p:q:r:A:B:C:P:Q:R:L:I:o:O:f:F:l:0:1:2:S:", opts,
+				"hvdw:a:b:c:4:p:q:r:s:A:B:C:D:P:Q:R:3:L:I:o:O:f:F:l:0:1:2:S:V:", opts,
 				NULL);
 #endif
 		if (opt == -1)
@@ -502,7 +566,7 @@ int main(int argc, char* argv[])
 		case 'v':
 			verbose = true;
 			break;
-		case 'd':
+		case '4':
 			debug = true;
 			break;
 		case 'w':
@@ -518,6 +582,9 @@ int main(int argc, char* argv[])
 		case 'c':
 			params.hw_keyfn_c = optarg;
 			break;
+		case 'd':
+			params.hw_keyfn_d = optarg;
+			break;
 		case 'p':
 			params.sw_keyfn_p = optarg;
 			break;
@@ -526,6 +593,9 @@ int main(int argc, char* argv[])
 			break;
 		case 'r':
 			params.sw_keyfn_r = optarg;
+			break;
+		case 's':
+			params.sw_keyfn_s = optarg;
 			break;
 		case 'A':
 			params.hw_sigfn_a = optarg;
@@ -536,6 +606,9 @@ int main(int argc, char* argv[])
 		case 'C':
 			params.hw_sigfn_c = optarg;
 			break;
+		case 'D':
+			params.hw_sigfn_d = optarg;
+			break;
 		case 'P':
 			params.sw_sigfn_p = optarg;
 			break;
@@ -544,6 +617,9 @@ int main(int argc, char* argv[])
 			break;
 		case 'R':
 			params.sw_sigfn_r = optarg;
+			break;
+		case '3':
+			params.sw_sigfn_s = optarg;
 			break;
 		case 'l':
 			params.payloadfn = optarg;
@@ -575,21 +651,34 @@ int main(int argc, char* argv[])
 		case '0':
 			params.cthdrfn = optarg;
 			break;
-        case 'S':
-        {
-            int value = atoi(optarg);
-            if(value < 0 || value >= 256)
-            {
-                die(EX_DATAERR, "security-version (%d) must fit into a 1-byte field", value);
-            }
-            else
-            {
-                params.security_version = (uint8_t)value;
-            }
-            break;
-        }
-		default:
-			usage(EX_USAGE);
+		  case 'S':
+			  {
+				  int value = atoi(optarg);
+				  if(value < 0 || value >= 256)
+				  {
+					  die(EX_DATAERR, "security-version (%d) must fit into a 1-byte field", value);
+				  }
+				  else
+				  {
+					  params.security_version = (uint8_t)value;
+				  }
+				  break;
+			  }
+		  case 'V':
+			  {
+				  int value = atoi(optarg);
+				  if(value < 0 || value >= 0x10000)
+				  {
+					  die(EX_DATAERR, "container-version (%d) must fit into a 2-byte field", value);
+				  }
+				  else
+				  {
+					  params.container_version = (uint8_t)value;
+				  }
+				  break;
+			  }
+		  default:
+		    usage(EX_USAGE);
 		}
 	}
 
@@ -604,12 +693,17 @@ int main(int argc, char* argv[])
 
 		if (payload_st.st_size > 0) {
 			infile = mmap(NULL, payload_st.st_size, PROT_READ, MAP_PRIVATE,
-					fdin, 0);
+				      fdin, 0);
 			if (infile == MAP_FAILED)
 				die(EX_OSERR, "Cannot mmap file at fd: %d, size: %lu (%s)",
-						fdin, payload_st.st_size, strerror(errno));
+				    fdin, payload_st.st_size, strerror(errno));
 		}
 		close(fdin);
+	}
+
+	if (params.container_version < 1 || params.container_version > 2)
+	{
+		die(EX_NOINPUT, "Invalid container version: %d", params.container_version);
 	}
 
 	if (!infile)
@@ -621,241 +715,424 @@ int main(int argc, char* argv[])
 		die(EX_CANTCREAT, "Cannot create output file: %s", params.imagefn);
 
 	// Container creation starts here.
-	c->magic_number = cpu_to_be32(ROM_MAGIC_NUMBER);
-	c->version = cpu_to_be16(1);
-	c->container_size = cpu_to_be64(SECURE_BOOT_HEADERS_SIZE + payload_st.st_size);
-	c->target_hrmor = 0;
-	c->stack_pointer = 0;
-	memset(c->hw_pkey_a, 0, sizeof(ecc_key_t));
-	memset(c->hw_pkey_b, 0, sizeof(ecc_key_t));
-	memset(c->hw_pkey_c, 0, sizeof(ecc_key_t));
-	if (params.hw_keyfn_a) {
-		getPublicKeyRaw(&pubkeyraw, params.hw_keyfn_a);
-		verbose_print((char *) "pubkey A = ", pubkeyraw, sizeof(pubkeyraw));
-		memcpy(c->hw_pkey_a, pubkeyraw, sizeof(ecc_key_t));
-	}
-	if (params.hw_keyfn_b) {
-		getPublicKeyRaw(&pubkeyraw, params.hw_keyfn_b);
-		verbose_print((char *) "pubkey B = ", pubkeyraw, sizeof(pubkeyraw));
-		memcpy(c->hw_pkey_b, pubkeyraw, sizeof(ecc_key_t));
-	}
-	if (params.hw_keyfn_c) {
-		getPublicKeyRaw(&pubkeyraw, params.hw_keyfn_c);
-		verbose_print((char *) "pubkey C = ", pubkeyraw, sizeof(pubkeyraw));
-		memcpy(c->hw_pkey_c, pubkeyraw, sizeof(ecc_key_t));
-	}
-	p = SHA512(c->hw_pkey_a, sizeof(ecc_key_t) * 3, md);
-	if (!p)
-		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
-	verbose_print((char *) "HW keys hash = ", md, sizeof(md));
+	if (params.container_version == 1)
+	{
+		c->magic_number = cpu_to_be32(ROM_MAGIC_NUMBER);
+		c->version = cpu_to_be16(1);
+		c->container_size = cpu_to_be64(SECURE_BOOT_HEADERS_SIZE + payload_st.st_size);
+		c->target_hrmor = 0;
+		c->stack_pointer = 0;
+		memset(c->hw_pkey_a, 0, sizeof(ecc_key_t));
+		memset(c->hw_pkey_b, 0, sizeof(ecc_key_t));
+		memset(c->hw_pkey_c, 0, sizeof(ecc_key_t));
+		if (params.hw_keyfn_a) {
+			getPublicKeyRaw(&pubkeyraw, params.hw_keyfn_a);
+			verbose_print((char *) "pubkey A = ", pubkeyraw, sizeof(pubkeyraw));
+			memcpy(c->hw_pkey_a, pubkeyraw, sizeof(ecc_key_t));
+		}
+		if (params.hw_keyfn_b) {
+			getPublicKeyRaw(&pubkeyraw, params.hw_keyfn_b);
+			verbose_print((char *) "pubkey B = ", pubkeyraw, sizeof(pubkeyraw));
+			memcpy(c->hw_pkey_b, pubkeyraw, sizeof(ecc_key_t));
+		}
+		if (params.hw_keyfn_c) {
+			getPublicKeyRaw(&pubkeyraw, params.hw_keyfn_c);
+			verbose_print((char *) "pubkey C = ", pubkeyraw, sizeof(pubkeyraw));
+			memcpy(c->hw_pkey_c, pubkeyraw, sizeof(ecc_key_t));
+		}
+		p = SHA512(c->hw_pkey_a, sizeof(ecc_key_t) * 3, md);
+		if (!p)
+			die(EX_SOFTWARE, "%s", "Cannot get SHA512");
+		verbose_print((char *) "HW keys hash = ", md, sizeof(md));
 
-	ph = container + sizeof(ROM_container_raw);
-	ph->ver_alg.version = cpu_to_be16(1);
-	ph->ver_alg.hash_alg = 1;
-	ph->ver_alg.sig_alg = 1;
+		ph = container + sizeof(ROM_container_raw);
+		ph->ver_alg.version = cpu_to_be16(1);
+		ph->ver_alg.hash_alg = 1;
+		ph->ver_alg.sig_alg = 1;
 
-	// Set code-start-offset.
-	if (params.hw_cs_offset) {
-		if (!isValidHex(params.hw_cs_offset, 4))
-			die(EX_DATAERR, "%s",
-					"Invalid input for hw-cs-offset, expecting a 4 byte hexadecimal value");
-		uint64_t data;
-		sscanf(params.hw_cs_offset, "%lx", &data);
-		ph->code_start_offset = cpu_to_be64(data);
-		verbose_msg("hw-cs-offset = %#010lx", data);
+		// Set code-start-offset.
+		if (params.hw_cs_offset) {
+			if (!isValidHex(params.hw_cs_offset, 4))
+				die(EX_DATAERR, "%s",
+				    "Invalid input for hw-cs-offset, expecting a 4 byte hexadecimal value");
+			uint64_t data;
+			sscanf(params.hw_cs_offset, "%lx", &data);
+			ph->code_start_offset = cpu_to_be64(data);
+			verbose_msg("hw-cs-offset = %#010lx", data);
+		} else {
+			ph->code_start_offset = 0;
+		}
+		ph->reserved = 0;
+
+		// Set flags.
+		if (params.hw_flags) {
+			if (!isValidHex(params.hw_flags, 4))
+				die(EX_DATAERR, "%s",
+				    "Invalid input for hw-flags, expecting a 4 byte hexadecimal value");
+			uint32_t data;
+			sscanf(params.hw_flags, "%x", &data);
+			ph->flags = cpu_to_be32(data);
+			verbose_msg("hw-flags = %#010x", data);
+		} else {
+			ph->flags = cpu_to_be32(0x80000000);
+		}
+		memset(ph->payload_hash, 0, sizeof(sha2_hash_t));
+		ph->ecid_count = 0;
+
+		pd = (ROM_prefix_data_raw*) ph->ecid;
+		memset(pd->hw_sig_a, 0, sizeof(ecc_signature_t));
+		memset(pd->hw_sig_b, 0, sizeof(ecc_signature_t));
+		memset(pd->hw_sig_c, 0, sizeof(ecc_signature_t));
+
+		// Write the HW signatures.
+		if (params.hw_sigfn_a) {
+			getSigRaw(&sigraw, params.hw_sigfn_a);
+			verbose_print((char *) "signature A = ", sigraw, sizeof(sigraw));
+			memcpy(pd->hw_sig_a, sigraw, sizeof(ecc_key_t));
+		}
+		if (params.hw_sigfn_b) {
+			getSigRaw(&sigraw, params.hw_sigfn_b);
+			verbose_print((char *) "signature B = ", sigraw, sizeof(sigraw));
+			memcpy(pd->hw_sig_b, sigraw, sizeof(ecc_key_t));
+		}
+		if (params.hw_sigfn_c) {
+			getSigRaw(&sigraw, params.hw_sigfn_c);
+			verbose_print((char *) "signature C = ", sigraw, sizeof(sigraw));
+			memcpy(pd->hw_sig_c, sigraw, sizeof(ecc_key_t));
+		}
+		memset(pd->sw_pkey_p, 0, sizeof(ecc_key_t));
+		memset(pd->sw_pkey_q, 0, sizeof(ecc_key_t));
+		memset(pd->sw_pkey_r, 0, sizeof(ecc_key_t));
+
+		// Write the FW keys.
+		if (params.sw_keyfn_p) {
+			getPublicKeyRaw(&pubkeyraw, params.sw_keyfn_p);
+			verbose_print((char *) "pubkey P = ", pubkeyraw, sizeof(pubkeyraw));
+			memcpy(pd->sw_pkey_p, pubkeyraw, sizeof(ecc_key_t));
+			ph->sw_key_count++;
+		}
+		if (params.sw_keyfn_q) {
+			getPublicKeyRaw(&pubkeyraw, params.sw_keyfn_q);
+			verbose_print((char *) "pubkey Q = ", pubkeyraw, sizeof(pubkeyraw));
+			memcpy(pd->sw_pkey_q, pubkeyraw, sizeof(ecc_key_t));
+			ph->sw_key_count++;
+		}
+		if (params.sw_keyfn_r) {
+			getPublicKeyRaw(&pubkeyraw, params.sw_keyfn_r);
+			verbose_print((char *) "pubkey R = ", pubkeyraw, sizeof(pubkeyraw));
+			memcpy(pd->sw_pkey_r, pubkeyraw, sizeof(ecc_key_t));
+			ph->sw_key_count++;
+		}
+		debug_msg("sw_key_count = %u", ph->sw_key_count);
+		ph->payload_size = cpu_to_be64(ph->sw_key_count * sizeof(ecc_key_t));
+
+		// Calculate the SW keys hash.
+		p = SHA512(pd->sw_pkey_p, sizeof(ecc_key_t) * ph->sw_key_count, md);
+		if (!p)
+			die(EX_SOFTWARE, "%s", "Cannot get SHA512");
+		memcpy(ph->payload_hash, md, sizeof(sha2_hash_t));
+		verbose_print((char *) "SW keys hash = ", md, sizeof(md));
+
+		// Dump the Prefix header.
+		if (params.prhdrfn)
+			writeHdr((void *) ph, params.prhdrfn, PREFIX_HDR, params.container_version);
+
+		swh = (ROM_sw_header_raw*) (((uint8_t*) pd) + sizeof(ecc_signature_t) * 3
+					    + be64_to_cpu(ph->payload_size));
+		swh->ver_alg.version = cpu_to_be16(1);
+		swh->ver_alg.hash_alg = 1;
+		swh->ver_alg.sig_alg = 1;
+
+		// Set code-start-offset.
+		if (params.sw_cs_offset) {
+			if (!isValidHex(params.sw_cs_offset, 4))
+				die(EX_DATAERR, "%s",
+				    "Invalid input for sw-cs-offset, expecting a 4 byte hexadecimal value");
+			uint64_t data;
+			sscanf(params.sw_cs_offset, "%lx", &data);
+			swh->code_start_offset = cpu_to_be64(data);
+			verbose_msg("sw-cs-offset = %#010lx", data);
+		} else {
+			swh->code_start_offset = 0;
+		}
+		swh->reserved = 0;
+
+		// Add component ID (label).
+		if (params.label) {
+			if (!isValidAscii(params.label, 0))
+				die(EX_DATAERR, "%s",
+				    "Invalid input for label, expecting a 8 char ASCII value");
+			strncpy((char *) &swh->reserved, params.label, 8);
+			verbose_msg("component ID (was reserved) = %.8s",
+				    (char * ) &swh->reserved);
+		}
+
+		// Set flags.
+		if (params.sw_flags) {
+			if (!isValidHex(params.sw_flags, 4))
+				die(EX_DATAERR, "%s",
+				    "Invalid input for sw-flags, expecting a 4 byte hexadecimal value");
+			uint32_t data;
+			sscanf(params.sw_flags, "%x", &data);
+			swh->flags = cpu_to_be32(data);
+			verbose_msg("sw-flags = %#010x", data);
+		} else {
+			swh->flags = cpu_to_be32(0x00000000);
+		}
+		swh->security_version = params.security_version;
+		swh->payload_size = cpu_to_be64(payload_st.st_size);
+
+		// Calculate the payload hash.
+		p = SHA512(infile, payload_st.st_size, md);
+		if (!p)
+			die(EX_SOFTWARE, "%s", "Cannot get SHA512");
+		memcpy(swh->payload_hash, md, sizeof(sha2_hash_t));
+		verbose_print((char *) "Payload hash = ", md, sizeof(md));
+
+		// Dump the Software header.
+		if (params.swhdrfn)
+			writeHdr((void *) swh, params.swhdrfn, SOFTWARE_HDR, params.container_version);
+
+		ssig = (ROM_sw_sig_raw*) (((uint8_t*) swh) + sizeof(ROM_sw_header_raw));
+		memset(ssig->sw_sig_p, 0, sizeof(ecc_signature_t));
+		memset(ssig->sw_sig_q, 0, sizeof(ecc_signature_t));
+		memset(ssig->sw_sig_r, 0, sizeof(ecc_signature_t));
+
+		// Write the HW signatures.
+		if (params.sw_sigfn_p) {
+			getSigRaw(&sigraw, params.sw_sigfn_p);
+			verbose_print((char *) "signature P = ", sigraw, sizeof(sigraw));
+			memcpy(ssig->sw_sig_p, sigraw, sizeof(ecc_key_t));
+		}
+		if (params.sw_sigfn_q) {
+			getSigRaw(&sigraw, params.sw_sigfn_q);
+			verbose_print((char *) "signature Q = ", sigraw, sizeof(sigraw));
+			memcpy(ssig->sw_sig_q, sigraw, sizeof(ecc_key_t));
+		}
+		if (params.sw_sigfn_r) {
+			getSigRaw(&sigraw, params.sw_sigfn_r);
+			verbose_print((char *) "signature R = ", sigraw, sizeof(sigraw));
+			memcpy(ssig->sw_sig_r, sigraw, sizeof(ecc_key_t));
+		}
+
+		// Dump the full container header.
+		if (params.cthdrfn)
+			writeHdr((void *) c, params.cthdrfn, CONTAINER_HDR, params.container_version);
+
+		// Print container stats.
+		size = (uint8_t*) ph - (uint8_t *) c;
+		offset = 0;
+		verbose_msg("HW header size        = %4u (%#06x) at offset %4u (%#06x)",
+			    size, size, offset, offset);
+		size = (uint8_t*) pd - (uint8_t *) ph;
+		offset = (uint8_t*) ph - (uint8_t *) c;
+		verbose_msg("Prefix header size    = %4u (%#06x) at offset %4u (%#06x)",
+			    size, size, offset, offset);
+		size = (uint8_t*) swh - (uint8_t *) pd;
+		offset = (uint8_t*) pd - (uint8_t *) c;
+		verbose_msg("Prefix data size      = %4u (%#06x) at offset %4u (%#06x)",
+			    size, size, offset, offset);
+		size = (uint8_t*) ssig - (uint8_t *) swh;
+		offset = (uint8_t*) swh - (uint8_t *) c;
+		verbose_msg("SW header size        = %4u (%#06x) at offset %4u (%#06x)",
+			    size, size, offset, offset);
+		size = sizeof(ecc_key_t) * ph->sw_key_count;
+		offset = (uint8_t*) ssig - (uint8_t *) c;
+		verbose_msg("SW signature size     = %4u (%#06x) at offset %4u (%#06x)",
+			    size, size, offset, offset);
+
+		verbose_msg("TOTAL HEADER SIZE     = %4d (%#0x)", SECURE_BOOT_HEADERS_SIZE,
+			    SECURE_BOOT_HEADERS_SIZE);
+		verbose_msg("PAYLOAD SIZE          = %4lu (%#0lx)",
+			    be64_to_cpu(swh->payload_size), be64_to_cpu(swh->payload_size));
+		verbose_msg("TOTAL CONTAINER SIZE  = %4lu (%#0lx)",
+			    be64_to_cpu(c->container_size), be64_to_cpu(c->container_size));
+
+		// Write container.
+		if ((r = write(fdout, container, SECURE_BOOT_HEADERS_SIZE)) != 4096)
+			die(EX_SOFTWARE, "Cannot write container header (r = %d) (%s)", r,
+			    strerror(errno));
+
+
 	} else {
-		ph->code_start_offset = 0;
+		// VERSION 2 CONTAINER
+
+		c_v2->magic_number = cpu_to_be32(ROM_MAGIC_NUMBER);
+		c_v2->version = cpu_to_be16(2);
+		c_v2->container_size = cpu_to_be64(SECURE_BOOT_HEADERS_V2_SIZE + payload_st.st_size);
+		memset(c_v2->hw_pkey_a, 0, sizeof(ecc_key_t));
+		memset(c_v2->hw_pkey_d, 0, sizeof(dilithium_key_t));
+		if (params.hw_keyfn_a) {
+			getPublicKeyRaw(&pubkeyraw, params.hw_keyfn_a);
+			verbose_print((char *) "pubkey A = ", pubkeyraw, sizeof(pubkeyraw));
+			memcpy(c_v2->hw_pkey_a, pubkeyraw, sizeof(ecc_key_t));
+		}
+		if (params.hw_keyfn_d) {
+			die(EX_SOFTWARE, "%s", "FIXME D KEY NOT SUPPORTED");
+		}
+		p = sha3_512(c_v2->hw_pkey_a, sizeof(ecc_key_t) * 3, md);
+		if (!p)
+			die(EX_SOFTWARE, "%s", "Cannot get SHA3-512");
+		verbose_print((char *) "HW keys hash = ", md, sizeof(md));
+
+		ph_v2 = (ROM_prefix_header_v2_raw*)&(c_v2->prefix);
+		ph_v2->ver_alg.version = cpu_to_be16(2);
+		ph_v2->ver_alg.hash_alg = 2;
+		ph_v2->ver_alg.sig_alg = 2;
+		ph_v2->reserved = 0;
+
+		// Set flags.
+		if (params.hw_flags) {
+			if (!isValidHex(params.hw_flags, 4))
+				die(EX_DATAERR, "%s",
+				    "Invalid input for hw-flags, expecting a 4 byte hexadecimal value");
+			uint32_t data;
+			sscanf(params.hw_flags, "%x", &data);
+			ph_v2->flags = cpu_to_be32(data);
+			verbose_msg("hw-flags = %#010x", data);
+		} else {
+			ph_v2->flags = cpu_to_be32(0x80000000);
+		}
+		memset(ph_v2->payload_hash, 0, sizeof(sha2_hash_t));
+		memset(ph_v2->ecid, 0, ECID_SIZE);
+		memset(ph_v2->reserved2, 0, sizeof(ph_v2->reserved2));
+
+		pd_v2 = (ROM_prefix_data_v2_raw*)&c_v2->prefix_data;
+		memset(pd_v2->hw_sig_a, 0, sizeof(ecc_signature_t));
+		memset(pd_v2->hw_sig_d, 0, sizeof(dilithium_signature_t));
+
+		// Write the HW signatures.
+		if (params.hw_sigfn_a) {
+			getSigRaw(&sigraw, params.hw_sigfn_a);
+			verbose_print((char *) "signature A = ", sigraw, sizeof(sigraw));
+			memcpy(pd_v2->hw_sig_a, sigraw, sizeof(ecc_key_t));
+		}
+		if (params.hw_sigfn_d) {
+			printf("FIXME : NEED SIGD\n");
+		}
+		memset(pd_v2->sw_pkey_p, 0, sizeof(ecc_key_t));
+		memset(pd_v2->sw_pkey_s, 0, sizeof(dilithium_key_t));
+
+		// Write the FW keys.
+		if (params.sw_keyfn_p) {
+			getPublicKeyRaw(&pubkeyraw, params.sw_keyfn_p);
+			verbose_print((char *) "pubkey P = ", pubkeyraw, sizeof(pubkeyraw));
+			memcpy(pd_v2->sw_pkey_p, pubkeyraw, sizeof(ecc_key_t));
+			ph_v2->sw_key_count++;
+			ph_v2->payload_size += sizeof(ecc_key_t);
+		}
+		if (params.sw_keyfn_s) {
+			printf("FIXME : NEED KEYS\n");
+		}
+		ph_v2->payload_size = cpu_to_be64(ph_v2->payload_size);
+		debug_msg("sw_key_count = %u", ph_v2->sw_key_count);
+
+		// Calculate the SW keys hash.
+		p = sha3_512(pd_v2->sw_pkey_p, be64_to_cpu(ph_v2->payload_size), md);
+		if (!p)
+			die(EX_SOFTWARE, "%s", "Cannot get SHA3-512");
+		memcpy(ph_v2->payload_hash, md, sizeof(sha2_hash_t));
+		verbose_print((char *) "SW keys hash = ", md, sizeof(md));
+
+		// Dump the Prefix header.
+		if (params.prhdrfn)
+			writeHdr((void *) ph_v2, params.prhdrfn, PREFIX_HDR, params.container_version);
+
+		swh_v2 = (ROM_sw_header_v2_raw*) &c_v2->swheader;
+		swh_v2->ver_alg.version = cpu_to_be16(2);
+		swh_v2->ver_alg.hash_alg = 2;
+		swh_v2->ver_alg.sig_alg = 2;
+
+		swh_v2->reserved = 0;
+
+		// Add component ID (label).
+		if (params.label) {
+			if (!isValidAscii(params.label, 0))
+				die(EX_DATAERR, "%s",
+				    "Invalid input for label, expecting a 8 char ASCII value");
+			strncpy((char *) &swh_v2->component_id, params.label, 8);
+			verbose_msg("component ID = %.8s",
+				    (char * ) &swh_v2->component_id);
+		} else {
+			swh_v2->component_id = 0;
+		}
+
+		// Set flags.
+		if (params.sw_flags) {
+			if (!isValidHex(params.sw_flags, 4))
+				die(EX_DATAERR, "%s",
+				    "Invalid input for sw-flags, expecting a 4 byte hexadecimal value");
+			uint32_t data;
+			sscanf(params.sw_flags, "%x", &data);
+			swh_v2->flags = cpu_to_be32(data);
+			verbose_msg("sw-flags = %#010x", data);
+		} else {
+			swh_v2->flags = cpu_to_be32(0x00000000);
+		}
+		swh_v2->security_version = params.security_version;
+		swh_v2->payload_size = cpu_to_be64(payload_st.st_size);
+		swh_v2->unprotected_payload_size = 0;
+
+		// Calculate the payload hash.
+		p = sha3_512(infile, payload_st.st_size, md);
+		if (!p)
+			die(EX_SOFTWARE, "%s", "Cannot get SHA3-512");
+		memcpy(swh_v2->payload_hash, md, sizeof(sha2_hash_t));
+		verbose_print((char *) "Payload hash = ", md, sizeof(md));
+
+		// Dump the Software header.
+		if (params.swhdrfn)
+			writeHdr((void *) swh_v2, params.swhdrfn, SOFTWARE_HDR, params.container_version);
+
+		ssig_v2 = (ROM_sw_sig_v2_raw*)&c_v2->sw_data;
+		memset(ssig_v2->sw_sig_p, 0, sizeof(ecc_signature_t));
+		memset(ssig_v2->sw_sig_s, 0, sizeof(dilithium_signature_t));
+
+		// Write the HW signatures.
+		if (params.sw_sigfn_p) {
+			getSigRaw(&sigraw, params.sw_sigfn_p);
+			verbose_print((char *) "signature P = ", sigraw, sizeof(sigraw));
+			memcpy(ssig_v2->sw_sig_p, sigraw, sizeof(ecc_key_t));
+		}
+		if (params.sw_sigfn_s) {
+			printf("FIXME : NEED S SIG\n");
+		}
+
+		// Dump the full container header.
+		if (params.cthdrfn)
+			writeHdr((void *) c, params.cthdrfn, CONTAINER_HDR, params.container_version);
+
+		// Print container stats.
+		size = (uint8_t*) ph_v2 - (uint8_t *) c_v2;
+		offset = 0;
+		verbose_msg("HW header size        = %4u (%#06x) at offset %4u (%#06x)",
+			    size, size, offset, offset);
+		size = (uint8_t*) pd_v2 - (uint8_t *) ph_v2;
+		offset = (uint8_t*) ph_v2 - (uint8_t *) c_v2;
+		verbose_msg("Prefix header size    = %4u (%#06x) at offset %4u (%#06x)",
+			    size, size, offset, offset);
+		size = (uint8_t*) swh_v2 - (uint8_t *) pd_v2;
+		offset = (uint8_t*) pd_v2 - (uint8_t *) c_v2;
+		verbose_msg("Prefix data size      = %4u (%#06x) at offset %4u (%#06x)",
+			    size, size, offset, offset);
+		size = (uint8_t*) ssig_v2 - (uint8_t *) swh_v2;
+		offset = (uint8_t*) swh_v2 - (uint8_t *) c_v2;
+		verbose_msg("SW header size        = %4u (%#06x) at offset %4u (%#06x)",
+			    size, size, offset, offset);
+
+		verbose_msg("TOTAL HEADER SIZE     = %4d (%#0x)", SECURE_BOOT_HEADERS_V2_SIZE,
+			    SECURE_BOOT_HEADERS_V2_SIZE);
+		verbose_msg("PAYLOAD SIZE          = %4lu (%#0lx)",
+			    be64_to_cpu(swh_v2->payload_size), be64_to_cpu(swh_v2->payload_size));
+		verbose_msg("TOTAL CONTAINER SIZE  = %4lu (%#0lx)",
+			    be64_to_cpu(c_v2->container_size), be64_to_cpu(c_v2->container_size));
+
+		// Write container.
+		if ((r = write(fdout, container, SECURE_BOOT_HEADERS_V2_SIZE)) != SECURE_BOOT_HEADERS_V2_SIZE)
+			die(EX_SOFTWARE, "Cannot write container header (r = %d) (%s)", r,
+			    strerror(errno));
+
 	}
-	ph->reserved = 0;
-
-	// Set flags.
-	if (params.hw_flags) {
-		if (!isValidHex(params.hw_flags, 4))
-			die(EX_DATAERR, "%s",
-					"Invalid input for hw-flags, expecting a 4 byte hexadecimal value");
-		uint32_t data;
-		sscanf(params.hw_flags, "%x", &data);
-		ph->flags = cpu_to_be32(data);
-		verbose_msg("hw-flags = %#010x", data);
-	} else {
-		ph->flags = cpu_to_be32(0x80000000);
-	}
-	memset(ph->payload_hash, 0, sizeof(sha2_hash_t));
-	ph->ecid_count = 0;
-
-	pd = (ROM_prefix_data_raw*) ph->ecid;
-	memset(pd->hw_sig_a, 0, sizeof(ecc_signature_t));
-	memset(pd->hw_sig_b, 0, sizeof(ecc_signature_t));
-	memset(pd->hw_sig_c, 0, sizeof(ecc_signature_t));
-
-	// Write the HW signatures.
-	if (params.hw_sigfn_a) {
-		getSigRaw(&sigraw, params.hw_sigfn_a);
-		verbose_print((char *) "signature A = ", sigraw, sizeof(sigraw));
-		memcpy(pd->hw_sig_a, sigraw, sizeof(ecc_key_t));
-	}
-	if (params.hw_sigfn_b) {
-		getSigRaw(&sigraw, params.hw_sigfn_b);
-		verbose_print((char *) "signature B = ", sigraw, sizeof(sigraw));
-		memcpy(pd->hw_sig_b, sigraw, sizeof(ecc_key_t));
-	}
-	if (params.hw_sigfn_c) {
-		getSigRaw(&sigraw, params.hw_sigfn_c);
-		verbose_print((char *) "signature C = ", sigraw, sizeof(sigraw));
-		memcpy(pd->hw_sig_c, sigraw, sizeof(ecc_key_t));
-	}
-	memset(pd->sw_pkey_p, 0, sizeof(ecc_key_t));
-	memset(pd->sw_pkey_q, 0, sizeof(ecc_key_t));
-	memset(pd->sw_pkey_r, 0, sizeof(ecc_key_t));
-
-	// Write the FW keys.
-	if (params.sw_keyfn_p) {
-		getPublicKeyRaw(&pubkeyraw, params.sw_keyfn_p);
-		verbose_print((char *) "pubkey P = ", pubkeyraw, sizeof(pubkeyraw));
-		memcpy(pd->sw_pkey_p, pubkeyraw, sizeof(ecc_key_t));
-		ph->sw_key_count++;
-	}
-	if (params.sw_keyfn_q) {
-		getPublicKeyRaw(&pubkeyraw, params.sw_keyfn_q);
-		verbose_print((char *) "pubkey Q = ", pubkeyraw, sizeof(pubkeyraw));
-		memcpy(pd->sw_pkey_q, pubkeyraw, sizeof(ecc_key_t));
-		ph->sw_key_count++;
-	}
-	if (params.sw_keyfn_r) {
-		getPublicKeyRaw(&pubkeyraw, params.sw_keyfn_r);
-		verbose_print((char *) "pubkey R = ", pubkeyraw, sizeof(pubkeyraw));
-		memcpy(pd->sw_pkey_r, pubkeyraw, sizeof(ecc_key_t));
-		ph->sw_key_count++;
-	}
-	debug_msg("sw_key_count = %u", ph->sw_key_count);
-	ph->payload_size = cpu_to_be64(ph->sw_key_count * sizeof(ecc_key_t));
-
-	// Calculate the SW keys hash.
-	p = SHA512(pd->sw_pkey_p, sizeof(ecc_key_t) * ph->sw_key_count, md);
-	if (!p)
-		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
-	memcpy(ph->payload_hash, md, sizeof(sha2_hash_t));
-	verbose_print((char *) "SW keys hash = ", md, sizeof(md));
-
-	// Dump the Prefix header.
-	if (params.prhdrfn)
-		writeHdr((void *) ph, params.prhdrfn, PREFIX_HDR);
-
-	swh = (ROM_sw_header_raw*) (((uint8_t*) pd) + sizeof(ecc_signature_t) * 3
-			+ be64_to_cpu(ph->payload_size));
-	swh->ver_alg.version = cpu_to_be16(1);
-	swh->ver_alg.hash_alg = 1;
-	swh->ver_alg.sig_alg = 1;
-
-	// Set code-start-offset.
-	if (params.sw_cs_offset) {
-		if (!isValidHex(params.sw_cs_offset, 4))
-			die(EX_DATAERR, "%s",
-					"Invalid input for sw-cs-offset, expecting a 4 byte hexadecimal value");
-		uint64_t data;
-		sscanf(params.sw_cs_offset, "%lx", &data);
-		swh->code_start_offset = cpu_to_be64(data);
-		verbose_msg("sw-cs-offset = %#010lx", data);
-	} else {
-		swh->code_start_offset = 0;
-	}
-	swh->reserved = 0;
-
-	// Add component ID (label).
-	if (params.label) {
-		if (!isValidAscii(params.label, 0))
-			die(EX_DATAERR, "%s",
-					"Invalid input for label, expecting a 8 char ASCII value");
-		strncpy((char *) &swh->reserved, params.label, 8);
-		verbose_msg("component ID (was reserved) = %.8s",
-				(char * ) &swh->reserved);
-	}
-
-	// Set flags.
-	if (params.sw_flags) {
-		if (!isValidHex(params.sw_flags, 4))
-			die(EX_DATAERR, "%s",
-					"Invalid input for sw-flags, expecting a 4 byte hexadecimal value");
-		uint32_t data;
-		sscanf(params.sw_flags, "%x", &data);
-		swh->flags = cpu_to_be32(data);
-		verbose_msg("sw-flags = %#010x", data);
-	} else {
-		swh->flags = cpu_to_be32(0x00000000);
-	}
-	swh->security_version = params.security_version;
-	swh->payload_size = cpu_to_be64(payload_st.st_size);
-
-	// Calculate the payload hash.
-	p = SHA512(infile, payload_st.st_size, md);
-	if (!p)
-		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
-	memcpy(swh->payload_hash, md, sizeof(sha2_hash_t));
-	verbose_print((char *) "Payload hash = ", md, sizeof(md));
-
-	// Dump the Software header.
-	if (params.swhdrfn)
-		writeHdr((void *) swh, params.swhdrfn, SOFTWARE_HDR);
-
-	ssig = (ROM_sw_sig_raw*) (((uint8_t*) swh) + sizeof(ROM_sw_header_raw));
-	memset(ssig->sw_sig_p, 0, sizeof(ecc_signature_t));
-	memset(ssig->sw_sig_q, 0, sizeof(ecc_signature_t));
-	memset(ssig->sw_sig_r, 0, sizeof(ecc_signature_t));
-
-	// Write the HW signatures.
-	if (params.sw_sigfn_p) {
-		getSigRaw(&sigraw, params.sw_sigfn_p);
-		verbose_print((char *) "signature P = ", sigraw, sizeof(sigraw));
-		memcpy(ssig->sw_sig_p, sigraw, sizeof(ecc_key_t));
-	}
-	if (params.sw_sigfn_q) {
-		getSigRaw(&sigraw, params.sw_sigfn_q);
-		verbose_print((char *) "signature Q = ", sigraw, sizeof(sigraw));
-		memcpy(ssig->sw_sig_q, sigraw, sizeof(ecc_key_t));
-	}
-	if (params.sw_sigfn_r) {
-		getSigRaw(&sigraw, params.sw_sigfn_r);
-		verbose_print((char *) "signature R = ", sigraw, sizeof(sigraw));
-		memcpy(ssig->sw_sig_r, sigraw, sizeof(ecc_key_t));
-	}
-
-	// Dump the full container header.
-	if (params.cthdrfn)
-		writeHdr((void *) c, params.cthdrfn, CONTAINER_HDR);
-
-	// Print container stats.
-	size = (uint8_t*) ph - (uint8_t *) c;
-	offset = 0;
-	verbose_msg("HW header size        = %4u (%#06x) at offset %4u (%#06x)",
-			size, size, offset, offset);
-	size = (uint8_t*) pd - (uint8_t *) ph;
-	offset = (uint8_t*) ph - (uint8_t *) c;
-	verbose_msg("Prefix header size    = %4u (%#06x) at offset %4u (%#06x)",
-			size, size, offset, offset);
-	size = (uint8_t*) swh - (uint8_t *) pd;
-	offset = (uint8_t*) pd - (uint8_t *) c;
-	verbose_msg("Prefix data size      = %4u (%#06x) at offset %4u (%#06x)",
-			size, size, offset, offset);
-	size = (uint8_t*) ssig - (uint8_t *) swh;
-	offset = (uint8_t*) swh - (uint8_t *) c;
-	verbose_msg("SW header size        = %4u (%#06x) at offset %4u (%#06x)",
-			size, size, offset, offset);
-	size = sizeof(ecc_key_t) * ph->sw_key_count;
-	offset = (uint8_t*) ssig - (uint8_t *) c;
-	verbose_msg("SW signature size     = %4u (%#06x) at offset %4u (%#06x)",
-			size, size, offset, offset);
-
-	verbose_msg("TOTAL HEADER SIZE     = %4d (%#0x)", SECURE_BOOT_HEADERS_SIZE,
-			SECURE_BOOT_HEADERS_SIZE);
-	verbose_msg("PAYLOAD SIZE          = %4lu (%#0lx)",
-			be64_to_cpu(swh->payload_size), be64_to_cpu(swh->payload_size));
-	verbose_msg("TOTAL CONTAINER SIZE  = %4lu (%#0lx)",
-			be64_to_cpu(c->container_size), be64_to_cpu(c->container_size));
-
-	// Write container.
-	if ((r = write(fdout, container, SECURE_BOOT_HEADERS_SIZE)) != 4096)
-		die(EX_SOFTWARE, "Cannot write container header (r = %d) (%s)", r,
-				strerror(errno));
 
 	if (infile) {
 		if ((r = write(fdout, infile, payload_st.st_size))
