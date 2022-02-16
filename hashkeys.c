@@ -53,6 +53,7 @@ void usage(int status);
 
 unsigned char *sha3_512(const unsigned char *data, size_t len, unsigned char *md)
 {
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
 	const EVP_MD* alg = EVP_sha3_512();
 	uint32_t md_len = SHA512_DIGEST_LENGTH;
 	EVP_MD_CTX* ctx = EVP_MD_CTX_new();
@@ -61,6 +62,9 @@ unsigned char *sha3_512(const unsigned char *data, size_t len, unsigned char *md
 	EVP_DigestFinal_ex(ctx, md, &md_len);
 	EVP_MD_CTX_destroy(ctx);
 	return md;
+#else
+    return NULL;
+#endif
 }
 
 void getPublicKeyRaw(ecc_key_t *pubkeyraw, char *inFile)
@@ -339,6 +343,9 @@ int main(int argc, char* argv[])
 		memset(c->hw_pkey_b, 0, sizeof(ecc_key_t));
 		memset(c->hw_pkey_c, 0, sizeof(ecc_key_t));
 	} else if (params.container_version == 2) {
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+		die(EX_NOINPUT, "Invalid container version due to downlevel openssl version : %d", params.container_version);
+#endif
 		memset(c_v2->hw_pkey_a, 0, sizeof(ecc_key_t));
 		memset(c_v2->hw_pkey_d, 0, sizeof(dilithium_key_t));
 	} else {

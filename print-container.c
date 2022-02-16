@@ -79,6 +79,7 @@ static bool verify_signature(const char *moniker, const unsigned char *dgst,
 
 unsigned char *sha3_512(const unsigned char *data, size_t len, unsigned char *md)
 {
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
 	const EVP_MD* alg = EVP_sha3_512();
 	uint32_t md_len = SHA512_DIGEST_LENGTH;
 	EVP_MD_CTX* ctx = EVP_MD_CTX_new();
@@ -87,6 +88,9 @@ unsigned char *sha3_512(const unsigned char *data, size_t len, unsigned char *md
 	EVP_DigestFinal_ex(ctx, md, &md_len);
 	EVP_MD_CTX_destroy(ctx);
 	return md;
+#else
+    return NULL;
+#endif
 }
 
 static void print_bytes(char *lead, uint8_t *buffer, size_t buflen)
@@ -1036,7 +1040,12 @@ int main(int argc, char* argv[])
 
 	}
 	else if (stb_is_v2_container(container, st.st_size))
-	{
+    {
+
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+		die(EX_NOINPUT, "Invalid container version due to downlevel openssl version : %d", 2);
+#endif
+
 		if (parse_stb_container_v2(container, SECURE_BOOT_HEADERS_V2_SIZE, &c_v2) != 0)
 			die(EX_DATAERR, "%s", "Failed to parse container");
 
