@@ -160,6 +160,71 @@ void getPublicKeyRaw(ecc_key_t *pubkeyraw, char *inFile)
 	return;
 }
 
+int readBinaryFile(unsigned char *data,
+		   size_t *length,
+		   const char *filename)
+{
+	int sRc = 0;
+	size_t sBytes = 0;
+
+	FILE *sFile = fopen(filename, "rb");
+	if (NULL == sFile)
+	{
+		printf("**** ERROR: Unable to open file : %s\n", filename);
+		sRc = 1;
+	}
+
+	/* Verify we have enough space */
+	if (0 == sRc)
+	{
+		sRc = fseek(sFile, 0, SEEK_END);
+		if (-1 == sRc) {
+			printf("**** ERROR : Unable to find end of : %s\n", filename);
+			sRc = 1;
+		}
+	}
+
+	if (0 == sRc)
+	{
+		long sLen = ftell(sFile);
+		if (-1 == sLen)
+		{
+			printf("**** ERROR : Unable to determine length of %s\n", filename);
+			sRc = 1;
+		}
+		else if (*length < (size_t)sLen)
+		{
+			printf("**** ERROR : Not enough space for contents of file E:%lu A:%lu : %s\n",
+			       (size_t)sLen, *length, filename);
+			sRc = 1;
+		}
+		else
+		{
+			*length = (size_t)sLen;
+		}
+	}
+
+	if (0 == sRc)
+	{
+		fseek(sFile, 0, SEEK_SET);
+
+		sBytes = fread(data, 1, *length, sFile);
+		if (sBytes != *length)
+		{
+			printf("**** ERROR: Failure reading from file : %s\n", filename);
+			sRc = 1;
+		}
+	}
+	if (NULL != sFile) {
+		if (fclose(sFile)) {
+			printf("**** ERROR: Failure closing file : %s\n", filename);
+			if (0 == sRc) sRc = 1;
+		}
+	}
+	return sRc;
+}
+
+
 void getSigRaw(ecc_signature_t *sigraw, char *inFile)
 {
 	int fdin;
@@ -334,15 +399,15 @@ __attribute__((__noreturn__)) void usage (int status)
 			" -a, --hw_key_a          file containing HW key A key in PEM or RAW format\n"
 			" -b, --hw_key_b          file containing HW key B key in PEM or RAW format\n"
 			" -c, --hw_key_c          file containing HW key C key in PEM or RAW format\n"
-			" -d, --hw_key_d          file containing HW key D key in PEM or RAW format\n"
+			"     --hw_key_d          file containing HW key D key in PEM or RAW format\n"
 			" -p, --sw_key_p          file containing SW key P key in PEM or RAW format\n"
 			" -q, --sw_key_q          file containing SW key Q key in PEM or RAW format\n"
 			" -r, --sw_key_r          file containing SW key R key in PEM or RAW format\n"
-			" -s, --sw_key_s          file containing SW key S key in PEM or RAW format\n"
+			"     --sw_key_s          file containing SW key S key in PEM or RAW format\n"
 			" -A, --hw_sig_a          file containing HW key A signature in DER format\n"
 			" -B, --hw_sig_b          file containing HW key B signature in DER format\n"
 			" -C, --hw_sig_c          file containing HW key C signature in DER format\n"
-			" -D, --hw_sig_d          file containing HW key D signature in DER format\n"
+			"     --hw_sig_d          file containing HW key D signature in DER format\n"
 			" -P, --sw_sig_p          file containing SW key P signature in DER format\n"
 			" -Q, --sw_sig_q          file containing SW key Q signature in DER format\n"
 			" -R, --sw_sig_r          file containing SW key R signature in DER format\n"
@@ -357,7 +422,7 @@ __attribute__((__noreturn__)) void usage (int status)
 			"     --dumpPrefixHdr     file to dump Prefix header blob (to be signed)\n"
 			"     --dumpSwHdr         file to dump Software header blob (to be signed)\n"
 			"     --dumpContrHdr      file to dump full Container header (w/o payload)\n"
-			" -S, --security-version  Integer, sets the security version container field\n"
+			"     --security-version  Integer, sets the security version container field\n"
 			" -V, --container-version Container version to generate (1, 2)\n"
 			"Note:\n"
 			"- Keys A,B,C,P,Q,R must be valid p521 ECC keys. Keys may be provided as public\n"
@@ -378,19 +443,19 @@ static struct option const opts[] = {
 	{ "hw_key_a",         required_argument, 0,  'a' },
 	{ "hw_key_b",         required_argument, 0,  'b' },
 	{ "hw_key_c",         required_argument, 0,  'c' },
-	{ "hw_key_d",         required_argument, 0,  'c' },
+	{ "hw_key_d",         required_argument, 0,  '[' },
 	{ "sw_key_p",         required_argument, 0,  'p' },
 	{ "sw_key_q",         required_argument, 0,  'q' },
 	{ "sw_key_r",         required_argument, 0,  'r' },
-	{ "sw_key_s",         required_argument, 0,  'r' },
+	{ "sw_key_s",         required_argument, 0,  ']' },
 	{ "hw_sig_a",         required_argument, 0,  'A' },
 	{ "hw_sig_b",         required_argument, 0,  'B' },
 	{ "hw_sig_c",         required_argument, 0,  'C' },
-	{ "hw_sig_d",         required_argument, 0,  'C' },
+	{ "hw_sig_d",         required_argument, 0,  '{' },
 	{ "sw_sig_p",         required_argument, 0,  'P' },
 	{ "sw_sig_q",         required_argument, 0,  'Q' },
 	{ "sw_sig_r",         required_argument, 0,  'R' },
-	{ "sw_sig_s",         required_argument, 0,  '3' },
+	{ "sw_sig_s",         required_argument, 0,  '}' },
 	{ "payload",          required_argument, 0,  'l' },
 	{ "imagefile",        required_argument, 0,  'I' },
 	{ "hw-cs-offset",     required_argument, 0,  'o' },
@@ -493,7 +558,7 @@ int main(int argc, char* argv[])
 		} else if (!strcmp(*(argv + i), "--hw_key_c")) {
 			*(argv + i) = "-c";
 		} else if (!strcmp(*(argv + i), "--hw_key_d")) {
-			*(argv + i) = "-d";
+			*(argv + i) = "-[";
 		} else if (!strcmp(*(argv + i), "--sw_key_p")) {
 			*(argv + i) = "-p";
 		} else if (!strcmp(*(argv + i), "--sw_key_q")) {
@@ -501,13 +566,15 @@ int main(int argc, char* argv[])
 		} else if (!strcmp(*(argv + i), "--sw_key_r")) {
 			*(argv + i) = "-r";
 		} else if (!strcmp(*(argv + i), "--sw_key_s")) {
-			*(argv + i) = "-s";
+			*(argv + i) = "-]";
 		} else if (!strcmp(*(argv + i), "--hw_sig_a")) {
 			*(argv + i) = "-A";
 		} else if (!strcmp(*(argv + i), "--hw_sig_b")) {
 			*(argv + i) = "-B";
 		} else if (!strcmp(*(argv + i), "--hw_sig_c")) {
 			*(argv + i) = "-C";
+		} else if (!strcmp(*(argv + i), "--hw_sig_d")) {
+			*(argv + i) = "-{";
 		} else if (!strcmp(*(argv + i), "--sw_sig_p")) {
 			*(argv + i) = "-P";
 		} else if (!strcmp(*(argv + i), "--sw_sig_q")) {
@@ -515,7 +582,7 @@ int main(int argc, char* argv[])
 		} else if (!strcmp(*(argv + i), "--sw_sig_r")) {
 			*(argv + i) = "-R";
 		} else if (!strcmp(*(argv + i), "--sw_sig_s")) {
-			*(argv + i) = "-3";
+			*(argv + i) = "-}";
 		} else if (!strcmp(*(argv + i), "--payload")) {
 			*(argv + i) = "-l";
 		} else if (!strcmp(*(argv + i), "--imagefile")) {
@@ -551,10 +618,10 @@ int main(int argc, char* argv[])
 	while (1) {
 		int opt;
 #ifdef _AIX
-		opt = getopt(argc, argv, "?hv4w:a:b:c:d:p:q:r:s:A:B:C:D:P:Q:R:3:L:I:o:O:f:F:l:0:1:2:S:V:");
+		opt = getopt(argc, argv, "?hvdw:a:b:c:[:p:q:r:]:A:B:C:{:P:Q:R:}:3:L:I:o:O:f:F:l:0:1:2:S:V:");
 #else
 		opt = getopt_long(argc, argv,
-				"hvdw:a:b:c:4:p:q:r:s:A:B:C:D:P:Q:R:3:L:I:o:O:f:F:l:0:1:2:S:V:", opts,
+				"hvdw:a:b:c:[:p:q:r:}:A:B:C:{:P:Q:R:}:3:L:I:o:O:f:F:l:0:1:2:S:V:", opts,
 				NULL);
 #endif
 		if (opt == -1)
@@ -570,7 +637,7 @@ int main(int argc, char* argv[])
 		case 'v':
 			verbose = true;
 			break;
-		case '4':
+		case 'd':
 			debug = true;
 			break;
 		case 'w':
@@ -586,7 +653,7 @@ int main(int argc, char* argv[])
 		case 'c':
 			params.hw_keyfn_c = optarg;
 			break;
-		case 'd':
+		case '[':
 			params.hw_keyfn_d = optarg;
 			break;
 		case 'p':
@@ -598,7 +665,7 @@ int main(int argc, char* argv[])
 		case 'r':
 			params.sw_keyfn_r = optarg;
 			break;
-		case 's':
+		case ']':
 			params.sw_keyfn_s = optarg;
 			break;
 		case 'A':
@@ -610,7 +677,7 @@ int main(int argc, char* argv[])
 		case 'C':
 			params.hw_sigfn_c = optarg;
 			break;
-		case 'D':
+		  case '{':
 			params.hw_sigfn_d = optarg;
 			break;
 		case 'P':
@@ -622,7 +689,7 @@ int main(int argc, char* argv[])
 		case 'R':
 			params.sw_sigfn_r = optarg;
 			break;
-		case '3':
+		  case '}':
 			params.sw_sigfn_s = optarg;
 			break;
 		case 'l':
@@ -978,9 +1045,13 @@ int main(int argc, char* argv[])
 			memcpy(c_v2->hw_pkey_a, pubkeyraw, sizeof(ecc_key_t));
 		}
 		if (params.hw_keyfn_d) {
-			die(EX_SOFTWARE, "%s", "FIXME D KEY NOT SUPPORTED");
+			size_t sLen = sizeof(c_v2->hw_pkey_d);
+			int r = readBinaryFile(c_v2->hw_pkey_d, &sLen,params.hw_keyfn_d);
+			if (0 != r || sLen != DILITHIUM_PUB_KEY_LENGTH)
+				die(EX_SOFTWARE, "Failure reading HW PUBKEY D : %s",params.hw_keyfn_d);
+			verbose_print((char *) "pubkey D = ", c_v2->hw_pkey_d, sizeof(c_v2->hw_pkey_d));
 		}
-		p = sha3_512(c_v2->hw_pkey_a, sizeof(ecc_key_t) * 3, md);
+		p = sha3_512(c_v2->hw_pkey_a, sizeof(ecc_key_t) + sizeof(dilithium_key_t), md);
 		if (!p)
 			die(EX_SOFTWARE, "%s", "Cannot get SHA3-512");
 		verbose_print((char *) "HW keys hash = ", md, sizeof(md));
@@ -1018,7 +1089,11 @@ int main(int argc, char* argv[])
 			memcpy(pd_v2->hw_sig_a, sigraw, sizeof(ecc_key_t));
 		}
 		if (params.hw_sigfn_d) {
-			printf("FIXME : NEED SIGD\n");
+			size_t sLen = sizeof(pd_v2->hw_sig_d);
+			int r = readBinaryFile(pd_v2->hw_sig_d, &sLen,params.hw_sigfn_d);
+			if (0 != r || sLen != DILITHIUM_SIG_LENGTH)
+				die(EX_SOFTWARE, "Failure reading HW SIG D : %s",params.hw_sigfn_d);
+			verbose_print((char *) "signature D = ", pd_v2->hw_sig_d, sizeof(pd_v2->hw_sig_d));
 		}
 		memset(pd_v2->sw_pkey_p, 0, sizeof(ecc_key_t));
 		memset(pd_v2->sw_pkey_s, 0, sizeof(dilithium_key_t));
@@ -1032,7 +1107,13 @@ int main(int argc, char* argv[])
 			ph_v2->payload_size += sizeof(ecc_key_t);
 		}
 		if (params.sw_keyfn_s) {
-			printf("FIXME : NEED KEYS\n");
+			size_t sLen = sizeof(pd_v2->sw_pkey_s);
+			int r = readBinaryFile(pd_v2->sw_pkey_s, &sLen,params.sw_keyfn_s);
+			if (0 != r || sLen != DILITHIUM_PUB_KEY_LENGTH)
+				die(EX_SOFTWARE, "Failure reading SW PUBKEY S : %s",params.sw_keyfn_s);
+			verbose_print((char *) "pubkey S = ", pd_v2->sw_pkey_s, sizeof(pd_v2->sw_pkey_s));
+			ph_v2->sw_key_count++;
+			ph_v2->payload_size += sizeof(dilithium_key_t);
 		}
 		ph_v2->payload_size = cpu_to_be64(ph_v2->payload_size);
 		debug_msg("sw_key_count = %u", ph_v2->sw_key_count);
@@ -1105,7 +1186,11 @@ int main(int argc, char* argv[])
 			memcpy(ssig_v2->sw_sig_p, sigraw, sizeof(ecc_key_t));
 		}
 		if (params.sw_sigfn_s) {
-			printf("FIXME : NEED S SIG\n");
+			size_t sLen = sizeof(ssig_v2->sw_sig_s);
+			int r = readBinaryFile(ssig_v2->sw_sig_s, &sLen,params.sw_sigfn_s);
+			if (0 != r || sLen != DILITHIUM_SIG_LENGTH)
+				die(EX_SOFTWARE, "Failure reading SW SIG S : %s",params.sw_sigfn_s);
+			verbose_print((char *) "signature S = ", ssig_v2->sw_sig_s, sizeof(ssig_v2->sw_sig_s));
 		}
 
 		// Dump the full container header.

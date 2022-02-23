@@ -153,6 +153,70 @@ void getPublicKeyRaw(ecc_key_t *pubkeyraw, char *inFile)
 
 	return;
 }
+int readBinaryFile(unsigned char *data,
+		   size_t *length,
+		   const char *filename)
+{
+	int sRc = 0;
+	size_t sBytes = 0;
+
+	FILE *sFile = fopen(filename, "rb");
+	if (NULL == sFile)
+	{
+		printf("**** ERROR: Unable to open file : %s\n", filename);
+		sRc = 1;
+	}
+
+	/* Verify we have enough space */
+	if (0 == sRc)
+	{
+		sRc = fseek(sFile, 0, SEEK_END);
+		if (-1 == sRc) {
+			printf("**** ERROR : Unable to find end of : %s\n", filename);
+			sRc = 1;
+		}
+	}
+
+	if (0 == sRc)
+	{
+		long sLen = ftell(sFile);
+		if (-1 == sLen)
+		{
+			printf("**** ERROR : Unable to determine length of %s\n", filename);
+			sRc = 1;
+		}
+		else if (*length < (size_t)sLen)
+		{
+			printf("**** ERROR : Not enough space for contents of file E:%lu A:%lu : %s\n",
+			       (size_t)sLen, *length, filename);
+			sRc = 1;
+		}
+		else
+		{
+			*length = (size_t)sLen;
+		}
+	}
+
+	if (0 == sRc)
+	{
+		fseek(sFile, 0, SEEK_SET);
+
+		sBytes = fread(data, 1, *length, sFile);
+		if (sBytes != *length)
+		{
+			printf("**** ERROR: Failure reading from file : %s\n", filename);
+			sRc = 1;
+		}
+	}
+	if (NULL != sFile) {
+		if (fclose(sFile)) {
+			printf("**** ERROR: Failure closing file : %s\n", filename);
+			if (0 == sRc) sRc = 1;
+		}
+	}
+	return sRc;
+}
+
 
 __attribute__((__noreturn__)) void usage (int status)
 {
@@ -352,10 +416,14 @@ int main(int argc, char* argv[])
 		die(EX_SOFTWARE, "Invalid container version : %d", params.container_version);
 	}
 
-	if (params.hw_keyfn_a) {
+	if (params.hw_keyfn_a && params.container_version == 1) {
 		getPublicKeyRaw(&pubkeyraw, params.hw_keyfn_a);
 		verbose_print((char *) "pubkey A = ", pubkeyraw, sizeof(pubkeyraw));
 		memcpy(c->hw_pkey_a, pubkeyraw, sizeof(ecc_key_t));
+	} else if (params.hw_keyfn_a && params.container_version == 2) {
+		getPublicKeyRaw(&pubkeyraw, params.hw_keyfn_a);
+		verbose_print((char *) "pubkey A = ", pubkeyraw, sizeof(pubkeyraw));
+		memcpy(c_v2->hw_pkey_a, pubkeyraw, sizeof(ecc_key_t));
 	}
 	if (params.hw_keyfn_b && params.container_version == 1) {
 		getPublicKeyRaw(&pubkeyraw, params.hw_keyfn_b);
@@ -368,7 +436,9 @@ int main(int argc, char* argv[])
 		memcpy(c->hw_pkey_c, pubkeyraw, sizeof(ecc_key_t));
 	}
 	if (params.hw_keyfn_d && params.container_version == 2) {
-		die(EX_SOFTWARE,"%s", "FIXME NEED DILITHIUM");
+		size_t sLen = sizeof(c_v2->hw_pkey_d);
+		readBinaryFile(c_v2->hw_pkey_d, &sLen, params.hw_keyfn_d);
+		verbose_print((char *) "pubkey D = ", c_v2->hw_pkey_d, sLen);
 	}
 
 	if (params.container_version == 1) {

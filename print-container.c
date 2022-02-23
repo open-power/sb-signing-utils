@@ -47,6 +47,11 @@
 #include "container.c"
 #include "container.h"
 
+#ifdef ADD_DILITHIUM
+#include "pqalgs.h"
+#include "crystals-oids.h"
+#endif
+
 char *progname;
 
 bool print_stats;
@@ -76,6 +81,8 @@ static bool getPayloadHash(int fdin, uint64_t pl_sz_expected, unsigned char *md,
 static bool getVerificationHash(char *input, unsigned char *md, int len);
 static bool verify_signature(const char *moniker, const unsigned char *dgst,
 		int dgst_len, const ecc_signature_t sig_raw, const ecc_key_t key_raw);
+static bool verify_dilithium_signature(const char *moniker, const unsigned char *dgst,
+				       int dgst_len, const dilithium_signature_t sig_raw, const dilithium_key_t key_raw);
 
 unsigned char *sha3_512(const unsigned char *data, size_t len, unsigned char *md)
 {
@@ -517,6 +524,7 @@ static bool validate_container_v2(struct parsed_stb_container_v2 c, int fdin)
 
 	void *md = alloca(SHA512_DIGEST_LENGTH);
 	void *p;
+	size_t sSwKeySize = 0;
 
 	// Get Prefix header hash.
 	p = sha3_512((uint8_t *) c.ph, sizeof(ROM_prefix_header_v2_raw), md);
@@ -533,9 +541,8 @@ static bool validate_container_v2(struct parsed_stb_container_v2 c, int fdin)
 		printf("HW_key_A is NULL, skipping signature check.\n");
 	}
 	if (memcmp(&(c.c->hw_pkey_d), &ECDSA_KEY_NULL, sizeof(ecc_key_t))) {
-		printf("FIXME: NEED DILITHIUM 1\n");
-		//        status = verify_signature("HW_key_A", md, SHA512_DIGEST_LENGTH,
-		//					c.pd->hw_sig_a, c.c->hw_pkey_a) && status;
+		status = verify_dilithium_signature("HW_key_D", md, SHA512_DIGEST_LENGTH,
+						    c.pd->hw_sig_d, c.c->hw_pkey_d) && status;
 	} else if (verbose) {
 		printf("HW_key_D is NULL, skipping signature check.\n");
 	}
@@ -552,13 +559,14 @@ static bool validate_container_v2(struct parsed_stb_container_v2 c, int fdin)
 	if (memcmp(&(c.pd->sw_pkey_p), &ECDSA_KEY_NULL, sizeof(ecc_key_t))) {
 		status = verify_signature("SW_key_P", md, SHA512_DIGEST_LENGTH,
 					  c.ssig->sw_sig_p, c.pd->sw_pkey_p) && status;
+		sSwKeySize += sizeof(ecc_key_t);
 	} else if (verbose) {
 		printf("%s is NULL, skipping\n", "SW_key_P");
 	}
 	if (memcmp(&(c.pd->sw_pkey_s), &ECDSA_KEY_NULL, sizeof(ecc_key_t))) {
-		//        status = verify_signature("SW_key_P", md, SHA512_DIGEST_LENGTH,
-		//			c.ssig->sw_sig_p, c.pd->sw_pkey_p) && status;
-		printf("FIXME: NEED DILITHIUM 2\n");
+		status = verify_dilithium_signature("SW_key_S", md, SHA512_DIGEST_LENGTH,
+						    c.ssig->sw_sig_s, c.pd->sw_pkey_s) && status;
+		sSwKeySize += sizeof(dilithium_key_t);
 	} else if (verbose) {
 		printf("%s is NULL, skipping\n", "SW_key_S");
 	}
@@ -582,7 +590,7 @@ static bool validate_container_v2(struct parsed_stb_container_v2 c, int fdin)
 	if (verbose) printf("\n");
 
 	// Verify SW keys hash.
-	p = sha3_512(c.pd->sw_pkey_p, sizeof(ecc_key_t) * c.ph->sw_key_count, md);
+	p = sha3_512(c.pd->sw_pkey_p, sSwKeySize, md);
 	if (!p)
 		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
 	if (verbose) print_bytes((char *) "SW keys hash = ", (uint8_t *) md,
@@ -636,7 +644,7 @@ static bool verify_container_v2(struct parsed_stb_container_v2 c, char * verify)
 	void *md = alloca(SHA512_DIGEST_LENGTH);
 	void *p;
 
-	p = sha3_512(c.c->hw_pkey_a, sizeof(ecc_key_t) * 3, md);
+	p = sha3_512(c.c->hw_pkey_a, sizeof(ecc_key_t) + sizeof(dilithium_key_t), md);
 	if (!p)
 		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
 	if (verbose) print_bytes((char *) "HW keys hash = ", (uint8_t *) md,
@@ -738,6 +746,32 @@ static bool verify_signature(const char *moniker, const unsigned char *dgst,
 	free(ecdsa_sig);
 #endif
 	return status;
+}
+
+static bool verify_dilithium_signature(const char *moniker, const unsigned char *dgst,
+				       int dgst_len, const dilithium_signature_t sig_raw, const dilithium_key_t key_raw)
+{
+	bool sRet = false;
+#ifdef ADD_DILITHIUM
+
+	int vRc = pqca_verify(sig_raw, sizeof(dilithium_signature_t),
+			      dgst, dgst_len,
+			      key_raw, sizeof(dilithium_key_t),
+			      (const unsigned char *)CR_OID_DIL_R2_8x7,
+			      CR_OID_DIL_R2_8x7_BYTES);
+	if (vRc == 1) {
+		if (verbose) printf("%s signature is good: VERIFIED ./\n", moniker);
+		sRet = true;
+	} else if (vRc == 0) {
+		if (verbose) printf("%s signature FAILED to verify.\n", moniker);
+		sRet = false;
+	} else {
+		die(EX_SOFTWARE, "%s", "Cannot Dilithium_do_verify");
+	}
+#else
+	die(EX_SOFTWARE, "%s", "Cannot Dilithium_do_verify");
+#endif
+	return sRet;
 }
 
 static bool getPayloadHash(int fdin, uint64_t pl_sz_expected, unsigned char *md, int container_version)
@@ -1040,12 +1074,12 @@ int main(int argc, char* argv[])
 
 	}
 	else if (stb_is_v2_container(container, st.st_size))
-    {
-
-#if OPENSSL_VERSION_NUMBER < 0x10100000L
+	{
+#ifndef ADD_DILITHIUM
+		die(EX_SOFTWARE, "%s", "print-container must be built with ADD_DILITHIUM for v2 containers");
+#elif OPENSSL_VERSION_NUMBER < 0x10100000L
 		die(EX_NOINPUT, "Invalid container version due to downlevel openssl version : %d", 2);
 #endif
-
 		if (parse_stb_container_v2(container, SECURE_BOOT_HEADERS_V2_SIZE, &c_v2) != 0)
 			die(EX_DATAERR, "%s", "Failed to parse container");
 
