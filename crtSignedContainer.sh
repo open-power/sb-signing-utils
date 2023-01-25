@@ -85,8 +85,16 @@ is_raw_key () {
         [[ $(dd if="$1" bs=1 count=1 2>/dev/null) == $'\004' ]]
 }
 
-is_dilithium_key() {
-    echo "TODO: Implement is_dilithium_key"
+is_dilithium_raw_private_key() {
+    extractdilkey -k "$1" -inraw &>/dev/null
+}
+
+is_dilithium_private_key() {
+    extractdilkey -k "$1" &>/dev/null
+}
+
+is_dilithium_public_key() {
+    extractdilkey -pubin -k "$1" &>/dev/null
 }
 
 to_lower () {
@@ -247,9 +255,15 @@ checkKey () {
             elif is_raw_key "$k"; then
                 test "$SB_VERBOSE" && \
                     echo "--> $P: Key $keyname is a RAW public ECDSA key"
-	    elif is_dilithium_key "$k"; then
+	        elif is_dilithium_public_key "$k"; then
+                test "$SB_VERBOSE" && \
+                    echo "--> $P: Key $keyname is a public dilithium key"
+	        elif is_dilithium_private_key "$k"; then
                 test "$SB_VERBOSE" && \
                     echo "--> $P: Key $keyname is a private dilithium key"
+	        elif is_dilithium_raw_private_key "$k"; then
+                test "$SB_VERBOSE" && \
+                    echo "--> $P: Key $keyname is a RAW private dilithium key"
             else
                 die "Key $keyname is neither a public nor private key"
             fi
@@ -665,9 +679,14 @@ then
                     cp -p "$KEYFILE" "$T/HW_key_$KEY.pub"
                 elif is_raw_key "$KEYFILE"; then
                     cp -p "$KEYFILE" "$T/HW_key_$KEY.raw"
-		elif is_dilithium_key "$KEYFILE"; then
-		    KEYFILE="${KEYFILE}.pub"
-		    cp -p "$KEYFILE" "$T/HW_key_$KEY.pub"
+		        elif is_dilithium_public_key "$KEYFILE"; then
+                    cp -p "$KEYFILE" "$T/HW_key_$KEY.pub"
+		        elif is_dilithium_private_key "$KEYFILE"; then
+                    extractdilkey -k "$KEYFILE" -pubout -o "$T/HW_key_$KEY.pub" -outraw
+		            KEYFILE="$T/HW_key_$KEY.pub"
+		        elif is_dilithium_raw_private_key "$KEYFILE"; then
+		            KEYFILE="${KEYFILE}.pub"
+		            cp -p "$KEYFILE" "$T/HW_key_$KEY.pub"
                 fi
             fi
         fi
@@ -711,9 +730,14 @@ then
                     cp -p "$KEYFILE" "$T/SW_key_$KEY.pub"
                 elif is_raw_key "$KEYFILE"; then
                     cp -p "$KEYFILE" "$T/SW_key_$KEY.raw"
-		elif is_dilithium_key "$KEYFILE"; then
-		    KEYFILE="${KEYFILE}.pub"
-		    cp -p "$KEYFILE" "$T/SW_key_$KEY.pub"
+		        elif is_dilithium_public_key "$KEYFILE"; then
+                    cp -p "$KEYFILE" "$T/HW_key_$KEY.pub"
+		        elif is_dilithium_private_key "$KEYFILE"; then
+                    extractdilkey -k "$KEYFILE" -pubout -o "$T/SW_key_$KEY.pub" -outraw
+		            KEYFILE="$T/SW_key_$KEY.pub"
+		        elif is_dilithium_raw_private_key "$KEYFILE"; then
+		            KEYFILE="${KEYFILE}.pub"
+		            cp -p "$KEYFILE" "$T/SW_key_$KEY.pub"
                 fi
             fi
         fi
@@ -931,7 +955,13 @@ then
                     openssl dgst $DIGEST_ARG -sign "$KEYFILE" "$T/prefix_hdr" > "$T/$SIGFILE"
                     rc=$?
                     test $rc -ne 0 && die "Call to openssl failed with error: $rc"
-                elif [ -f "$KEYFILE" ] && is_dilithium_key "$KEYFILE"
+                elif [ -f "$KEYFILE" ] && is_dilithium_private_key "$KEYFILE"
+                then
+                    echo "--> $P: Generating signature for HW key $(to_upper $KEY)..."
+                    gendilsig -k "$KEYFILE" -i "$T/prefix_hdr.md.bin" -o "$T/$SIGFILE"
+                    rc=$?
+                    test $rc -ne 0 && die "Call to gendilsig failed with error: $rc"
+                elif [ -f "$KEYFILE" ] && is_dilithium_raw_private_key "$KEYFILE"
                 then
                     echo "--> $P: Generating signature for HW key $(to_upper $KEY)..."
                     gendilsig -k "$KEYFILE" -i "$T/prefix_hdr.md.bin" -o "$T/$SIGFILE"
@@ -971,7 +1001,13 @@ then
             openssl dgst $DIGEST_ARG -sign "$KEYFILE" "$T/software_hdr" > "$T/$SIGFILE"
             rc=$?
             test $rc -ne 0 && die "Call to openssl failed with error: $rc"
-        elif [ -f "$KEYFILE" ] && is_dilithium_key "$KEYFILE"
+        elif [ -f "$KEYFILE" ] && is_dilithium_private_key "$KEYFILE"
+        then
+            echo "--> $P: Generating signature for HW key $(to_upper $KEY)..."
+            gendilsig -k "$KEYFILE" -i "$T/software_hdr.md.bin" -o "$T/$SIGFILE"
+            rc=$?
+            test $rc -ne 0 && die "Call to gendilsig failed with error: $rc"
+        elif [ -f "$KEYFILE" ] && is_dilithium_raw_private_key "$KEYFILE"
         then
             echo "--> $P: Generating signature for HW key $(to_upper $KEY)..."
             gendilsig -k "$KEYFILE" -i "$T/software_hdr.md.bin" -o "$T/$SIGFILE"
