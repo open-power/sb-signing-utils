@@ -808,10 +808,9 @@ then
 
     for KEY in p q r s; do
         varname=SW_KEY_$(to_upper $KEY); KEYFILE=${!varname}
-
         # Handle the special values, or empty value
-        test -z "$KEYFILE" && break
-        test "$KEYFILE" == __skip && break
+        test -z "$KEYFILE" && continue
+        test "$KEYFILE" == __skip && continue
         test "$KEYFILE" == __getsig && continue
 
         SF_PROJECT=${SF_FW_SIGNING_PROJECT_BASE}_${KEY}
