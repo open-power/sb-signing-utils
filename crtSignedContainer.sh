@@ -1073,15 +1073,15 @@ then
         fi
 
         FOUND="${FOUND}$(to_upper $KEY),"
-        HW_SIG_ARGS="$HW_SIG_ARGS -$(to_upper $KEY) $T/$SIGFILE"
+        HW_SIG_ARGS="$HW_SIG_ARGS --hw_sig_$KEY $T/$SIGFILE"
     done
 
     for KEY in p q r s; do
         varname=SW_KEY_$(to_upper $KEY); KEYFILE=${!varname}
 
         # Handle the special values, or empty value
-        test -z "$KEYFILE" && break
-        test "$KEYFILE" == __skip && break
+        test -z "$KEYFILE" && continue
+        test "$KEYFILE" == __skip && continue
 
         SF_PROJECT=${SF_FW_SIGNING_PROJECT_BASE}_${KEY}
         SIGFILE_BASE=project.$SF_PROJECT.SW_sig_$KEY
@@ -1132,7 +1132,7 @@ then
         fi
 
         FOUND="${FOUND}$(to_upper $KEY),"
-        SW_SIG_ARGS="$SW_SIG_ARGS -$(to_upper $KEY) $T/$SIGFILE"
+        SW_SIG_ARGS="$SW_SIG_ARGS --sw_sig_$KEY $T/$SIGFILE"
     done
 fi
 
