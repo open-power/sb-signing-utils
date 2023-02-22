@@ -44,6 +44,7 @@ usage () {
     echo "	-o, --code-start-offset code start offset for software header in hex"
     echo "	-f, --flags             prefix header flags in hex"
     echo "	-F, --sw-flags          prefix software header flags in hex"
+    echo "	    --fw-ecid           16 Hex Bytes, Device ECID to store in SW Header"
     echo "	-m, --mode              signing mode: local, independent or production"
     echo "	-k, --kms               key management system for retrieving keys and signatures"
     echo "	                        (choices are \"signframework\" or \"pkcs11\")"
@@ -374,12 +375,13 @@ for arg in "$@"; do
     "--validate")   set -- "$@" "-8" ;;
     "--verify")     set -- "$@" "-9" ;;
     "--container-version") set -- "$@" "-V" ;;
+    "--fw-ecid")    set -- "$@" "-@" ;;
     *)              set -- "$@" "$arg"
   esac
 done
 
 # Process command-line arguments
-while getopts -- ?hdvw:a:b:c:0:p:q:r:1:f:F:o:l:i:m:k:s:L:S:V:4:5:6:7:89: opt
+while getopts -- ?hdvw:a:b:c:0:p:q:r:1:f:F:o:l:i:m:k:s:L:S:V:4:5:6:7:89:@: opt
 do
   case "${opt:?}" in
     v) SB_VERBOSE="TRUE";;
@@ -395,6 +397,7 @@ do
     1) SW_KEY_S="$OPTARG";;
     f) HW_FLAGS="$OPTARG";;
     F) SW_FLAGS="$OPTARG";;
+    @) FW_ECID="$OPTARG";;
     o) CS_OFFSET="$OPTARG";;
     l) PAYLOAD="$OPTARG";;
     i) OUTPUT="$OPTARG";;
@@ -618,6 +621,7 @@ test "$LABEL" && ADDL_ARGS="$ADDL_ARGS --label $LABEL"
 test "$SECURITY_VERSION" && ADDL_ARGS="$ADDL_ARGS --security-version $SECURITY_VERSION"
 test "$SB_CONTR_HDR_OUT" && CONTR_HDR_OUT_OPT="--dumpContrHdr"
 test "$CONTAINER_VERSION" && ADDL_ARGS="$ADDL_ARGS --container-version $CONTAINER_VERSION"
+test "$FW_ECID" && ADDL_ARGS="$ADDL_ARGS --fw-ecid $FW_ECID"
 
 test "$SB_VERBOSE" && SF_DEBUG_ARGS=" -v"
 test "$SB_DEBUG" && SF_DEBUG_ARGS="$SF_DEBUG_ARGS -d -stdout"

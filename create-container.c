@@ -468,6 +468,7 @@ static struct option const opts[] = {
 	{ "dumpSwHdr",        required_argument, 0,  '2' },
 	{ "security-version", required_argument, 0,  'S' },
 	{ "container-version",required_argument, 0,  'V' },
+    { "fw-ecid",          required_argument, 0,  '3' },
 	{ NULL, 0, NULL, 0 }
 };
 #endif
@@ -495,6 +496,7 @@ static struct {
 	char *sw_cs_offset;
 	char *hw_flags;
 	char *sw_flags;
+    char* fw_ecid;
 	char *label;
 	char *prhdrfn;
 	char *swhdrfn;
@@ -618,10 +620,10 @@ int main(int argc, char* argv[])
 	while (1) {
 		int opt;
 #ifdef _AIX
-		opt = getopt(argc, argv, "?hvdw:a:b:c:[:p:q:r:]:A:B:C:{:P:Q:R:}:3:L:I:o:O:f:F:l:0:1:2:S:V:");
+		opt = getopt(argc, argv, "?hvdw:a:b:c:[:p:q:r:]:A:B:C:{:P:Q:R:}:3:L:I:o:O:f:F:l:0:1:2:3:S:V:");
 #else
 		opt = getopt_long(argc, argv,
-				"hvdw:a:b:c:[:p:q:r:}:A:B:C:{:P:Q:R:}:3:L:I:o:O:f:F:l:0:1:2:S:V:", opts,
+				"hvdw:a:b:c:[:p:q:r:}:A:B:C:{:P:Q:R:}:3:L:I:o:O:f:F:l:0:1:2:3:S:V:", opts,
 				NULL);
 #endif
 		if (opt == -1)
@@ -718,6 +720,9 @@ int main(int argc, char* argv[])
 			break;
 		case '2':
 			params.swhdrfn = optarg;
+			break;
+		case '3':
+			params.fw_ecid = optarg;
 			break;
 		case '0':
 			params.cthdrfn = optarg;
@@ -1163,6 +1168,21 @@ int main(int argc, char* argv[])
 		swh_v2->security_version = params.security_version;
 		swh_v2->payload_size = cpu_to_be64(payload_st.st_size);
 		swh_v2->unprotected_payload_size = 0;
+
+        // Set the FW ECID if provided
+		memset(swh_v2->ecid, 0, ECID_SIZE);
+        if (params.fw_ecid) {
+			if (!isValidHex(params.fw_ecid, ECID_SIZE))
+				die(EX_DATAERR, "%s",
+				    "Invalid input for sw-ecid, expecting a 16 byte hexadecimal value");
+            for (int x = 0; x < ECID_SIZE; x++) {
+                sscanf(&(params.fw_ecid[x*2]), "%2hhx", &(swh_v2->ecid[x]));
+                //swh_v2->ecid[x]=x;
+            }
+			verbose_print((char *) "FW ECID = ", swh_v2->ecid, sizeof(swh_v2->ecid));
+        }
+
+        memset(swh_v2->reserved2,0, sizeof(swh_v2->reserved2));
 
 		// Calculate the payload hash.
 		p = sha3_512(infile, payload_st.st_size, md);
