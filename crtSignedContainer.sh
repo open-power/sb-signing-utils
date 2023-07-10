@@ -8,6 +8,7 @@ P=${0##*/}
 
 SIGN_MODE=local
 KMS=signframework
+CONTAINER_VERSION=1
 
 HW_KEY_ARGS=""
 SW_KEY_ARGS=""
@@ -16,6 +17,7 @@ SW_SIG_ARGS=""
 VERIFY_ARGS=""
 DEBUG_ARGS=""
 ADDL_ARGS=""
+DIGEST_ARG="-sha512"
 
 RC=0
 
@@ -32,14 +34,17 @@ usage () {
     echo "	-a, --hwKeyA            file containing HW key A private key in PEM format"
     echo "	-b, --hwKeyB            file containing HW key B private key in PEM format"
     echo "	-c, --hwKeyC            file containing HW key C private key in PEM format"
+    echo "	    --hwKeyD            file containing HW key D private key in RAW format"
     echo "	-p, --swKeyP            file containing SW key P private key in PEM format"
     echo "	-q, --swKeyQ            file containing SW key Q private key in PEM format"
     echo "	-r, --swKeyR            file containing SW key R private key in PEM format"
+    echo "	    --swKeyS            file containing SW key S private key in RAW format"
     echo "	-l, --protectedPayload  file containing the payload to be signed"
     echo "	-i, --out               file to write containerized payload"
     echo "	-o, --code-start-offset code start offset for software header in hex"
     echo "	-f, --flags             prefix header flags in hex"
     echo "	-F, --sw-flags          prefix software header flags in hex"
+    echo "	    --fw-ecid           16 Hex Bytes, Device ECID to store in SW Header"
     echo "	-m, --mode              signing mode: local, independent or production"
     echo "	-k, --kms               key management system for retrieving keys and signatures"
     echo "	                        (choices are \"signframework\" or \"pkcs11\")"
@@ -55,6 +60,7 @@ usage () {
     echo "	    --sign-project-config   INI file containing configuration properties (options"
     echo "	                            set here override those set via cmdline or environment)"
     echo "	-S, --security-version  Integer, sets the security version container field"
+    echo "  -V, --container-version Container version to generate (1, 2)"
     echo ""
     exit 1
 }
@@ -78,6 +84,18 @@ is_raw_key () {
     test "$1" && \
         test "$(stat -c%s "$1")" -eq 133 && \
         [[ $(dd if="$1" bs=1 count=1 2>/dev/null) == $'\004' ]]
+}
+
+is_dilithium_raw_private_key() {
+    extractdilkey -k "$1" -inraw &>/dev/null
+}
+
+is_dilithium_private_key() {
+    extractdilkey -k "$1" &>/dev/null
+}
+
+is_dilithium_public_key() {
+    extractdilkey -pubin -k "$1" &>/dev/null
 }
 
 to_lower () {
@@ -138,7 +156,7 @@ exportArchive () {
         then
             echo "--> $P: Exporting HW keys and sigs for project: $SF_HW_SIGNING_PROJECT_BASE"
             cd "$T" || die "Cannot cd to $T"
-            for KEY in a b c; do
+            for KEY in a b c d; do
                 cp -p &>/dev/null "HW_key_$KEY.pub" \
                     "project.${SF_HW_SIGNING_PROJECT_BASE}_${KEY}.HW_key_${KEY}.pub"
                 cp -p &>/dev/null "HW_key_$KEY.raw" \
@@ -153,7 +171,7 @@ exportArchive () {
         then
             echo "--> $P: Exporting FW keys and sigs for project: $SF_FW_SIGNING_PROJECT_BASE"
             cd "$T" || die "Cannot cd to $T"
-            for KEY in p q r; do
+            for KEY in p q r s; do
                 cp -p &>/dev/null "SW_key_$KEY.pub" \
                     "project.${SF_FW_SIGNING_PROJECT_BASE}_${KEY}.SW_key_${KEY}.pub"
                 cp -p &>/dev/null "SW_key_$KEY.raw" \
@@ -238,6 +256,15 @@ checkKey () {
             elif is_raw_key "$k"; then
                 test "$SB_VERBOSE" && \
                     echo "--> $P: Key $keyname is a RAW public ECDSA key"
+	        elif is_dilithium_public_key "$k"; then
+                test "$SB_VERBOSE" && \
+                    echo "--> $P: Key $keyname is a public dilithium key"
+	        elif is_dilithium_private_key "$k"; then
+                test "$SB_VERBOSE" && \
+                    echo "--> $P: Key $keyname is a private dilithium key"
+	        elif is_dilithium_raw_private_key "$k"; then
+                test "$SB_VERBOSE" && \
+                    echo "--> $P: Key $keyname is a RAW private dilithium key"
             else
                 die "Key $keyname is neither a public nor private key"
             fi
@@ -325,9 +352,11 @@ for arg in "$@"; do
     "--hwKeyA") set -- "$@" "-a" ;;
     "--hwKeyB") set -- "$@" "-b" ;;
     "--hwKeyC") set -- "$@" "-c" ;;
+    "--hwKeyD") set -- "$@" "-0" ;;
     "--swKeyP") set -- "$@" "-p" ;;
     "--swKeyQ") set -- "$@" "-q" ;;
     "--swKeyR") set -- "$@" "-r" ;;
+    "--swKeyS") set -- "$@" "-1" ;;
     "--flags")      set -- "$@" "-f" ;;
     "--sw-flags")   set -- "$@" "-F" ;;
     "--code-start-offset") set -- "$@" "-o" ;;
@@ -345,25 +374,30 @@ for arg in "$@"; do
     "--archiveOut") set -- "$@" "-7" ;;
     "--validate")   set -- "$@" "-8" ;;
     "--verify")     set -- "$@" "-9" ;;
+    "--container-version") set -- "$@" "-V" ;;
+    "--fw-ecid")    set -- "$@" "-@" ;;
     *)              set -- "$@" "$arg"
   esac
 done
 
 # Process command-line arguments
-while getopts -- ?hdvw:a:b:c:p:q:r:f:F:o:l:i:m:k:s:L:S:4:5:6:7:89: opt
+while getopts -- ?hdvw:a:b:c:0:p:q:r:1:f:F:o:l:i:m:k:s:L:S:V:4:5:6:7:89:@: opt
 do
   case "${opt:?}" in
     v) SB_VERBOSE="TRUE";;
-    d) SB_DEBUG="TRUE";;
+    3) SB_DEBUG="TRUE";;
     w) SB_WRAP="$OPTARG";;
     a) HW_KEY_A="$OPTARG";;
     b) HW_KEY_B="$OPTARG";;
     c) HW_KEY_C="$OPTARG";;
+    0) HW_KEY_D="$OPTARG";;
     p) SW_KEY_P="$OPTARG";;
     q) SW_KEY_Q="$OPTARG";;
     r) SW_KEY_R="$OPTARG";;
+    1) SW_KEY_S="$OPTARG";;
     f) HW_FLAGS="$OPTARG";;
     F) SW_FLAGS="$OPTARG";;
+    @) FW_ECID="$OPTARG";;
     o) CS_OFFSET="$OPTARG";;
     l) PAYLOAD="$OPTARG";;
     i) OUTPUT="$OPTARG";;
@@ -378,6 +412,7 @@ do
     7) SB_ARCHIVE_OUT="$OPTARG";;
     8) SB_VALIDATE="TRUE";;
     9) SB_VERIFY="$OPTARG";;
+    V) CONTAINER_VERSION="$OPTARG";;
     h|\?) usage;;
   esac
 done
@@ -388,6 +423,14 @@ do
     is_cmd_available $p || \
         die "Required command \"$p\" not available or not found in PATH"
 done
+
+if [ $CONTAINER_VERSION = 2 ]; then
+   for p in gendilkey gendilsig verifydilsig
+   do
+       is_cmd_available $p || \
+           die "Required command \"$p\" not available or not found in PATH"
+   done
+fi
 
 # Sanitize boolean values
 SB_VERBOSE="$(make_bool "$SB_VERBOSE")"
@@ -476,11 +519,11 @@ then
 fi
 
 # Check input keys
-for KEY in HW_KEY_A HW_KEY_B HW_KEY_C; do
+for KEY in HW_KEY_A HW_KEY_B HW_KEY_C HW_KEY_D; do
     checkKey $KEY
 done
 
-for KEY in SW_KEY_P SW_KEY_Q SW_KEY_R; do
+for KEY in SW_KEY_P SW_KEY_Q SW_KEY_R SW_KEY_S; do
     checkKey $KEY
 done
 
@@ -577,9 +620,12 @@ test "$CS_OFFSET" && ADDL_ARGS="$ADDL_ARGS --sw-cs-offset $CS_OFFSET"
 test "$LABEL" && ADDL_ARGS="$ADDL_ARGS --label $LABEL"
 test "$SECURITY_VERSION" && ADDL_ARGS="$ADDL_ARGS --security-version $SECURITY_VERSION"
 test "$SB_CONTR_HDR_OUT" && CONTR_HDR_OUT_OPT="--dumpContrHdr"
+test "$CONTAINER_VERSION" && ADDL_ARGS="$ADDL_ARGS --container-version $CONTAINER_VERSION"
+test "$FW_ECID" && ADDL_ARGS="$ADDL_ARGS --fw-ecid $FW_ECID"
 
 test "$SB_VERBOSE" && SF_DEBUG_ARGS=" -v"
 test "$SB_DEBUG" && SF_DEBUG_ARGS="$SF_DEBUG_ARGS -d -stdout"
+test $CONTAINER_VERSION == 2 && DIGEST_ARG="-sha3-512"
 
 #
 # Set defaults for signframework project basenames
@@ -602,8 +648,8 @@ fi
 #
 if [ "$SIGN_MODE" == "local" ] || [ "$SIGN_MODE" == "independent" ]
 then
-    for KEY in a b c; do
-        # This will evaluate the value of HW_KEY_A, HW_KEY_B, HW_KEY_C
+    for KEY in a b c d; do
+        # This will evaluate the value of HW_KEY_A, HW_KEY_B, HW_KEY_C, HW_KEY_D
         varname=HW_KEY_$(to_upper $KEY); KEYFILE=${!varname}
 
         # Handle the special values, or empty value
@@ -637,21 +683,29 @@ then
                     cp -p "$KEYFILE" "$T/HW_key_$KEY.pub"
                 elif is_raw_key "$KEYFILE"; then
                     cp -p "$KEYFILE" "$T/HW_key_$KEY.raw"
+		        elif is_dilithium_public_key "$KEYFILE"; then
+                    cp -p "$KEYFILE" "$T/HW_key_$KEY.pub"
+		        elif is_dilithium_private_key "$KEYFILE"; then
+                    extractdilkey -k "$KEYFILE" -pubout -o "$T/HW_key_$KEY.pub" -outraw
+		            KEYFILE="$T/HW_key_$KEY.pub"
+		        elif is_dilithium_raw_private_key "$KEYFILE"; then
+		            KEYFILE="${KEYFILE}.pub"
+		            cp -p "$KEYFILE" "$T/HW_key_$KEY.pub"
                 fi
             fi
         fi
 
         # Add to HW_KEY_ARGS
-        HW_KEY_ARGS="$HW_KEY_ARGS -$KEY $KEYFILE"
+        HW_KEY_ARGS="$HW_KEY_ARGS --hw_key_$KEY $KEYFILE"
     done
 
-    for KEY in p q r; do
-        # Find the value of SW_KEY_P, SW_KEY_Q, SW_KEY_R
+    for KEY in p q r s; do
+        # Find the value of SW_KEY_P, SW_KEY_Q, SW_KEY_R, SW_KEY_S
         varname=SW_KEY_$(to_upper $KEY); KEYFILE=${!varname}
 
         # Handle the special values, or empty value
-        test -z "$KEYFILE" && break
-        test "$KEYFILE" == __skip && break
+        test -z "$KEYFILE" && continue
+        test "$KEYFILE" == __skip && continue
         if [ "$KEYFILE" == __get ] || [ "$KEYFILE" == __getkey ]
         then
             # We expect a key of of this signing project to be imported.
@@ -680,17 +734,25 @@ then
                     cp -p "$KEYFILE" "$T/SW_key_$KEY.pub"
                 elif is_raw_key "$KEYFILE"; then
                     cp -p "$KEYFILE" "$T/SW_key_$KEY.raw"
+		        elif is_dilithium_public_key "$KEYFILE"; then
+                    cp -p "$KEYFILE" "$T/HW_key_$KEY.pub"
+		        elif is_dilithium_private_key "$KEYFILE"; then
+                    extractdilkey -k "$KEYFILE" -pubout -o "$T/SW_key_$KEY.pub" -outraw
+		            KEYFILE="$T/SW_key_$KEY.pub"
+		        elif is_dilithium_raw_private_key "$KEYFILE"; then
+		            KEYFILE="${KEYFILE}.pub"
+		            cp -p "$KEYFILE" "$T/SW_key_$KEY.pub"
                 fi
             fi
         fi
 
         # Add to SW_KEY_ARGS
-        SW_KEY_ARGS="$SW_KEY_ARGS -$KEY $KEYFILE"
+        SW_KEY_ARGS="$SW_KEY_ARGS --sw_key_$KEY $KEYFILE"
     done
 
 elif [ "$SIGN_MODE" == "production" ]
 then
-    for KEY in a b c; do
+    for KEY in a b c d; do
         varname=HW_KEY_$(to_upper $KEY); KEYFILE=${!varname}
 
         # Handle the special values, or empty value
@@ -745,15 +807,14 @@ then
         fi
 
         # Add to HW_KEY_ARGS
-        HW_KEY_ARGS="$HW_KEY_ARGS -$KEY $T/$KEYFILE"
+        HW_KEY_ARGS="$HW_KEY_ARGS --hw_key_$KEY $T/$KEYFILE"
     done
 
-    for KEY in p q r; do
+    for KEY in p q r s; do
         varname=SW_KEY_$(to_upper $KEY); KEYFILE=${!varname}
-
         # Handle the special values, or empty value
-        test -z "$KEYFILE" && break
-        test "$KEYFILE" == __skip && break
+        test -z "$KEYFILE" && continue
+        test "$KEYFILE" == __skip && continue
         test "$KEYFILE" == __getsig && continue
 
         SF_PROJECT=${SF_FW_SIGNING_PROJECT_BASE}_${KEY}
@@ -796,7 +857,7 @@ then
         fi
 
         # Add to SW_KEY_ARGS
-        SW_KEY_ARGS="$SW_KEY_ARGS -$KEY $T/$KEYFILE"
+        SW_KEY_ARGS="$SW_KEY_ARGS --sw_key_$KEY $T/$KEYFILE"
     done
 
 elif [ "$SIGN_MODE" ]
@@ -813,6 +874,13 @@ then
     # TODO: check that prefix_hdr and software_hdr files are available...
 else
     echo "--> $P: Generating signing requests..."
+    test "$SB_VERBOSE" && \
+        echo create-container $HW_KEY_ARGS $SW_KEY_ARGS \
+                     --payload "$PAYLOAD" --imagefile "$OUTPUT" \
+                     --dumpPrefixHdr "$T/prefix_hdr" \
+                     --dumpSwHdr "$T/software_hdr" \
+                     $DEBUG_ARGS \
+                     $ADDL_ARGS
     create-container $HW_KEY_ARGS $SW_KEY_ARGS \
                      --payload "$PAYLOAD" --imagefile "$OUTPUT" \
                      --dumpPrefixHdr "$T/prefix_hdr" \
@@ -831,7 +899,7 @@ FOUND=""
 
 if [ "$SIGN_MODE" == "local" ] || [ "$SIGN_MODE" == "independent" ]
 then
-    for KEY in a b c; do
+    for KEY in a b c d; do
         varname=HW_KEY_$(to_upper $KEY); KEYFILE=${!varname}
 
         # Handle the special values, or empty value
@@ -887,9 +955,21 @@ then
                 if [ -f "$KEYFILE" ] && is_private_key "$KEYFILE"
                 then
                     echo "--> $P: Generating signature for HW key $(to_upper $KEY)..."
-                    openssl dgst -SHA512 -sign "$KEYFILE" "$T/prefix_hdr" > "$T/$SIGFILE"
+                    openssl dgst $DIGEST_ARG -sign "$KEYFILE" "$T/prefix_hdr" > "$T/$SIGFILE"
                     rc=$?
                     test $rc -ne 0 && die "Call to openssl failed with error: $rc"
+                elif [ -f "$KEYFILE" ] && is_dilithium_private_key "$KEYFILE"
+                then
+                    echo "--> $P: Generating signature for HW key $(to_upper $KEY)..."
+                    gendilsig -k "$KEYFILE" -i "$T/prefix_hdr.md.bin" -o "$T/$SIGFILE"
+                    rc=$?
+                    test $rc -ne 0 && die "Call to gendilsig failed with error: $rc"
+                elif [ -f "$KEYFILE" ] && is_dilithium_raw_private_key "$KEYFILE"
+                then
+                    echo "--> $P: Generating signature for HW key $(to_upper $KEY)..."
+                    gendilsig -k "$KEYFILE" -i "$T/prefix_hdr.md.bin" -o "$T/$SIGFILE"
+                    rc=$?
+                    test $rc -ne 0 && die "Call to gendilsig failed with error: $rc"
                 else
                     echo "--> $P: No signature found and no private key available for HW key $(to_upper $KEY), skipping."
                     continue
@@ -898,16 +978,16 @@ then
         fi
 
         FOUND="${FOUND}$(to_upper $KEY),"
-        HW_SIG_ARGS="$HW_SIG_ARGS -$(to_upper $KEY) $T/$SIGFILE"
+        HW_SIG_ARGS="$HW_SIG_ARGS --hw_sig_$KEY $T/$SIGFILE"
     done
 
-    for KEY in p q r; do
+    for KEY in p q r s; do
         SIGFILE=SW_key_$KEY.sig
         varname=SW_KEY_$(to_upper $KEY); KEYFILE=${!varname}
 
         # Handle the special values, or empty value
-        test -z "$KEYFILE" && break
-        test "$KEYFILE" == __skip && break
+        test -z "$KEYFILE" && continue
+        test "$KEYFILE" == __skip && continue
 
         # Look for a signature in the local cache dir, if found use it.
         # (but never reuse a sig for SBKT, the payload is always regenerated)
@@ -921,21 +1001,33 @@ then
         then
             # No signature found, try to generate one.
             echo "--> $P: Generating signature for SW key $(to_upper $KEY)..."
-            openssl dgst -SHA512 -sign "$KEYFILE" "$T/software_hdr" > "$T/$SIGFILE"
+            openssl dgst $DIGEST_ARG -sign "$KEYFILE" "$T/software_hdr" > "$T/$SIGFILE"
             rc=$?
             test $rc -ne 0 && die "Call to openssl failed with error: $rc"
+        elif [ -f "$KEYFILE" ] && is_dilithium_private_key "$KEYFILE"
+        then
+            echo "--> $P: Generating signature for HW key $(to_upper $KEY)..."
+            gendilsig -k "$KEYFILE" -i "$T/software_hdr.md.bin" -o "$T/$SIGFILE"
+            rc=$?
+            test $rc -ne 0 && die "Call to gendilsig failed with error: $rc"
+        elif [ -f "$KEYFILE" ] && is_dilithium_raw_private_key "$KEYFILE"
+        then
+            echo "--> $P: Generating signature for HW key $(to_upper $KEY)..."
+            gendilsig -k "$KEYFILE" -i "$T/software_hdr.md.bin" -o "$T/$SIGFILE"
+            rc=$?
+            test $rc -ne 0 && die "Call to gendilsig failed with error: $rc"
         else
             echo "--> $P: No signature found and no private key available for SW key $(to_upper $KEY), skipping."
             continue
         fi
 
         FOUND="${FOUND}$(to_upper $KEY),"
-        SW_SIG_ARGS="$SW_SIG_ARGS -$(to_upper $KEY) $T/$SIGFILE"
+        SW_SIG_ARGS="$SW_SIG_ARGS --sw_sig_$KEY $T/$SIGFILE"
     done
 
 elif [ "$SIGN_MODE" == "production" ]
 then
-    for KEY in a b c; do
+    for KEY in a b c d; do
         varname=HW_KEY_$(to_upper $KEY); KEYFILE=${!varname}
 
         # Handle the special values, or empty value
@@ -972,7 +1064,7 @@ then
                 SIGFILE="$SIGFILE_BASE.sig"
                 /bin/openssl dgst -engine pkcs11 -keyform engine \
                              -sign "pkcs11:token=$SB_PKCS11_TOKEN;object=$SF_PROJECT" \
-                             -sha512 -out "$T/$SIGFILE" "$T/prefix_hdr"
+                             $DIGEST_ARG -out "$T/$SIGFILE" "$T/prefix_hdr"
             fi
 
             rc=$?
@@ -985,15 +1077,15 @@ then
         fi
 
         FOUND="${FOUND}$(to_upper $KEY),"
-        HW_SIG_ARGS="$HW_SIG_ARGS -$(to_upper $KEY) $T/$SIGFILE"
+        HW_SIG_ARGS="$HW_SIG_ARGS --hw_sig_$KEY $T/$SIGFILE"
     done
 
-    for KEY in p q r; do
+    for KEY in p q r s; do
         varname=SW_KEY_$(to_upper $KEY); KEYFILE=${!varname}
 
         # Handle the special values, or empty value
-        test -z "$KEYFILE" && break
-        test "$KEYFILE" == __skip && break
+        test -z "$KEYFILE" && continue
+        test "$KEYFILE" == __skip && continue
 
         SF_PROJECT=${SF_FW_SIGNING_PROJECT_BASE}_${KEY}
         SIGFILE_BASE=project.$SF_PROJECT.SW_sig_$KEY
@@ -1031,7 +1123,7 @@ then
                 SIGFILE="$SIGFILE_BASE.sig"
                 /bin/openssl dgst -engine pkcs11 -keyform engine \
                              -sign "pkcs11:token=$SB_PKCS11_TOKEN;object=$SF_PROJECT" \
-                             -sha512 -out "$T/$SIGFILE" "$T/software_hdr"
+                             $DIGEST_ARG -out "$T/$SIGFILE" "$T/software_hdr"
             fi
 
             rc=$?
@@ -1044,7 +1136,7 @@ then
         fi
 
         FOUND="${FOUND}$(to_upper $KEY),"
-        SW_SIG_ARGS="$SW_SIG_ARGS -$(to_upper $KEY) $T/$SIGFILE"
+        SW_SIG_ARGS="$SW_SIG_ARGS --sw_sig_$KEY $T/$SIGFILE"
     done
 fi
 
@@ -1102,6 +1194,9 @@ test "$SB_VERIFY" && VERIFY_OPT="--verify" && VERIFY_ARGS="$SB_VERIFY"
 
 if [ "$VALIDATE_OPT" ] || [ "$VERIFY_OPT" ]; then
     echo
+    test "$SB_VERBOSE" && \
+        echo print-container --imagefile "$OUTPUT" --no-print \
+             $DEBUG_ARGS $VALIDATE_OPT $VERIFY_OPT "$VERIFY_ARGS"
     print-container --imagefile "$OUTPUT" --no-print \
                     $DEBUG_ARGS $VALIDATE_OPT $VERIFY_OPT "$VERIFY_ARGS"
 

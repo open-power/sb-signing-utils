@@ -27,6 +27,7 @@
 #include <openssl/bn.h>
 #include <openssl/ec.h>
 #include <openssl/ecdsa.h>
+#include <openssl/evp.h>
 #include <openssl/obj_mac.h>
 #include <openssl/opensslv.h>
 #include <openssl/ossl_typ.h>
@@ -45,6 +46,11 @@
 #include "ccan/endian/endian.h"
 #include "container.c"
 #include "container.h"
+
+#ifdef ADD_DILITHIUM
+#include "pqalgs.h"
+#include "crystals-oids.h"
+#endif
 
 char *progname;
 
@@ -71,10 +77,28 @@ static struct {
 
 static void usage(int status);
 
-static bool getPayloadHash(int fdin, uint64_t pl_sz_expected, unsigned char *md);
+static bool getPayloadHash(int fdin, uint64_t pl_sz_expected, unsigned char *md, int container_version);
 static bool getVerificationHash(char *input, unsigned char *md, int len);
 static bool verify_signature(const char *moniker, const unsigned char *dgst,
 		int dgst_len, const ecc_signature_t sig_raw, const ecc_key_t key_raw);
+static bool verify_dilithium_signature(const char *moniker, const unsigned char *dgst,
+				       int dgst_len, const dilithium_signature_t sig_raw, const dilithium_key_t key_raw);
+
+unsigned char *sha3_512(const unsigned char *data, size_t len, unsigned char *md)
+{
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+	const EVP_MD* alg = EVP_sha3_512();
+	uint32_t md_len = SHA512_DIGEST_LENGTH;
+	EVP_MD_CTX* ctx = EVP_MD_CTX_new();
+	EVP_DigestInit_ex(ctx, alg, NULL);
+	EVP_DigestUpdate(ctx, data, len);
+	EVP_DigestFinal_ex(ctx, md, &md_len);
+	EVP_MD_CTX_destroy(ctx);
+	return md;
+#else
+    return NULL;
+#endif
+}
 
 static void print_bytes(char *lead, uint8_t *buffer, size_t buflen)
 {
@@ -106,6 +130,21 @@ bool stb_is_container(const void *buf, size_t size)
 	return true;
 }
 
+bool stb_is_v2_container(const void *buf, size_t size)
+{
+	ROM_container_v2_raw *c;
+
+	c = (ROM_container_v2_raw*) buf;
+	if (!buf || size < SECURE_BOOT_HEADERS_V2_SIZE)
+		return false;
+	if (be32_to_cpu(c->magic_number) != ROM_MAGIC_NUMBER)
+		return false;
+	if (be16_to_cpu(c->version) != 2) {
+		return false;
+	}
+	return true;
+}
+
 int parse_stb_container(const void* data, size_t len,
 		struct parsed_stb_container *c)
 {
@@ -123,14 +162,30 @@ int parse_stb_container(const void* data, size_t len,
 	return 0;
 }
 
+int parse_stb_container_v2(const void* data, size_t len,
+                           struct parsed_stb_container_v2 *c)
+{
+	c->buf = data;
+	c->bufsz = len;
+	c->c = data;
+	c->ph = &(c->c->prefix);
+	c->pd = &(c->c->prefix_data);
+	c->sh = &(c->c->swheader);
+	c->ssig = &(c->c->sw_data);
+
+	return 0;
+}
+
 static void display_version_raw(const ROM_version_raw v)
 {
 	printf("ver_alg:\n");
 	printf("  version:  %04x\n", be16_to_cpu(v.version));
-	printf("  hash_alg: %02x (%s)\n", v.hash_alg,
-			(v.hash_alg == 1) ? "SHA512" : "UNKNOWN");
-	printf("  sig_alg:  %02x (%s)\n", v.sig_alg,
-			(v.sig_alg == 1) ? "SHA512/ECDSA-521" : "UNKNOWN");
+	if (v.hash_alg == 1) printf("  hash_alg: %02x (%s)\n", v.hash_alg, "SHA512");
+	else if (v.hash_alg == 2) printf("  hash_alg: %02x (%s)\n", v.hash_alg, "SHA3-512");
+	else printf("  hash_alg: %02x (%s)\n", v.hash_alg, "UNKNOWN");
+	if (v.sig_alg == 1)	printf("  sig_alg:  %02x (%s)\n", v.sig_alg, "SHA512/ECDSA-521");
+	else if (v.sig_alg == 2) printf("  sig_alg:  %02x (%s)\n", v.sig_alg, "SHA3-512, ECDSA-521/Dilithium r2 8/7");
+	else printf("  sig_alg:  %02x (%s)\n", v.sig_alg, "UNKNOWN");
 }
 
 static void display_container_stats(const struct parsed_stb_container *c)
@@ -157,6 +212,37 @@ static void display_container_stats(const struct parsed_stb_container *c)
 	size = sizeof(ecc_key_t) * c->ph->sw_key_count;
 	offset = (uint8_t*) c->ssig - (uint8_t *) c->buf;
 	printf("  SW signature size     = %4u (%#06x) at offset %4u (%#06x)\n",
+			size, size, offset, offset);
+
+	printf("  TOTAL HEADER SIZE     = %4lu (%#0lx)\n", c->bufsz, c->bufsz);
+	printf("  PAYLOAD SIZE          = %4lu (%#0lx)\n",
+			be64_to_cpu(c->sh->payload_size), be64_to_cpu(c->sh->payload_size));
+	printf("  TOTAL CONTAINER SIZE  = %4lu (%#0lx)\n",
+			be64_to_cpu(c->c->container_size),
+			be64_to_cpu(c->c->container_size));
+	printf("\n");
+}
+
+static void display_container_stats_v2(const struct parsed_stb_container_v2 *c)
+{
+	unsigned int size, offset;
+
+	printf("Container stats:\n");
+	size = (uint8_t*) c->ph - (uint8_t *) c->c;
+	offset = (uint8_t*) c->c - (uint8_t *) c->buf;
+	printf("  HW header size        = %4u (%#06x) at offset %4u (%#06x)\n",
+			size, size, offset, offset);
+	size = (uint8_t*) c->pd - (uint8_t *) c->ph;
+	offset = (uint8_t*) c->ph - (uint8_t *) c->buf;
+	printf("  Prefix header size    = %4u (%#06x) at offset %4u (%#06x)\n",
+			size, size, offset, offset);
+	size = (uint8_t*) c->sh - (uint8_t *) c->pd;
+	offset = (uint8_t*) c->pd - (uint8_t *) c->buf;
+	printf("  Prefix data size      = %4u (%#06x) at offset %4u (%#06x)\n",
+			size, size, offset, offset);
+	size = (uint8_t*) c->ssig - (uint8_t *) c->sh;
+	offset = (uint8_t*) c->sh - (uint8_t *) c->buf;
+	printf("  SW header size        = %4u (%#06x) at offset %4u (%#06x)\n",
 			size, size, offset, offset);
 
 	printf("  TOTAL HEADER SIZE     = %4lu (%#0lx)\n", c->bufsz, c->bufsz);
@@ -261,6 +347,80 @@ static void display_container(struct parsed_stb_container c)
 	display_container_stats(&c);
 }
 
+static void display_container_v2(struct parsed_stb_container_v2 c)
+{
+	unsigned char md[SHA512_DIGEST_LENGTH];
+	void *p;
+
+	printf("Container:\n");
+	printf("magic:          0x%04x\n", be32_to_cpu(c.c->magic_number));
+	printf("version:        0x%02x\n", be16_to_cpu(c.c->version));
+	printf("container_size: 0x%08lx (%lu)\n", be64_to_cpu(c.c->container_size),
+			be64_to_cpu(c.c->container_size));
+	print_bytes((char *) "hw_pkey_a: ", (uint8_t *) c.c->hw_pkey_a,
+			sizeof(c.c->hw_pkey_a));
+	print_bytes((char *) "hw_pkey_d: ", (uint8_t *) c.c->hw_pkey_d,
+			sizeof(c.c->hw_pkey_d));
+
+	p = sha3_512(c.c->hw_pkey_a, sizeof(ecc_key_t) + sizeof(dilithium_key_t), md);
+	if (!p)
+		die(EX_SOFTWARE, "%s", "Cannot get SHA3-512");
+	printf("HW keys hash (calculated):\n");
+	print_bytes((char *) "           ", (uint8_t *) md, sizeof(md));
+	printf("\n");
+
+	printf("Prefix Header:\n");
+	display_version_raw(c.ph->ver_alg);
+	printf("reserved:          %08lx\n", be64_to_cpu(c.ph->reserved));
+	printf("flags:             %08x\n", be32_to_cpu(c.ph->flags));
+	printf("sw_key_count:      %02x\n", c.ph->sw_key_count);
+	printf("payload_size:      %08lx\n", be64_to_cpu(c.ph->payload_size));
+	print_bytes((char *) "payload_hash:      ", (uint8_t *) c.ph->payload_hash,
+			sizeof(c.ph->payload_hash));
+	print_bytes((char *) "ecid:              ",
+		    (uint8_t *) c.ph->ecid, sizeof(c.ph->ecid));
+	printf("\n");
+	printf("\n");
+
+	printf("Prefix Data:\n");
+	print_bytes((char *) "hw_sig_a:  ", (uint8_t *) c.pd->hw_sig_a, sizeof(c.pd->hw_sig_a));
+	print_bytes((char *) "hw_sig_d:  ", (uint8_t *) c.pd->hw_sig_d, sizeof(c.pd->hw_sig_d));
+
+	if (c.ph->sw_key_count >=1)
+		print_bytes((char *) "sw_pkey_p: ", (uint8_t *) c.pd->sw_pkey_p, sizeof(c.pd->sw_pkey_p));
+	if (c.ph->sw_key_count >=2)
+		print_bytes((char *) "sw_pkey_s: ", (uint8_t *) c.pd->sw_pkey_s, sizeof(c.pd->sw_pkey_s));
+	printf("\n");
+
+	printf("Software Header:\n");
+	display_version_raw(c.sh->ver_alg);
+	printf("reserved:          %08lx\n", be64_to_cpu(c.sh->reserved));
+	printf("component id:      %08lx\n", be64_to_cpu(c.sh->component_id));
+	printf("component id (ASCII): %.8s\n", (char *) &(c.sh->component_id));
+	printf("flags:             %08x\n", be32_to_cpu(c.sh->flags));
+	printf("security_version:  %02x\n", c.sh->security_version);
+	printf("payload_size:      %08lx (%lu)\n", be64_to_cpu(c.sh->payload_size),
+			be64_to_cpu(c.sh->payload_size));
+	printf("unprotected payload_size: %08lx (%lu)\n", be64_to_cpu(c.sh->unprotected_payload_size),
+			be64_to_cpu(c.sh->unprotected_payload_size));
+	print_bytes((char *) "payload_hash:      ", (uint8_t *) c.sh->payload_hash,
+			sizeof(c.sh->payload_hash));
+	print_bytes((char *) "ecid:              ",
+		    (uint8_t *) c.sh->ecid, sizeof(c.sh->ecid));
+	printf("\n");
+	printf("\n");
+
+	printf("Software Signatures:\n");
+	print_bytes((char *) "sw_sig_p:  ", (uint8_t *) c.ssig->sw_sig_p,
+			sizeof(c.ssig->sw_sig_p));
+	print_bytes((char *) "sw_sig_s:  ", (uint8_t *) c.ssig->sw_sig_s,
+			sizeof(c.ssig->sw_sig_s));
+	printf("\n");
+
+	if (print_stats)
+        display_container_stats_v2(&c);
+}
+
 static bool validate_container(struct parsed_stb_container c, int fdin)
 {
 	static int n;
@@ -321,7 +481,7 @@ static bool validate_container(struct parsed_stb_container c, int fdin)
 	if (verbose) printf("\n");
 
 	// Verify Payload hash.
-	status = getPayloadHash(fdin, be64_to_cpu(c.sh->payload_size), md)
+	status = getPayloadHash(fdin, be64_to_cpu(c.sh->payload_size), md, 1)
 			&& status;
 	if (verbose) print_bytes((char *) "Payload hash = ", (uint8_t *) md,
 			SHA512_DIGEST_LENGTH);
@@ -357,6 +517,98 @@ static bool validate_container(struct parsed_stb_container c, int fdin)
 	return status;
 }
 
+
+static bool validate_container_v2(struct parsed_stb_container_v2 c, int fdin)
+{
+	static int status = true;
+
+	void *md = alloca(SHA512_DIGEST_LENGTH);
+	void *p;
+	size_t sSwKeySize = 0;
+
+	// Get Prefix header hash.
+	p = sha3_512((uint8_t *) c.ph, sizeof(ROM_prefix_header_v2_raw), md);
+	if (!p)
+		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
+	if (verbose) print_bytes((char *) "PR header hash = ", (uint8_t *) md,
+			SHA512_DIGEST_LENGTH);
+
+	// Verify HW key sigs.
+	if (memcmp(&(c.c->hw_pkey_a), &ECDSA_KEY_NULL, sizeof(ecc_key_t))) {
+		status = verify_signature("HW_key_A", md, SHA512_DIGEST_LENGTH,
+					  c.pd->hw_sig_a, c.c->hw_pkey_a) && status;
+	} else if (verbose) {
+		printf("HW_key_A is NULL, skipping signature check.\n");
+	}
+	if (memcmp(&(c.c->hw_pkey_d), &ECDSA_KEY_NULL, sizeof(ecc_key_t))) {
+		status = verify_dilithium_signature("HW_key_D", md, SHA512_DIGEST_LENGTH,
+						    c.pd->hw_sig_d, c.c->hw_pkey_d) && status;
+	} else if (verbose) {
+		printf("HW_key_D is NULL, skipping signature check.\n");
+	}
+	if (verbose) printf("\n");
+
+	// Get SW header hash.
+	p = sha3_512((uint8_t *) c.sh, sizeof(ROM_sw_header_v2_raw), md);
+	if (!p)
+		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
+	if (verbose) print_bytes((char *) "SW header hash = ", (uint8_t *) md,
+			SHA512_DIGEST_LENGTH);
+
+	// Verify SW key sigs.
+	if (memcmp(&(c.pd->sw_pkey_p), &ECDSA_KEY_NULL, sizeof(ecc_key_t))) {
+		status = verify_signature("SW_key_P", md, SHA512_DIGEST_LENGTH,
+					  c.ssig->sw_sig_p, c.pd->sw_pkey_p) && status;
+		sSwKeySize += sizeof(ecc_key_t);
+	} else if (verbose) {
+		printf("%s is NULL, skipping\n", "SW_key_P");
+	}
+	if (memcmp(&(c.pd->sw_pkey_s), &ECDSA_KEY_NULL, sizeof(ecc_key_t))) {
+		status = verify_dilithium_signature("SW_key_S", md, SHA512_DIGEST_LENGTH,
+						    c.ssig->sw_sig_s, c.pd->sw_pkey_s) && status;
+		sSwKeySize += sizeof(dilithium_key_t);
+	} else if (verbose) {
+		printf("%s is NULL, skipping\n", "SW_key_S");
+	}
+	if (verbose) printf("\n");
+
+	// Verify Payload hash.
+	status = getPayloadHash(fdin, be64_to_cpu(c.sh->payload_size), md, 2)
+			&& status;
+	if (verbose) print_bytes((char *) "Payload hash = ", (uint8_t *) md,
+			SHA512_DIGEST_LENGTH);
+
+	if (memcmp((uint8_t *) c.sh->payload_hash, md, SHA512_DIGEST_LENGTH)) {
+		if (verbose)
+			printf("Payload hash does not agree with value in SW header: MISMATCH\n");
+		status = false;
+	} else {
+		if (verbose)
+			printf("Payload hash agrees with value in SW header: VERIFIED ./\n");
+		status = status && true;
+	}
+	if (verbose) printf("\n");
+
+	// Verify SW keys hash.
+	p = sha3_512(c.pd->sw_pkey_p, sSwKeySize, md);
+	if (!p)
+		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
+	if (verbose) print_bytes((char *) "SW keys hash = ", (uint8_t *) md,
+			SHA512_DIGEST_LENGTH);
+
+	if (memcmp((uint8_t *) c.ph->payload_hash, md, SHA512_DIGEST_LENGTH)) {
+		if (verbose)
+			printf("SW keys hash does not agree with value in Prefix header: MISMATCH\n");
+		status = false;
+	} else {
+		if (verbose)
+			printf("SW keys hash agrees with value in Prefix header: VERIFIED ./\n");
+		status = status && true;
+	}
+	if (verbose) printf("\n");
+	return status;
+}
+
 static bool verify_container(struct parsed_stb_container c, char * verify)
 {
 	static int status = false;
@@ -365,6 +617,34 @@ static bool verify_container(struct parsed_stb_container c, char * verify)
 	void *p;
 
 	p = SHA512(c.c->hw_pkey_a, sizeof(ecc_key_t) * 3, md);
+	if (!p)
+		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
+	if (verbose) print_bytes((char *) "HW keys hash = ", (uint8_t *) md,
+			SHA512_DIGEST_LENGTH);
+
+	void *md_verify = alloca(SHA512_DIGEST_LENGTH);
+	getVerificationHash(verify, md_verify, SHA512_DIGEST_LENGTH);
+
+	if (memcmp((uint8_t *) md_verify, md, SHA512_DIGEST_LENGTH )) {
+		if (verbose)
+			printf("HW keys hash does not agree with provided value: MISMATCH\n");
+	} else {
+		if (verbose)
+			printf("HW keys hash agrees with provided value: VERIFIED ./\n");
+		status = true;
+	}
+	if (verbose) printf("\n");
+	return status;
+}
+
+static bool verify_container_v2(struct parsed_stb_container_v2 c, char * verify)
+{
+	static int status = false;
+
+	void *md = alloca(SHA512_DIGEST_LENGTH);
+	void *p;
+
+	p = sha3_512(c.c->hw_pkey_a, sizeof(ecc_key_t) + sizeof(dilithium_key_t), md);
 	if (!p)
 		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
 	if (verbose) print_bytes((char *) "HW keys hash = ", (uint8_t *) md,
@@ -468,7 +748,33 @@ static bool verify_signature(const char *moniker, const unsigned char *dgst,
 	return status;
 }
 
-static bool getPayloadHash(int fdin, uint64_t pl_sz_expected, unsigned char *md)
+static bool verify_dilithium_signature(const char *moniker, const unsigned char *dgst,
+				       int dgst_len, const dilithium_signature_t sig_raw, const dilithium_key_t key_raw)
+{
+	bool sRet = false;
+#ifdef ADD_DILITHIUM
+
+	int vRc = pqca_verify(sig_raw, sizeof(dilithium_signature_t),
+			      dgst, dgst_len,
+			      key_raw, sizeof(dilithium_key_t),
+			      (const unsigned char *)CR_OID_DIL_R2_8x7,
+			      CR_OID_DIL_R2_8x7_BYTES);
+	if (vRc == 1) {
+		if (verbose) printf("%s signature is good: VERIFIED ./\n", moniker);
+		sRet = true;
+	} else if (vRc == 0) {
+		if (verbose) printf("%s signature FAILED to verify.\n", moniker);
+		sRet = false;
+	} else {
+		die(EX_SOFTWARE, "%s", "Cannot Dilithium_do_verify");
+	}
+#else
+	die(EX_SOFTWARE, "%s", "Cannot Dilithium_do_verify");
+#endif
+	return sRet;
+}
+
+static bool getPayloadHash(int fdin, uint64_t pl_sz_expected, unsigned char *md, int container_version)
 {
 	struct stat st;
 	void *file;
@@ -480,8 +786,15 @@ static bool getPayloadHash(int fdin, uint64_t pl_sz_expected, unsigned char *md)
 		die(EX_NOINPUT, "Cannot stat payload file at descriptor: %d (%s)", fdin,
 				strerror(errno));
 
-	uint64_t pl_sz_actual = max(0, st.st_size - SECURE_BOOT_HEADERS_SIZE);
-
+	uint64_t pl_sz_actual = 0;
+	if (container_version == 1)
+	{
+		pl_sz_actual = max(0, st.st_size - SECURE_BOOT_HEADERS_SIZE);
+	}
+	else
+	{
+		pl_sz_actual = max(0, st.st_size - SECURE_BOOT_HEADERS_V2_SIZE);
+	}
 	if (verbose && (pl_sz_expected != pl_sz_actual))
 		printf("Payload expected size = %lu, actual size = %lu\n\n",
 				pl_sz_expected, pl_sz_actual);
@@ -491,9 +804,16 @@ static bool getPayloadHash(int fdin, uint64_t pl_sz_expected, unsigned char *md)
 		die(EX_OSERR, "Cannot mmap file at fd: %d, size: %lu (%s)", fdin,
 				st.st_size, strerror(errno));
 
-	p = SHA512(file + SECURE_BOOT_HEADERS_SIZE,
-			(params.ignore_remainder ?
-					min(pl_sz_actual, pl_sz_expected) : pl_sz_actual), md);
+	if (container_version == 1)
+	{
+		p = SHA512(file + SECURE_BOOT_HEADERS_SIZE,
+			   (params.ignore_remainder ?
+			    min(pl_sz_actual, pl_sz_expected) : pl_sz_actual), md);
+	} else {
+		p = sha3_512(file + SECURE_BOOT_HEADERS_V2_SIZE,
+			     (params.ignore_remainder ?
+			      min(pl_sz_actual, pl_sz_expected) : pl_sz_actual), md);
+	}
 	if (!p)
 		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
 
@@ -610,6 +930,7 @@ int main(int argc, char* argv[])
 	struct stat st;
 	void *container;
 	struct parsed_stb_container c;
+	struct parsed_stb_container_v2 c_v2;
 	int container_status = EX_OK;
 	int validate_status = UNATTEMPTED;
 	int verify_status = UNATTEMPTED;
@@ -734,23 +1055,44 @@ int main(int argc, char* argv[])
 		die(EX_OSERR, "Cannot mmap file at fd: %d, size: %lu (%s)", fdin,
 				st.st_size, strerror(errno));
 
-	if (!stb_is_container(container, SECURE_BOOT_HEADERS_SIZE))
+	if (!stb_is_container(container, st.st_size))
 		die(EX_DATAERR, "%s", "Not a container, missing magic number");
 
-	if (parse_stb_container(container, SECURE_BOOT_HEADERS_SIZE, &c) != 0)
-		die(EX_DATAERR, "%s", "Failed to parse container");
+	if (!stb_is_v2_container(container, st.st_size))
+	{
+		if (parse_stb_container(container, SECURE_BOOT_HEADERS_SIZE, &c) != 0)
+			die(EX_DATAERR, "%s", "Failed to parse container");
 
-	if (params.print_container)
-		display_container(c);
+		if (params.print_container)
+			display_container(c);
 
-	if (params.validate)
-		validate_status = validate_container(c, fdin);
+		if (params.validate)
+			validate_status = validate_container(c, fdin);
 
-	if (params.verify)
-		verify_status = verify_container(c, params.verify);
+		if (params.verify)
+			verify_status = verify_container(c, params.verify);
 
+	}
+	else if (stb_is_v2_container(container, st.st_size))
+	{
+#ifndef ADD_DILITHIUM
+		die(EX_SOFTWARE, "%s", "print-container must be built with ADD_DILITHIUM for v2 containers");
+#elif OPENSSL_VERSION_NUMBER < 0x10100000L
+		die(EX_NOINPUT, "Invalid container version due to downlevel openssl version : %d", 2);
+#endif
+		if (parse_stb_container_v2(container, SECURE_BOOT_HEADERS_V2_SIZE, &c_v2) != 0)
+			die(EX_DATAERR, "%s", "Failed to parse container");
+
+		if (params.print_container)
+			display_container_v2(c_v2);
+
+		if (params.validate)
+			validate_status = validate_container_v2(c_v2, fdin);
+
+		if (params.verify)
+			verify_status = verify_container_v2(c_v2, params.verify);
+	}
 	if ((validate_status != UNATTEMPTED) || (verify_status != UNATTEMPTED)) {
-
 		printf("Container validity check %s. Container verification check %s.\n\n",
 				(validate_status == UNATTEMPTED) ?
 						"not attempted" :
