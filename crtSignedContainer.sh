@@ -57,8 +57,9 @@ usage () {
     echo "	    --validate          validate the container after build"
     echo "	    --verify            verify the container after build, against the provided"
     echo "	                        value, or filename containing value, of the HW Keys hash"
-    echo "	    --sign-project-config   INI file containing configuration properties (options"
-    echo "	                            set here override those set via cmdline or environment)"
+    echo "	    --sign-project-config   INI file(s) containing configuration properties. Multiple"
+    echo "	                            files should be comma separated \"file1.ini,file2.ini,etc\"."
+    echo "	                            Options set here override those set via cmdline or environment"
     echo "	-S, --security-version  Integer, sets the security version container field"
     echo "  -V, --container-version Container version to generate (1, 2)"
     echo ""
@@ -274,26 +275,34 @@ checkKey () {
     fi
 }
 
+# Parse a list of INI files in the format "file1.ini,file2.ini,file3.ini,etc"
 parseIni () {
-    local IFS=" ="
-    local section property value
+    local INI_FILE_LIST="$1"
 
-    while read -r property value
+    local IFS=","
+    for INI_FILE in $INI_FILE_LIST
     do
-        if echo "$property" | egrep -q "^;"
-        then
-            # This is a comment, skip it
-            continue
-        elif echo "$property" | egrep -q "\[.*]"
-        then
-            # This is a section header, read it
-            section=$(echo "$property" | tr -d [] )
-        elif test "$value"
-        then
-            # This is a property, set it
-            eval "${section}_${property}=\"$value\""
-        fi
-    done < "$1"
+        test ! -f "$INI_FILE" && die "Can't open INI file: $INI_FILE"
+        local IFS=" ="
+        local section property value
+
+        while read -r property value
+        do
+            if echo "$property" | egrep -q "^;"
+            then
+                # This is a comment, skip it
+                continue
+            elif echo "$property" | egrep -q "\[.*]"
+            then
+                # This is a section header, read it
+                section=$(echo "$property" | tr -d [] )
+            elif test "$value"
+            then
+                # This is a property, set it
+                eval "${section}_${property}=\"$value\""
+            fi
+        done < $INI_FILE
+    done
 }
 
 findArtifact () {
@@ -457,8 +466,6 @@ fi
 
 if [ "$PROJECT_INI" ]
 then
-    test ! -f "$PROJECT_INI" && die "Can't open INI file: $PROJECT_INI"
-
     signer_userid=""
     signer_sshkey_file=""
     signer_epwd_file=""
