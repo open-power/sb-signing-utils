@@ -61,7 +61,8 @@ usage () {
     echo "	                            files should be comma separated \"file1.ini,file2.ini,etc\"."
     echo "	                            Options set here override those set via cmdline or environment"
     echo "	-S, --security-version  Integer, sets the security version container field"
-    echo "  -V, --container-version Container version to generate (1, 2)"
+    echo "	-V, --container-version Container version to generate (1, 2)"
+    echo "	-P  --password          ENV variable containing the sf_client password to pass to sf_client via 'sf_client --password"
     echo ""
     exit 1
 }
@@ -385,12 +386,13 @@ for arg in "$@"; do
     "--verify")     set -- "$@" "-9" ;;
     "--container-version") set -- "$@" "-V" ;;
     "--fw-ecid")    set -- "$@" "-@" ;;
+    "--password")    set -- "$@" "-P" ;;
     *)              set -- "$@" "$arg"
   esac
 done
 
 # Process command-line arguments
-while getopts -- ?hdvw:a:b:c:0:p:q:r:1:f:F:o:l:i:m:k:s:L:S:V:4:5:6:7:89:@: opt
+while getopts -- ?hdvw:a:b:c:0:p:q:r:1:f:F:o:l:i:m:k:s:L:S:P:V:4:5:6:7:89:@: opt
 do
   case "${opt:?}" in
     v) SB_VERBOSE="TRUE";;
@@ -422,6 +424,7 @@ do
     8) SB_VALIDATE="TRUE";;
     9) SB_VERIFY="$OPTARG";;
     V) CONTAINER_VERSION="$OPTARG";;
+    P) SF_PWD_ENV="$OPTARG";;
     h|\?) usage;;
   esac
 done
@@ -634,6 +637,8 @@ test "$SB_VERBOSE" && SF_DEBUG_ARGS=" -v"
 test "$SB_DEBUG" && SF_DEBUG_ARGS="$SF_DEBUG_ARGS -d -stdout"
 test $CONTAINER_VERSION == 2 && DIGEST_ARG="-sha3-512"
 
+test "$SF_PWD_ENV" && SF_COMMON_ARGS="$SF_COMMON_ARGS --password $SF_PWD_ENV"
+
 #
 # Set defaults for signframework project basenames
 #
@@ -785,7 +790,7 @@ then
             then
                 # Output is pubkey in raw format
                 KEYFILE="$KEYFILE_BASE.raw"
-                sf_client $SF_DEBUG_ARGS -project "$SF_GETPUBKEY_PROJECT_BASE" \
+                sf_client $SF_DEBUG_ARGS $SF_COMMON_ARGS -project "$SF_GETPUBKEY_PROJECT_BASE" \
                           -param "-signproject $SF_PROJECT" \
                           -epwd "$SF_EPWD" -comments "Requesting $SF_PROJECT" \
                           -url sftp://$SF_USER@$SF_SERVER -pkey "$SF_SSHKEY" \
@@ -839,7 +844,7 @@ then
             if [ "$KMS" == "signframework" ]
             then
                 KEYFILE="$KEYFILE_BASE.raw"
-                sf_client $SF_DEBUG_ARGS -project "$SF_GETPUBKEY_PROJECT_BASE" \
+                sf_client $SF_DEBUG_ARGS $SF_COMMON_ARGS -project "$SF_GETPUBKEY_PROJECT_BASE" \
                           -param "-signproject $SF_PROJECT" \
                           -epwd "$SF_EPWD" -comments "Requesting $SF_PROJECT" \
                           -url sftp://$SF_USER@$SF_SERVER -pkey "$SF_SSHKEY" \
@@ -1060,7 +1065,7 @@ then
             then
                 # Output is signature in raw format
                 SIGFILE="$SIGFILE_BASE.raw"
-                sf_client $SF_DEBUG_ARGS -project $SF_PROJECT -epwd "$SF_EPWD" \
+                sf_client $SF_DEBUG_ARGS $SF_COMMON_ARGS -project $SF_PROJECT -epwd "$SF_EPWD" \
                           -comments "Requesting sig for $SF_PROJECT" \
                           -url sftp://$SF_USER@$SF_SERVER -pkey "$SF_SSHKEY" \
                           -payload  "$T/prefix_hdr" -o "$T/$SIGFILE"
@@ -1119,7 +1124,7 @@ then
             then
                 # Output is signature in raw format
                 SIGFILE="$SIGFILE_BASE.raw"
-                sf_client $SF_DEBUG_ARGS -project $SF_PROJECT -epwd "$SF_EPWD" \
+                sf_client $SF_DEBUG_ARGS $SF_COMMON_ARGS -project $SF_PROJECT -epwd "$SF_EPWD" \
                           -comments "Requesting sig for $LABEL from $SF_PROJECT" \
                           -url sftp://$SF_USER@$SF_SERVER -pkey "$SF_SSHKEY" \
                           -payload "$T/software_hdr.md.bin" -o "$T/$SIGFILE"
