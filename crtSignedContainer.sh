@@ -472,6 +472,7 @@ then
     signer_userid=""
     signer_sshkey_file=""
     signer_epwd_file=""
+    signer_sshkey_passwd_env_var=""
     server_hostname=""
     signtool_validate=""
     signtool_verify=""
@@ -506,6 +507,9 @@ then
 
     test "$pkcs11_module" && SB_PKCS11_MODULE="$pkcs11_module"
     test "$pkcs11_token" && SB_PKCS11_TOKEN="$pkcs11_token"
+
+    # If SF_PWD_ENV was not specified on the CLI option, use the value defined in the .ini
+    ! test "$SF_PWD_ENV" && test "$signer_sshkey_passwd_env_var" && SF_PWD_ENV="$signer_sshkey_passwd_env_var"
 fi
 
 #
