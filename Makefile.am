@@ -26,6 +26,9 @@
 ACLOCAL_AMFLAGS = -I m4
 
 bin_PROGRAMS = create-container print-container hashkeys
+if ADD_DILITHIUM
+bin_PROGRAMS += gendilkey gendilsig verifydilsig extractdilkey
+endif
 
 dist_bin_SCRIPTS = bulkSign.sh crtSignedContainer.sh sign-with-local-keys.sh
 
@@ -42,9 +45,10 @@ create_container_LDADD = -lssl -lcrypto
 print_container_SOURCES = \
 	print-container.c
 
-print_container_CPPFLAGS = $(AM_CPPFLAGS) -I. -g3 -std=gnu99
+print_container_CPPFLAGS = $(AM_CPPFLAGS) -I. -g3 -std=gnu99 ${DIL_CPPFLAGS}
+
 print_container_LDFLAGS =
-print_container_LDADD = -lssl -lcrypto
+print_container_LDADD = -lssl -lcrypto ${DIL_LDADD}
 
 hashkeys_SOURCES = \
 	hashkeys.c
@@ -52,3 +56,26 @@ hashkeys_SOURCES = \
 hashkeys_CPPFLAGS = $(AM_CPPFLAGS) -I. -g3 -std=gnu99
 hashkeys_LDFLAGS =
 hashkeys_LDADD = -lssl -lcrypto
+
+
+if ADD_DILITHIUM
+gendilkey_SOURCES = gendilkey.c
+gendilkey_CPPFLAGS = $(AM_CPPFLAGS) -I. ${DIL_CPPFLAGS} -g3 -std=gnu99
+gendilkey_LDFLAGS =
+gendilkey_LDADD = ${DIL_LDADD}
+
+gendilsig_SOURCES = gendilsig.c
+gendilsig_CPPFLAGS = $(AM_CPPFLAGS) -I. ${DIL_CPPFLAGS} -g3 -std=gnu99
+gendilsig_LDFLAGS =
+gendilsig_LDADD = ${DIL_LDADD}
+
+verifydilsig_SOURCES = verifydilsig.c
+verifydilsig_CPPFLAGS = $(AM_CPPFLAGS) -I. ${DIL_CPPFLAGS} -g3 -std=gnu99
+verifydilsig_LDFLAGS =
+verifydilsig_LDADD = ${DIL_LDADD}
+
+extractdilkey_SOURCES = extractdilkey.c
+extractdilkey_CPPFLAGS = $(AM_CPPFLAGS) -I. ${DIL_CPPFLAGS} -g3 -std=gnu99
+extractdilkey_LDFLAGS =
+extractdilkey_LDADD = ${DIL_LDADD}
+endif

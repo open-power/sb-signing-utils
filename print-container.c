@@ -48,8 +48,7 @@
 #include "container.h"
 
 #ifdef ADD_DILITHIUM
-#include "pqalgs.h"
-#include "crystals-oids.h"
+#include "mlca2.h"
 #endif
 
 char *progname;
@@ -84,7 +83,8 @@ static bool verify_signature(const char *moniker, const unsigned char *dgst,
 static bool verify_dilithium_signature(const char *moniker, const unsigned char *dgst,
 				       int dgst_len, const dilithium_signature_t sig_raw, const dilithium_key_t key_raw);
 
-unsigned char *sha3_512(const unsigned char *data, size_t len, unsigned char *md)
+
+unsigned char *ossl_sha3_512(const unsigned char *data, size_t len, unsigned char *md)
 {
 #if OPENSSL_VERSION_NUMBER >= 0x10100000L
 	const EVP_MD* alg = EVP_sha3_512();
@@ -362,7 +362,7 @@ static void display_container_v2(struct parsed_stb_container_v2 c)
 	print_bytes((char *) "hw_pkey_d: ", (uint8_t *) c.c->hw_pkey_d,
 			sizeof(c.c->hw_pkey_d));
 
-	p = sha3_512(c.c->hw_pkey_a, sizeof(ecc_key_t) + sizeof(dilithium_key_t), md);
+	p = ossl_sha3_512(c.c->hw_pkey_a, sizeof(ecc_key_t) + sizeof(dilithium_key_t), md);
 	if (!p)
 		die(EX_SOFTWARE, "%s", "Cannot get SHA3-512");
 	printf("HW keys hash (calculated):\n");
@@ -527,7 +527,7 @@ static bool validate_container_v2(struct parsed_stb_container_v2 c, int fdin)
 	size_t sSwKeySize = 0;
 
 	// Get Prefix header hash.
-	p = sha3_512((uint8_t *) c.ph, sizeof(ROM_prefix_header_v2_raw), md);
+	p = ossl_sha3_512((uint8_t *) c.ph, sizeof(ROM_prefix_header_v2_raw), md);
 	if (!p)
 		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
 	if (verbose) print_bytes((char *) "PR header hash = ", (uint8_t *) md,
@@ -549,7 +549,7 @@ static bool validate_container_v2(struct parsed_stb_container_v2 c, int fdin)
 	if (verbose) printf("\n");
 
 	// Get SW header hash.
-	p = sha3_512((uint8_t *) c.sh, sizeof(ROM_sw_header_v2_raw), md);
+	p = ossl_sha3_512((uint8_t *) c.sh, sizeof(ROM_sw_header_v2_raw), md);
 	if (!p)
 		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
 	if (verbose) print_bytes((char *) "SW header hash = ", (uint8_t *) md,
@@ -590,7 +590,7 @@ static bool validate_container_v2(struct parsed_stb_container_v2 c, int fdin)
 	if (verbose) printf("\n");
 
 	// Verify SW keys hash.
-	p = sha3_512(c.pd->sw_pkey_p, sSwKeySize, md);
+	p = ossl_sha3_512(c.pd->sw_pkey_p, sSwKeySize,md );
 	if (!p)
 		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
 	if (verbose) print_bytes((char *) "SW keys hash = ", (uint8_t *) md,
@@ -644,7 +644,7 @@ static bool verify_container_v2(struct parsed_stb_container_v2 c, char * verify)
 	void *md = alloca(SHA512_DIGEST_LENGTH);
 	void *p;
 
-	p = sha3_512(c.c->hw_pkey_a, sizeof(ecc_key_t) + sizeof(dilithium_key_t), md);
+	p = ossl_sha3_512(c.c->hw_pkey_a, sizeof(ecc_key_t) + sizeof(dilithium_key_t), md);
 	if (!p)
 		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
 	if (verbose) print_bytes((char *) "HW keys hash = ", (uint8_t *) md,
@@ -753,20 +753,44 @@ static bool verify_dilithium_signature(const char *moniker, const unsigned char 
 {
 	bool sRet = false;
 #ifdef ADD_DILITHIUM
+    mlca_ctx_t sCtx;
+	MLCA_RC    sMlRc = 0;
 
-	int vRc = pqca_verify(sig_raw, sizeof(dilithium_signature_t),
-			      dgst, dgst_len,
-			      key_raw, sizeof(dilithium_key_t),
-			      (const unsigned char *)CR_OID_DIL_R2_8x7,
-			      CR_OID_DIL_R2_8x7_BYTES);
-	if (vRc == 1) {
-		if (verbose) printf("%s signature is good: VERIFIED ./\n", moniker);
-		sRet = true;
-	} else if (vRc == 0) {
-		if (verbose) printf("%s signature FAILED to verify.\n", moniker);
-		sRet = false;
-	} else {
-		die(EX_SOFTWARE, "%s", "Cannot Dilithium_do_verify");
+	sMlRc = mlca_init(&sCtx,1,0);
+	if (sMlRc)
+	{
+		printf("**** ERROR : Failed mlca_init : %d\n", sMlRc);
+	}
+	if (0 == sMlRc)
+	{
+		sMlRc = mlca_set_alg(&sCtx, MLCA_ALGORITHM_SIG_DILITHIUM_R2_8x7_OID, OPT_LEVEL_AUTO);
+		if (sMlRc)
+		{
+			printf("**** ERROR : Failed mlca_set_alg : %d\n", sMlRc);
+		}
+	}
+	if (0 == sMlRc)
+	{
+		sMlRc = mlca_set_encoding_by_idx(&sCtx, 0);
+		if (sMlRc)
+		{
+			printf("**** ERROR : Failed mlca_set_encoding_by_name_oid : %d\n", sMlRc);
+		}
+	}
+	if (0 == sMlRc)
+	{
+		printf("Verifying Dilthium R2 8x7 signature ...\n");
+		sMlRc = mlca_sig_verify(&sCtx, dgst, dgst_len, sig_raw, sizeof(dilithium_signature_t), key_raw);
+		if (1 != sMlRc)
+		{
+			if (verbose) printf("%s signature FAILED to verify.\n", moniker);
+			sRet = false;
+		}
+		else
+		{
+			if (verbose) printf("%s signature is good: VERIFIED ./\n", moniker);
+			sRet = true;
+		}
 	}
 #else
 	die(EX_SOFTWARE, "%s", "Cannot Dilithium_do_verify");
@@ -810,7 +834,7 @@ static bool getPayloadHash(int fdin, uint64_t pl_sz_expected, unsigned char *md,
 			   (params.ignore_remainder ?
 			    min(pl_sz_actual, pl_sz_expected) : pl_sz_actual), md);
 	} else {
-		p = sha3_512(file + SECURE_BOOT_HEADERS_V2_SIZE,
+		p = ossl_sha3_512(file + SECURE_BOOT_HEADERS_V2_SIZE,
 			     (params.ignore_remainder ?
 			      min(pl_sz_actual, pl_sz_expected) : pl_sz_actual), md);
 	}

@@ -5,4 +5,11 @@ create-container
 hashkeys
 Makefile
 print-container
+gendilkey
+gendilsig
+verifydilsig
+extractdilkey
 bin/
+*.o
+*.a
+
