@@ -14,6 +14,11 @@ case "$(echo "$1" | tr "[:upper:]" "[:lower:]")" in
     ./configure && \
     make
     ;;
+  aix)
+    cp -p config.h.aix config.h
+    cp -p Makefile.aix Makefile
+    gnu-make
+    ;;
   *)
     echo "Unknown build type: $1"
     exit 1

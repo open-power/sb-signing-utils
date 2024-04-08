@@ -1,0 +1,28 @@
+CXX=xlC
+
+all: create-container print-container hashkeys
+
+create-container: create-container.c
+	$(CXX) -I. $^ -o $@ -lssl -lcrypto
+
+print-container: print-container.c
+	$(CXX) -I. $^ -o $@ -lssl -lcrypto
+
+hashkeys: hashkeys.c
+	$(CXX) -I. $^ -o $@ -lssl -lcrypto
+
+clean:
+	$(RM) create-container print-container hashkeys
+
+prefix = /usr/local
+exec_prefix = $(prefix)
+bindir = $(exec_prefix)/bin
+
+install:
+	cp create-container print-container hashkeys "$(bindir)"
+	cp bulkSign.sh crtSignedContainer.sh sign-with-local-keys.sh "$(bindir)"
+
+uninstall:
+	cd "$(bindir)" && $(RM) create-container print-container hashkeys
+	cd "$(bindir)" && $(RM) bulkSign.sh crtSignedContainer.sh sign-with-local-keys.sh
+

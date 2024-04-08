@@ -14,6 +14,9 @@ case "$(echo "$1" | tr "[:upper:]" "[:lower:]")" in
     rm -f libtool Makefile.in Makefile stamp-h1
     rm -rf -- autom4te.cache/ *.m4 m4/*
     ;;
+  aix)
+    gnu-make clean
+    ;;
   *)
     echo "Unknown build type: $1"
     exit 1
