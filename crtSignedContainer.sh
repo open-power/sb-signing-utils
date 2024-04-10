@@ -794,10 +794,13 @@ then
             then
                 # Output is pubkey in raw format
                 KEYFILE="$KEYFILE_BASE.raw"
-                sf_client $SF_DEBUG_ARGS $SF_COMMON_ARGS -project "$SF_GETPUBKEY_PROJECT_BASE" \
-                          -param "-signproject $SF_PROJECT" \
-                          -epwd "$SF_EPWD" -comments "Requesting $SF_PROJECT" \
-                          -url sftp://$SF_USER@$SF_SERVER -pkey "$SF_SSHKEY" \
+                sf_client $SF_DEBUG_ARGS $SF_COMMON_ARGS \
+                          -p "$SF_GETPUBKEY_PROJECT_BASE" \
+                          -r "-signproject $SF_PROJECT" \
+                          -e "$SF_EPWD" \
+                          -c "Requesting $SF_PROJECT" \
+                          -u sftp://$SF_USER@$SF_SERVER \
+                          -k "$SF_SSHKEY" \
                           -o "$T/$KEYFILE"
 
             elif [ "$KMS" == "pkcs11" ]
@@ -848,10 +851,13 @@ then
             if [ "$KMS" == "signframework" ]
             then
                 KEYFILE="$KEYFILE_BASE.raw"
-                sf_client $SF_DEBUG_ARGS $SF_COMMON_ARGS -project "$SF_GETPUBKEY_PROJECT_BASE" \
-                          -param "-signproject $SF_PROJECT" \
-                          -epwd "$SF_EPWD" -comments "Requesting $SF_PROJECT" \
-                          -url sftp://$SF_USER@$SF_SERVER -pkey "$SF_SSHKEY" \
+                sf_client $SF_DEBUG_ARGS $SF_COMMON_ARGS \
+                          -p "$SF_GETPUBKEY_PROJECT_BASE" \
+                          -r "-signproject $SF_PROJECT" \
+                          -e "$SF_EPWD" \
+                          -c "Requesting $SF_PROJECT" \
+                          -u sftp://$SF_USER@$SF_SERVER \
+                          -k "$SF_SSHKEY" \
                           -o "$T/$KEYFILE"
 
             elif [ "$KMS" == "pkcs11" ]
@@ -1069,10 +1075,14 @@ then
             then
                 # Output is signature in raw format
                 SIGFILE="$SIGFILE_BASE.raw"
-                sf_client $SF_DEBUG_ARGS $SF_COMMON_ARGS -project $SF_PROJECT -epwd "$SF_EPWD" \
-                          -comments "Requesting sig for $SF_PROJECT" \
-                          -url sftp://$SF_USER@$SF_SERVER -pkey "$SF_SSHKEY" \
-                          -payload  "$T/prefix_hdr" -o "$T/$SIGFILE"
+                sf_client $SF_DEBUG_ARGS $SF_COMMON_ARGS \
+                          -p $SF_PROJECT \
+                          -e "$SF_EPWD" \
+                          -c "Requesting sig for $SF_PROJECT" \
+                          -u sftp://$SF_USER@$SF_SERVER \
+                          -k "$SF_SSHKEY" \
+                          -i  "$T/prefix_hdr" \
+                          -o "$T/$SIGFILE"
 
             elif [ "$KMS" == "pkcs11" ]
             then
@@ -1128,10 +1138,14 @@ then
             then
                 # Output is signature in raw format
                 SIGFILE="$SIGFILE_BASE.raw"
-                sf_client $SF_DEBUG_ARGS $SF_COMMON_ARGS -project $SF_PROJECT -epwd "$SF_EPWD" \
-                          -comments "Requesting sig for $LABEL from $SF_PROJECT" \
-                          -url sftp://$SF_USER@$SF_SERVER -pkey "$SF_SSHKEY" \
-                          -payload "$T/software_hdr.md.bin" -o "$T/$SIGFILE"
+                sf_client $SF_DEBUG_ARGS $SF_COMMON_ARGS \
+                          -p $SF_PROJECT \
+                          -e "$SF_EPWD" \
+                          -c "Requesting sig for $LABEL from $SF_PROJECT" \
+                          -u sftp://$SF_USER@$SF_SERVER \
+                          -k "$SF_SSHKEY" \
+                          -i "$T/software_hdr.md.bin" \
+                          -o "$T/$SIGFILE"
 
             elif [ "$KMS" == "pkcs11" ]
             then
