@@ -1,16 +1,30 @@
+/* Copyright 2024 IBM Corp.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * 	http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+ * implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #include "crystals-oids.h"
+#include "dilutils.h"
 #include "mlca2.h"
 #include "pqalgs.h"
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #define BUF_SIZE 8000
-
-int readFile(unsigned char* data, size_t* length, const char* filename);
-int writeFile(const unsigned char* data, size_t length, const char* filename);
 
 int main(int argc, char** argv)
 {
@@ -23,14 +37,14 @@ int main(int argc, char** argv)
     const char* sPrivKeyFile      = NULL;
     const char* sDigestFile       = NULL;
     const char* sSigFile          = NULL;
-    int         sPrintHelp        = 0;
-    int         sVerbose          = 0;
+    bool        sPrintHelp        = false;
+    bool        sVerbose          = false;
 
     for(sIdx = 1; sIdx < argc; sIdx++)
     {
         if(strcmp(argv[sIdx], "-h") == 0)
         {
-            sPrintHelp = 1;
+            sPrintHelp = true;
         }
         else if(strcmp(argv[sIdx], "-i") == 0)
         {
@@ -49,22 +63,22 @@ int main(int argc, char** argv)
         }
         else if(strcmp(argv[sIdx], "-v") == 0)
         {
-            sVerbose = 1;
+            sVerbose = true;
         }
         else
         {
             printf("**** ERROR : Unknown parameter : %s\n", argv[sIdx]);
-            sPrintHelp = 1;
+            sPrintHelp = true;
         }
     }
 
-    if(NULL == sDigestFile || NULL == sPrivKeyFile || NULL == sSigFile)
+    if(!sPrintHelp && (NULL == sDigestFile || NULL == sPrivKeyFile || NULL == sSigFile))
     {
         printf("**** ERROR : Missing input parms\n");
-        sPrintHelp = 1;
+        sPrintHelp = true;
     }
 
-    if(0 != sPrintHelp)
+    if(sPrintHelp)
     {
         printf("\ngendilsig -i <input digest> -k <private key> -o <output filename>\n");
         exit(0);
@@ -77,8 +91,14 @@ int main(int argc, char** argv)
     unsigned char* sPrivKey     = malloc(BUF_SIZE);
     unsigned char* sWirePrivKey = malloc(BUF_SIZE);
 
+    if(!sDigest || !sSignature || !sPrivKey || !sWirePrivKey)
+    {
+        printf("**** ERROR : Allocation Failure\n");
+        exit(1);
+    }
+
     sRc = readFile(sDigest, &sDigestBytes, sDigestFile);
-    if(0 == sRc && (512 / 8) != sDigestBytes)
+    if(0 == sRc && SHA3_512_DigestSize != sDigestBytes)
     {
         printf("**** ERROR : %s doesn't appear to be a SHA3-512 digest\n", sDigestFile);
         sRc = 1;
@@ -93,7 +113,7 @@ int main(int argc, char** argv)
     if(0 == sRc)
     {
         // Raw private key size for dilithium r2 8/7
-        if(5136 == sWirePrivKeyBytes)
+        if(RawDilithiumR28x7PrivateKeySize == sWirePrivKeyBytes)
         {
             if(sVerbose)
                 printf("gendilsig: Found raw private key\n");
@@ -110,7 +130,7 @@ int main(int argc, char** argv)
             unsigned int sWireType = 0;
             sRc                    = mlca_wire2key(
                 sPrivKey, sPrivKeyBytes, &sWireType, sWirePrivKey, sWirePrivKeyBytes, NULL, ~0);
-            if(0 >= sRc || 5136 != sRc)
+            if(0 >= sRc || RawDilithiumR28x7PrivateKeySize != sRc)
             {
                 printf("**** ERROR: Unable to convert raw private key : %d\n", sRc);
                 sRc = 1;
@@ -154,16 +174,6 @@ int main(int argc, char** argv)
     if(0 == sRc)
     {
         printf("Generating Dilthium R2 8x7 signature ...\n");
-#if 0
-		sMlRc = mlca_sig_sign(&sCtx, sSignature, &sSignatureBytes,
-							sDigest, sDigestBytes,
-							sPrivKey);
-		if (sMlRc)
-		{
-			printf("**** ERROR: Failure during signature generation : %d\n", sMlRc);
-			sRc = 1;
-		}
-#else
         int gRc = mlca_sign(sSignature,
                             sSignatureBytes, /// validate RC
                             sDigest,
@@ -181,8 +191,6 @@ int main(int argc, char** argv)
         {
             sSignatureBytes = gRc;
         }
-
-#endif
     }
 
     if(0 == sRc)
@@ -199,105 +207,4 @@ int main(int argc, char** argv)
     mlca_ctx_free(&sCtx);
 
     exit(sRc);
-}
-
-int readFile(unsigned char* data, size_t* length, const char* filename)
-{
-    int    sRc    = 0;
-    size_t sBytes = 0;
-
-    FILE* sFile = fopen(filename, "rb");
-    if(NULL == sFile)
-    {
-        printf("**** ERROR: Unable to open file : %s\n", filename);
-        sRc = 1;
-    }
-
-    /* Verify we have enough space */
-    if(0 == sRc)
-    {
-        sRc = fseek(sFile, 0, SEEK_END);
-        if(-1 == sRc)
-        {
-            printf("**** ERROR : Unable to find end of : %s\n", filename);
-            sRc = 1;
-        }
-    }
-
-    if(0 == sRc)
-    {
-        long sLen = ftell(sFile);
-        if(-1 == sLen)
-        {
-            printf("**** ERROR : Unable to determine length of %s\n", filename);
-            sRc = 1;
-        }
-        else if(*length < (size_t)sLen)
-        {
-            printf("**** ERROR : Not enough space for contents of file E:%lu A:%lu : %s\n",
-                   (size_t)sLen,
-                   *length,
-                   filename);
-            sRc = 1;
-        }
-        else
-        {
-            *length = (size_t)sLen;
-        }
-    }
-
-    if(0 == sRc)
-    {
-        fseek(sFile, 0, SEEK_SET);
-
-        sBytes = fread(data, 1, *length, sFile);
-        if(sBytes != *length)
-        {
-            printf("**** ERROR: Failure reading from file : %s\n", filename);
-            sRc = 1;
-        }
-    }
-    if(NULL != sFile)
-    {
-        if(fclose(sFile))
-        {
-            printf("**** ERROR: Failure closing file : %s\n", filename);
-            if(0 == sRc)
-                sRc = 1;
-        }
-    }
-    return sRc;
-}
-
-int writeFile(const unsigned char* data, size_t length, const char* filename)
-{
-    int    sRc    = 0;
-    size_t sBytes = 0;
-
-    FILE* sFile = fopen(filename, "wb");
-    if(NULL == sFile)
-    {
-        printf("**** ERROR: Unable to open file : %s\n", filename);
-        sRc = 1;
-    }
-
-    if(0 == sRc)
-    {
-        sBytes = fwrite(data, 1, length, sFile);
-        if(sBytes != length)
-        {
-            printf("**** ERROR: Failure writing to file : %s\n", filename);
-            sRc = 1;
-        }
-    }
-    if(NULL != sFile)
-    {
-        if(fclose(sFile))
-        {
-            printf("**** ERROR: Failure closing file : %s\n", filename);
-            if(0 == sRc)
-                sRc = 1;
-        }
-    }
-    return sRc;
 }

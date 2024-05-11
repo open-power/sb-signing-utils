@@ -1,14 +1,29 @@
+/* Copyright 2024 IBM Corp.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * 	http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+ * implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
+#include "dilutils.h"
 #include "mlca2.h"
 #include "pqalgs.h"
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #define BUF_SIZE 8000
-
-int writeFile(const unsigned char* data, size_t length, const char* filename);
 
 int main(int argc, char** argv)
 {
@@ -18,7 +33,7 @@ int main(int argc, char** argv)
     size_t      sWirePubKeyBytes  = BUF_SIZE;
     int         sIdx              = 0;
     int         sRc               = 0;
-    int         sPrintHelp        = 0;
+    bool        sPrintHelp        = false;
     const char* sPubKeyFile       = NULL;
     const char* sPrivKeyFile      = NULL;
 
@@ -26,7 +41,7 @@ int main(int argc, char** argv)
     {
         if(strcmp(argv[sIdx], "-h") == 0)
         {
-            sPrintHelp = 1;
+            sPrintHelp = true;
         }
         else if(strcmp(argv[sIdx], "-pub") == 0)
         {
@@ -41,17 +56,17 @@ int main(int argc, char** argv)
         else
         {
             printf("**** ERROR : Unknown parameter : %s\n", argv[sIdx]);
-            sPrintHelp = 1;
+            sPrintHelp = true;
         }
     }
 
-    if(NULL == sPubKeyFile || NULL == sPrivKeyFile)
+    if(!sPrintHelp && (NULL == sPubKeyFile || NULL == sPrivKeyFile))
     {
         printf("**** ERROR : Missing input parms\n");
-        sPrintHelp = 1;
+        sPrintHelp = true;
     }
 
-    if(0 != sPrintHelp)
+    if(sPrintHelp)
     {
         printf("\ngendilkey -priv <private key file> -pub <public key file>\n");
         exit(0);
@@ -63,6 +78,12 @@ int main(int argc, char** argv)
     unsigned char* sPrivKey     = malloc(BUF_SIZE);
     unsigned char* sWirePubKey  = malloc(BUF_SIZE);
     unsigned char* sWirePrivKey = malloc(BUF_SIZE);
+
+    if(!sPubKey || !sPrivKey || !sWirePubKey || !sWirePrivKey)
+    {
+        printf("**** ERROR : Allocation Failure\n");
+        exit(1);
+    }
 
     if(0 == sRc)
     {
@@ -165,37 +186,4 @@ int main(int argc, char** argv)
 
     mlca_ctx_free(&sCtx);
     exit(sRc);
-}
-
-int writeFile(const unsigned char* data, size_t length, const char* filename)
-{
-    int    sRc = 0;
-    size_t sBytes;
-
-    FILE* sFile = fopen(filename, "wb");
-    if(NULL == sFile)
-    {
-        printf("**** ERROR: Unable to open file : %s\n", filename);
-        sRc = 1;
-    }
-
-    if(0 == sRc)
-    {
-        sBytes = fwrite(data, 1, length, sFile);
-        if(sBytes != length)
-        {
-            printf("**** ERROR: Failure writing to file : %s\n", filename);
-            sRc = 1;
-        }
-    }
-    if(NULL != sFile)
-    {
-        if(fclose(sFile))
-        {
-            printf("**** ERROR: Failure closing file : %s\n", filename);
-            if(0 == sRc)
-                sRc = 1;
-        }
-    }
-    return sRc;
 }

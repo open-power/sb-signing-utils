@@ -1,16 +1,30 @@
+/* Copyright 2024 IBM Corp.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * 	http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+ * implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #include "crystals-oids.h"
+#include "dilutils.h"
 #include "mlca2.h"
 #include "pqalgs.h"
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #define BUF_SIZE 8000
-
-int readFile(unsigned char* data, size_t* length, const char* filename);
-int writeFile(const unsigned char* data, size_t length, const char* filename);
 
 int main(int argc, char** argv)
 {
@@ -18,20 +32,21 @@ int main(int argc, char** argv)
     size_t      sKeyBytes  = BUF_SIZE;
     int         sRc        = 0;
     int         sIdx       = 0;
-    int         sPubIn     = 0;
-    int         sPubOut    = 0;
-    int         sRawIn     = 0;
-    int         sRawOut    = 0;
+    int         sMlcaRet   = 0;
+    bool        sPubIn     = false;
+    bool        sPubOut    = false;
+    bool        sRawIn     = false;
+    bool        sRawOut    = false;
     const char* sInFile    = NULL;
     const char* sOutFile   = NULL;
-    int         sPrintHelp = 0;
-    int         sVerbose   = 0;
+    bool        sPrintHelp = false;
+    bool        sVerbose   = false;
 
     for(sIdx = 1; sIdx < argc; sIdx++)
     {
         if(strcmp(argv[sIdx], "-h") == 0)
         {
-            sPrintHelp = 1;
+            sPrintHelp = true;
         }
         else if(strcmp(argv[sIdx], "-k") == 0)
         {
@@ -45,38 +60,38 @@ int main(int argc, char** argv)
         }
         else if(strcmp(argv[sIdx], "-pubin") == 0)
         {
-            sPubIn = 1;
+            sPubIn = true;
         }
         else if(strcmp(argv[sIdx], "-pubout") == 0)
         {
-            sPubOut = 1;
+            sPubOut = true;
         }
         else if(strcmp(argv[sIdx], "-outraw") == 0)
         {
-            sRawOut = 1;
+            sRawOut = true;
         }
         else if(strcmp(argv[sIdx], "-inraw") == 0)
         {
-            sRawIn = 1;
+            sRawIn = true;
         }
         else if(strcmp(argv[sIdx], "-v") == 0)
         {
-            sVerbose = 1;
+            sVerbose = true;
         }
         else
         {
             printf("**** ERROR : Unknown parameter : %s\n", argv[sIdx]);
-            sPrintHelp = 1;
+            sPrintHelp = true;
         }
     }
 
-    if(NULL == sInFile || (NULL == sOutFile && sRawOut))
+    if(!sPrintHelp && (NULL == sInFile || (NULL == sOutFile && sRawOut)))
     {
         printf("**** ERROR : Invalid input parms\n");
-        sPrintHelp = 1;
+        sPrintHelp = true;
     }
 
-    if(0 != sPrintHelp)
+    if(sPrintHelp)
     {
         printf(
             "\nextractdilkey -k <input key> [-pubin] [-inraw] [-o <output filename> [-outraw]]\n");
@@ -86,13 +101,22 @@ int main(int argc, char** argv)
     unsigned char* sRawKey = malloc(BUF_SIZE);
     unsigned char* sKey    = malloc(BUF_SIZE);
 
+    if(!sRawKey || !sKey)
+    {
+        printf("**** ERROR : Allocation Failure\n");
+        exit(1);
+    }
+
     sRc = readFile(sKey, &sKeyBytes, sInFile);
     if(0 != sRc)
     {
         printf("**** ERROR : Unable to read from : %s\n", sInFile);
         sRc = 1;
     }
-
+    if(sVerbose)
+    {
+        printf("extractdilkey: Key Size: %d\n", (int)sKeyBytes);
+    }
     do
     {
         // Now validate our input
@@ -101,7 +125,7 @@ int main(int argc, char** argv)
             if(sRawIn)
             {
                 // We have a raw Dilithium R2 8x7 public key
-                if(2336 == sKeyBytes)
+                if(RawDilithiumR28x7PublicKeySize == sKeyBytes)
                 {
                     // We have a raw public key, lets convert it
                     if(sVerbose)
@@ -112,14 +136,15 @@ int main(int argc, char** argv)
                     sKeyBytes = BUF_SIZE;
 
                     // Convert public key
-                    sRc = mlca_key2wire(sKey, sKeyBytes, sRawKey, sRawBytes, 0, NULL, 0, NULL, 0);
-                    if(sRc < 0)
+                    sMlcaRet = mlca_key2wire(
+                        sKey, sKeyBytes, sRawKey, sRawBytes, 0, NULL, 0, NULL, 0);
+                    if(sMlcaRet < 0)
                     {
-                        printf("**** ERROR: Failure during public key conversion : %d\n", sRc);
+                        printf("**** ERROR: Failure during public key conversion : %d\n", sMlcaRet);
+                        sRc = 1;
                         break;
                     }
-                    sKeyBytes = sRc;
-                    sRc       = 0;
+                    sKeyBytes = sMlcaRet;
                 }
                 else
                 {
@@ -132,20 +157,19 @@ int main(int argc, char** argv)
             {
                 // Attempt to convert encoded key
                 unsigned int sWireType = 0;
-                sRc = mlca_wire2key(sRawKey, sRawBytes, &sWireType, sKey, sKeyBytes, NULL, ~0);
+                sMlcaRet = mlca_wire2key(sRawKey, sRawBytes, &sWireType, sKey, sKeyBytes, NULL, ~0);
                 if(sVerbose)
                     printf("extractdilkey: Found public key\n");
                 // We have a raw Dilithium R2 8x7 public key
-                if(2336 != sRc)
+                if(RawDilithiumR28x7PublicKeySize != sMlcaRet)
                 {
-                    printf("**** ERROR: Unable to convert public key : %d\n", sRc);
+                    printf("**** ERROR: Unable to convert public key : %d\n", sMlcaRet);
                     sRc = 1;
                     break;
                 }
                 else
                 {
-                    sRawBytes = sRc;
-                    sRc       = 0;
+                    sRawBytes = sMlcaRet;
                 }
             }
 
@@ -173,7 +197,7 @@ int main(int argc, char** argv)
             if(sRawIn)
             {
                 // Raw private key size for dilithium r2 8/7
-                if(5136 == sKeyBytes)
+                if(RawDilithiumR28x7PrivateKeySize == sKeyBytes)
                 {
                     if(sVerbose)
                         printf("extractdilkey: Found raw private key\n");
@@ -205,51 +229,52 @@ int main(int argc, char** argv)
                 if(sPubOut)
                 {
                     // Get the raw public key
-                    sRc = mlca_wire2key(sRawKey,
-                                        sRawBytes,
-                                        &sWireType,
-                                        sKey,
-                                        sKeyBytes,
-                                        (const unsigned char*)CR_OID_SPECIAL_PRV2PUB,
-                                        CR_OID_SPECIAL_PRV2PUB_BYTES);
-                    if(0 >= sRc)
+                    sMlcaRet = mlca_wire2key(sRawKey,
+                                             sRawBytes,
+                                             &sWireType,
+                                             sKey,
+                                             sKeyBytes,
+                                             (const unsigned char*)CR_OID_SPECIAL_PRV2PUB,
+                                             CR_OID_SPECIAL_PRV2PUB_BYTES);
+                    if(0 >= sMlcaRet)
                     {
-                        printf("**** ERROR: Unable to convert private key : %d\n", sRc);
+                        printf("**** ERROR: Unable to convert private key : %d\n", sMlcaRet);
                         sRc = 1;
                         break;
                     }
                     else
                     {
-                        sRawBytes = sRc;
-                        sRc       = 0;
+                        sRawBytes = sMlcaRet;
                     }
                     if(sVerbose)
                         printf("extractdilkey: Found public key\n");
 
                     // Encode it
-                    sRc = mlca_key2wire(sKey, sKeyBytes, sRawKey, sRawBytes, 0, NULL, 0, NULL, 0);
-                    if(sRc < 0)
+                    sMlcaRet = mlca_key2wire(
+                        sKey, sKeyBytes, sRawKey, sRawBytes, 0, NULL, 0, NULL, 0);
+                    if(sMlcaRet < 0)
                     {
-                        printf("**** ERROR: Failure during public key conversion : %d\n", sRc);
+                        printf("**** ERROR: Failure during public key conversion : %d\n", sMlcaRet);
+                        sRc = 1;
                         break;
                     }
-                    sKeyBytes = sRc;
+                    sKeyBytes = sMlcaRet;
                 }
                 else
                 {
-                    sRc = mlca_wire2key(sRawKey, sRawBytes, &sWireType, sKey, sKeyBytes, NULL, ~0);
+                    sMlcaRet = mlca_wire2key(
+                        sRawKey, sRawBytes, &sWireType, sKey, sKeyBytes, NULL, ~0);
 
                     // Raw private key size for dilithium r2 8/7
-                    if(0 >= sRc || 5136 != sRc)
+                    if(0 >= sMlcaRet || RawDilithiumR28x7PrivateKeySize != sMlcaRet)
                     {
-                        printf("**** ERROR: Unable to convert private key : %d\n", sRc);
+                        printf("**** ERROR: Unable to convert private key : %d\n", sMlcaRet);
                         sRc = 1;
                         break;
                     }
                     else
                     {
-                        sRawBytes = sRc;
-                        sRc       = 0;
+                        sRawBytes = sMlcaRet;
                     }
                 }
             }
@@ -273,110 +298,7 @@ int main(int argc, char** argv)
         }
     } while(0);
 
-    exit(sRc);
-
     free(sKey);
     free(sRawKey);
     exit(sRc);
-}
-
-int readFile(unsigned char* data, size_t* length, const char* filename)
-{
-    int    sRc    = 0;
-    size_t sBytes = 0;
-
-    FILE* sFile = fopen(filename, "rb");
-    if(NULL == sFile)
-    {
-        printf("**** ERROR: Unable to open file : %s\n", filename);
-        sRc = 1;
-    }
-
-    /* Verify we have enough space */
-    if(0 == sRc)
-    {
-        sRc = fseek(sFile, 0, SEEK_END);
-        if(-1 == sRc)
-        {
-            printf("**** ERROR : Unable to find end of : %s\n", filename);
-            sRc = 1;
-        }
-    }
-
-    if(0 == sRc)
-    {
-        long sLen = ftell(sFile);
-        if(-1 == sLen)
-        {
-            printf("**** ERROR : Unable to determine length of %s\n", filename);
-            sRc = 1;
-        }
-        else if(*length < (size_t)sLen)
-        {
-            printf("**** ERROR : Not enough space for contents of file E:%lu A:%lu : %s\n",
-                   (size_t)sLen,
-                   *length,
-                   filename);
-            sRc = 1;
-        }
-        else
-        {
-            *length = (size_t)sLen;
-        }
-    }
-
-    if(0 == sRc)
-    {
-        fseek(sFile, 0, SEEK_SET);
-
-        sBytes = fread(data, 1, *length, sFile);
-        if(sBytes != *length)
-        {
-            printf("**** ERROR: Failure reading from file : %s\n", filename);
-            sRc = 1;
-        }
-    }
-    if(NULL != sFile)
-    {
-        if(fclose(sFile))
-        {
-            printf("**** ERROR: Failure closing file : %s\n", filename);
-            if(0 == sRc)
-                sRc = 1;
-        }
-    }
-    return sRc;
-}
-
-int writeFile(const unsigned char* data, size_t length, const char* filename)
-{
-    int    sRc    = 0;
-    size_t sBytes = 0;
-
-    FILE* sFile = fopen(filename, "wb");
-    if(NULL == sFile)
-    {
-        printf("**** ERROR: Unable to open file : %s\n", filename);
-        sRc = 1;
-    }
-
-    if(0 == sRc)
-    {
-        sBytes = fwrite(data, 1, length, sFile);
-        if(sBytes != length)
-        {
-            printf("**** ERROR: Failure writing to file : %s\n", filename);
-            sRc = 1;
-        }
-    }
-    if(NULL != sFile)
-    {
-        if(fclose(sFile))
-        {
-            printf("**** ERROR: Failure closing file : %s\n", filename);
-            if(0 == sRc)
-                sRc = 1;
-        }
-    }
-    return sRc;
 }
