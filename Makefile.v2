@@ -1,0 +1,38 @@
+all: create-container print-container hashkeys gendilkey gendilsig verifydilsig extractdilkey
+
+create-container: create-container.c
+	$(CC) -g -Wall -Wextra -I. $^ -o $@ -lssl -lcrypto -std=gnu99
+
+print-container: print-container.c
+	$(CC) -g -Wall -Wextra -I. $^ -o $@ -lssl -lcrypto -std=gnu99 -DADD_DILITHIUM -I${MLCA_PATH}/include -I${MLCA_PATH}/qsc/crystals ${MLCA_PATH}/build/libmlca2.a
+
+hashkeys: hashkeys.c
+	$(CC) -g -Wall -Wextra -I. $^ -o $@ -lssl -lcrypto -std=gnu99
+
+gendilkey: gendilkey.c
+	$(CC) -g -Wall -Wextra -I. -I${MLCA_PATH}/include -I${MLCA_PATH}/qsc/crystals $^ -o $@ ${MLCA_PATH}/build/libmlca2.a -std=gnu99
+
+gendilsig: gendilsig.c
+	$(CC) -g -Wall -Wextra -I. -I${MLCA_PATH}/include -I${MLCA_PATH}/qsc/crystals $^ -o $@ ${MLCA_PATH}/build/libmlca2.a -std=gnu99
+
+verifydilsig: verifydilsig.c
+	$(CC) -g -Wall -Wextra -I. -I${MLCA_PATH}/include -I${MLCA_PATH}/qsc/crystals $^ -o $@ ${MLCA_PATH}/build/libmlca2.a -std=gnu99
+
+extractdilkey: extractdilkey.c
+	$(CC) -g -Wall -Wextra -I. -I${MLCA_PATH}/include -I${MLCA_PATH}/qsc/crystals $^ -o $@ ${MLCA_PATH}/build/libmlca2.a -std=gnu99
+
+clean:
+	$(RM) create-container print-container hashkeys gendilkey gendilsig verifydilsig extractdilkey
+
+prefix = /usr/local
+exec_prefix = $(prefix)
+bindir = $(exec_prefix)/bin
+
+install:
+	cp create-container print-container hashkeys gendilkey gendilsig verifydilsig extractdilkey "$(bindir)"
+	cp bulkSign.sh crtSignedContainer.sh sign-with-local-keys.sh "$(bindir)"
+
+uninstall:
+	cd "$(bindir)" && $(RM) create-container print-container hashkeys gendilkey gendilsig verifydilsig extractdilkey
+	cd "$(bindir)" && $(RM) bulkSign.sh crtSignedContainer.sh sign-with-local-keys.sh
+
