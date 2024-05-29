@@ -69,10 +69,10 @@ AM_CONDITIONAL([ADD_DILITHIUM], [test "x$enable_sign_v2" = "xyes"])
 AS_IF([test "x$enable_sign_v2" = "xyes"], [
    PKG_CHECK_MODULES(OPENSSL, [ openssl >= 1.1 ])
    DIL_CPPFLAGS="-DADD_DILITHIUM"
-   DIL_LDADD="-lmlca2_shared"
+   DIL_LDADD="-lmlca_shared"
    AS_IF([test "x$MLCA_PATH" != "x"], [
       DIL_CPPFLAGS+=" -I${MLCA_PATH}/include -I${MLCA_PATH}/qsc/crystals"
-      DIL_LDADD="${MLCA_PATH}/build/libmlca2.a"
+      DIL_LDADD="${MLCA_PATH}/build/libmlca.a"
    ])
 
 ])
