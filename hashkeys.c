@@ -283,6 +283,7 @@ int main(int argc, char* argv[])
 	void *container = malloc(SECURE_BOOT_HEADERS_V2_SIZE);
 	ROM_container_raw *c = (ROM_container_raw*) container;
 	ROM_container_v2_raw *c_v2 = (ROM_container_v2_raw*) container;
+        ROM_container_v3_raw *c_v3 = (ROM_container_v3_raw*) container;
 	params.container_version = 1;
 	
 	unsigned char md[SHA512_DIGEST_LENGTH];
@@ -412,6 +413,12 @@ int main(int argc, char* argv[])
 #endif
 		memset(c_v2->hw_pkey_a, 0, sizeof(ecc_key_t));
 		memset(c_v2->hw_pkey_d, 0, sizeof(dilithium_key_t));
+	} else if (params.container_version == 3) {
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+		die(EX_NOINPUT, "Invalid container version due to downlevel openssl version : %d", params.container_version);
+#endif
+		memset(c_v3->hw_pkey_a, 0, sizeof(ecc_key_t));
+		memset(c_v3->hw_pkey_d, 0, sizeof(mldsa_key_t));
 	} else {
 		die(EX_SOFTWARE, "Invalid container version : %d", params.container_version);
 	}
@@ -440,11 +447,18 @@ int main(int argc, char* argv[])
 		readBinaryFile(c_v2->hw_pkey_d, &sLen, params.hw_keyfn_d);
 		verbose_print((char *) "pubkey D = ", c_v2->hw_pkey_d, sLen);
 	}
+	if (params.hw_keyfn_d && params.container_version == 3) {
+		size_t sLen = sizeof(c_v3->hw_pkey_d);
+		readBinaryFile(c_v3->hw_pkey_d, &sLen, params.hw_keyfn_d);
+		verbose_print((char *) "pubkey D = ", c_v3->hw_pkey_d, sLen);
+	}
 
 	if (params.container_version == 1) {
 		p = SHA512(c->hw_pkey_a, sizeof(ecc_key_t) * 3, md);
 	} else if (params.container_version == 2) {
 		p = sha3_512(c_v2->hw_pkey_a, sizeof(ecc_key_t) + sizeof(dilithium_key_t), md);
+	} else if (params.container_version == 3) {
+		p = sha3_512(c_v3->hw_pkey_a, sizeof(ecc_key_t) + sizeof(mldsa_key_t), md);
 	} else {
 		die(EX_SOFTWARE, "Invalid container version : %d", params.container_version);
 	}

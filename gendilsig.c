@@ -180,6 +180,7 @@ int main(int argc, char** argv)
                             sDigestBytes,
                             sPrivKey,
                             sPrivKeyBytes,
+                            NULL,
                             (const unsigned char*)CR_OID_DIL_R2_8x7,
                             CR_OID_DIL_R2_8x7_BYTES);
         if(gRc < 0)
