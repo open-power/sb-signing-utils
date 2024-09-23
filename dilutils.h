@@ -25,6 +25,8 @@ enum
 {
     RawDilithiumR28x7PublicKeySize  = 2336,
     RawDilithiumR28x7PrivateKeySize = 5136,
+    RawMldsa87PublicKeySize         = 2592,
+    RawMldsa87PrivateKeySize        = 4896,
     SHA3_512_DigestSize             = (512 / 8),
 };
 
