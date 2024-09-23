@@ -25,6 +25,9 @@
 #include <string.h>
 
 #define BUF_SIZE 8000
+char* gAlgname = MLCA_ALGORITHM_SIG_DILITHIUM_87_R2;
+char* gOid = CR_OID_DIL_R2_8x7;
+size_t gOidBytes = CR_OID_DIL_R2_8x7_BYTES;
 
 int main(int argc, char** argv)
 {
@@ -116,11 +119,26 @@ int main(int argc, char** argv)
         if(RawDilithiumR28x7PrivateKeySize == sWirePrivKeyBytes)
         {
             if(sVerbose)
-                printf("gendilsig: Found raw private key\n");
+                printf("gendilsig: Found raw dilithium r2 87 private key\n");
 
             // Raw key, just copy
             memcpy(sPrivKey, sWirePrivKey, sWirePrivKeyBytes);
             sPrivKeyBytes = sWirePrivKeyBytes;
+            gAlgname = MLCA_ALGORITHM_SIG_DILITHIUM_87_R2;
+            gOid = MLCA_ALGORITHM_SIG_DILITHIUM_R2_8x7_OID;
+            gOidBytes = 13;
+        }
+        else if (RawMldsa87PrivateKeySize == sWirePrivKeyBytes)
+        {
+            if(sVerbose)
+                printf("gendilsig: Found raw mldsa 87 private key\n");
+
+            // Raw key, just copy
+            memcpy(sPrivKey, sWirePrivKey, sWirePrivKeyBytes);
+            sPrivKeyBytes = sWirePrivKeyBytes;
+            gAlgname = MLCA_ALGORITHM_SIG_MLDSA_87;
+            gOid = MLCA_ALGORITHM_SIG_MLDSA_87_OID;
+            gOidBytes = 11;
         }
         else
         {
@@ -130,7 +148,8 @@ int main(int argc, char** argv)
             unsigned int sWireType = 0;
             sRc                    = mlca_wire2key(
                 sPrivKey, sPrivKeyBytes, &sWireType, sWirePrivKey, sWirePrivKeyBytes, NULL, ~0);
-            if(0 >= sRc || RawDilithiumR28x7PrivateKeySize != sRc)
+            if (0 >= sRc || 
+                (RawDilithiumR28x7PrivateKeySize != sRc && RawMldsa87PrivateKeySize != sRc))
             {
                 printf("**** ERROR: Unable to convert raw private key : %d\n", sRc);
                 sRc = 1;
@@ -139,6 +158,13 @@ int main(int argc, char** argv)
             {
                 sPrivKeyBytes = sRc;
                 sRc           = 0;
+
+                if (RawMldsa87PrivateKeySize == sPrivKeyBytes)
+                {
+                    gAlgname = MLCA_ALGORITHM_SIG_MLDSA_87;
+                    gOid = MLCA_ALGORITHM_SIG_MLDSA_87_OID;
+                    gOidBytes = 11;
+                }
             }
         }
     }
@@ -154,7 +180,7 @@ int main(int argc, char** argv)
     }
     if(0 == sRc)
     {
-        sMlRc = mlca_set_alg(&sCtx, MLCA_ALGORITHM_SIG_DILITHIUM_R2_8x7_OID, OPT_LEVEL_AUTO);
+        sMlRc = mlca_set_alg(&sCtx, gAlgname, OPT_LEVEL_AUTO);
         if(sMlRc)
         {
             printf("**** ERROR : Failed mlca_set_alg : %d\n", sMlRc);
@@ -173,15 +199,16 @@ int main(int argc, char** argv)
 
     if(0 == sRc)
     {
-        printf("Generating Dilthium R2 8x7 signature ...\n");
+        printf("Generating %s signature ...\n",gAlgname);
         int gRc = mlca_sign(sSignature,
                             sSignatureBytes, /// validate RC
                             sDigest,
                             sDigestBytes,
                             sPrivKey,
                             sPrivKeyBytes,
-                            (const unsigned char*)CR_OID_DIL_R2_8x7,
-                            CR_OID_DIL_R2_8x7_BYTES);
+                            NULL,
+                            (const unsigned char*)gOid,
+                            gOidBytes);
         if(gRc < 0)
         {
             printf("**** ERROR: Failure during signature generation : %d\n", sMlRc);

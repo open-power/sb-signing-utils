@@ -23,6 +23,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+char* gAlgname = MLCA_ALGORITHM_SIG_DILITHIUM_87_R2;
+
 #define BUF_SIZE 8000
 
 int main(int argc, char** argv)
@@ -53,6 +55,21 @@ int main(int argc, char** argv)
             sIdx++;
             sPrivKeyFile = argv[sIdx];
         }
+        else if (strcmp(argv[sIdx], "-alg") == 0)
+        {
+            sIdx ++;
+            if (strcmp(argv[sIdx], "dilr2-87") == 0) {
+                gAlgname = MLCA_ALGORITHM_SIG_DILITHIUM_87_R2;
+            }
+            else if (strcmp(argv[sIdx], "mldsa-87") == 0) {
+                gAlgname = MLCA_ALGORITHM_SIG_MLDSA_87;
+            }
+            else
+            {
+                printf("**** ERROR : Unknown algoritym : %s\n", argv[sIdx]);
+                sPrintHelp = true;
+            }
+        }
         else
         {
             printf("**** ERROR : Unknown parameter : %s\n", argv[sIdx]);
@@ -68,7 +85,9 @@ int main(int argc, char** argv)
 
     if(sPrintHelp)
     {
-        printf("\ngendilkey -priv <private key file> -pub <public key file>\n");
+        printf("\ngendilkey -priv <private key file> -pub <public key file> [-alg <algorithm>]\n");
+        printf("\n");
+        printf("\t-alg <dilr2-87|mldsa-87>\tDefault: dilr2-87\n");
         exit(0);
     }
 
@@ -96,7 +115,7 @@ int main(int argc, char** argv)
     }
     if(0 == sRc)
     {
-        sMlRc = mlca_set_alg(&sCtx, MLCA_ALGORITHM_SIG_DILITHIUM_R2_8x7_OID, OPT_LEVEL_AUTO);
+        sMlRc = mlca_set_alg(&sCtx, gAlgname, OPT_LEVEL_AUTO);
         if(sMlRc)
         {
             printf("**** ERROR : Failed mlca_set_alg : %d\n", sMlRc);
@@ -115,7 +134,7 @@ int main(int argc, char** argv)
 
     if(0 == sRc)
     {
-        printf("Generating Dilthium R2 8x7 key pair ...\n");
+        printf("Generating %s key pair ...\n", gAlgname);
         sPubKeyBytes  = mlca_sig_crypto_publickeybytes(&sCtx);
         sPrivKeyBytes = mlca_sig_crypto_secretkeybytes(&sCtx);
         sMlRc         = mlca_sig_keygen(&sCtx, sPubKey, sPrivKey);
@@ -137,7 +156,7 @@ int main(int argc, char** argv)
                             sPubKey,
                             sPubKeyBytes,
                             NULL,
-                            ~0);
+                            0);
         if(sRc < 0)
         {
             printf("**** ERROR: Failure during private key conversion : %d\n", sRc);
@@ -145,6 +164,7 @@ int main(int argc, char** argv)
         else
         {
             sWirePrivKeyBytes = sRc;
+            printf("Hello %d\n",sWirePrivKeyBytes);
             sRc               = 0;
         }
     }
@@ -163,6 +183,7 @@ int main(int argc, char** argv)
         else
         {
             sWirePubKeyBytes = sRc;
+            printf("Hello2 %d\n",sWirePubKeyBytes);
             sRc              = 0;
         }
     }
