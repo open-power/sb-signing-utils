@@ -36,6 +36,7 @@ int main(int argc, char** argv)
     int         sIdx              = 0;
     int         sRc               = 0;
     bool        sPrintHelp        = false;
+    bool        sRaw              = false;
     const char* sPubKeyFile       = NULL;
     const char* sPrivKeyFile      = NULL;
 
@@ -44,6 +45,10 @@ int main(int argc, char** argv)
         if(strcmp(argv[sIdx], "-h") == 0)
         {
             sPrintHelp = true;
+        }
+        else if (strcmp(argv[sIdx], "-raw") == 0)
+        {
+            sRaw = true;
         }
         else if(strcmp(argv[sIdx], "-pub") == 0)
         {
@@ -145,46 +150,55 @@ int main(int argc, char** argv)
         }
     }
 
-    if(0 == sRc)
+    if (sRaw)
     {
-        // Convert private key
-        sRc = mlca_key2wire(sWirePrivKey,
-                            sWirePrivKeyBytes,
-                            sPrivKey,
-                            sPrivKeyBytes,
-                            0,
-                            sPubKey,
-                            sPubKeyBytes,
-                            NULL,
-                            0);
-        if(sRc < 0)
-        {
-            printf("**** ERROR: Failure during private key conversion : %d\n", sRc);
-        }
-        else
-        {
-            sWirePrivKeyBytes = sRc;
-            printf("Hello %d\n",sWirePrivKeyBytes);
-            sRc               = 0;
-        }
+        // Just copy over the key
+        memcpy(sWirePrivKey, sPrivKey, sPrivKeyBytes);
+        sWirePrivKeyBytes = sPrivKeyBytes;
+        memcpy(sWirePubKey, sPubKey, sPubKeyBytes);
+        sWirePubKeyBytes = sPubKeyBytes;
     }
-
-    if(0 == sRc)
+    else
     {
-
-        // Convert public key
-        sRc = mlca_key2wire(
-            sWirePubKey, sWirePubKeyBytes, sPubKey, sPubKeyBytes, 0, NULL, 0, NULL, 0);
-        if(sRc < 0)
+        if(0 == sRc)
         {
-            printf("**** ERROR: Failure during public key conversion : %d\n", sRc);
-            sRc = 1;
+            // Convert private key
+            sRc = mlca_key2wire(sWirePrivKey,
+                                sWirePrivKeyBytes,
+                                sPrivKey,
+                                sPrivKeyBytes,
+                                0,
+                                sPubKey,
+                                sPubKeyBytes,
+                                NULL,
+                                0);
+            if(sRc < 0)
+            {
+                printf("**** ERROR: Failure during private key conversion : %d\n", sRc);
+            }
+            else
+            {
+                sWirePrivKeyBytes = sRc;
+                sRc                  = 0;
+            }
         }
-        else
+
+        if(0 == sRc)
         {
-            sWirePubKeyBytes = sRc;
-            printf("Hello2 %d\n",sWirePubKeyBytes);
-            sRc              = 0;
+
+            // Convert public key
+            sRc = mlca_key2wire(
+                sWirePubKey, sWirePubKeyBytes, sPubKey, sPubKeyBytes, 0, NULL, 0, NULL, 0);
+            if(sRc < 0)
+            {
+                printf("**** ERROR: Failure during public key conversion : %d\n", sRc);
+                sRc = 1;
+            }
+            else
+            {
+                sWirePubKeyBytes = sRc;
+                sRc = 0;
+            }
         }
     }
 
