@@ -146,6 +146,28 @@ int main(int argc, char** argv)
                     }
                     sKeyBytes = sMlcaRet;
                 }
+                // We have a raw MLDSA-87 public key
+                else if(RawMldsa87PublicKeySize == sKeyBytes)
+                {
+                    // We have a raw public key, lets convert it
+                    if(sVerbose)
+                        printf("extractdilkey: Found raw public key\n");
+                    memcpy(sRawKey, sKey, sKeyBytes);
+                    sRawBytes = sKeyBytes;
+
+                    sKeyBytes = BUF_SIZE;
+
+                    // Convert public key
+                    sMlcaRet = mlca_key2wire(
+                        sKey, sKeyBytes, sRawKey, sRawBytes, 0, NULL, 0, NULL, 0);
+                    if(sMlcaRet <= 0)
+                    {
+                        printf("**** ERROR: Failure during public key conversion : %d\n", sMlcaRet);
+                        sRc = 1;
+                        break;
+                    }
+                    sKeyBytes = sMlcaRet;
+                }
                 else
                 {
                     printf("**** ERROR: Unrecognized raw public key : %s\n", sInFile);
@@ -161,7 +183,8 @@ int main(int argc, char** argv)
                 if(sVerbose)
                     printf("extractdilkey: Found public key\n");
                 // We have a raw Dilithium R2 8x7 public key
-                if(RawDilithiumR28x7PublicKeySize != sMlcaRet)
+                if(RawDilithiumR28x7PublicKeySize != sMlcaRet
+                   && RawMldsa87PublicKeySize != sMlcaRet)
                 {
                     printf("**** ERROR: Unable to convert public key : %d\n", sMlcaRet);
                     sRc = 1;
@@ -199,6 +222,26 @@ int main(int argc, char** argv)
                 // Raw private key size for dilithium r2 8/7
                 if(RawDilithiumR28x7PrivateKeySize == sKeyBytes)
                 {
+                    if(sVerbose)
+                        printf("extractdilkey: Found raw private key\n");
+                    // We have a raw private key, lets convert it
+                    memcpy(sRawKey, sKey, sKeyBytes);
+                    sRawBytes = sKeyBytes;
+
+                    sKeyBytes = BUF_SIZE;
+
+                    // TODO , convert raw private key to encoded format without the public key
+                    if(sOutFile)
+                    {
+                        sRc = 1;
+                        printf("**** ERROR: Unable to convert private raw -> encoded\n");
+                        break;
+                    }
+                }
+                // Raw private key for mldsa 87
+                else if(RawMldsa87PrivateKeySize == sKeyBytes)
+                {
+
                     if(sVerbose)
                         printf("extractdilkey: Found raw private key\n");
                     // We have a raw private key, lets convert it
@@ -266,7 +309,9 @@ int main(int argc, char** argv)
                         sRawKey, sRawBytes, &sWireType, sKey, sKeyBytes, NULL, ~0);
 
                     // Raw private key size for dilithium r2 8/7
-                    if(0 >= sMlcaRet || RawDilithiumR28x7PrivateKeySize != sMlcaRet)
+                    if(0 >= sMlcaRet
+                       || (RawDilithiumR28x7PrivateKeySize != sMlcaRet
+                           && RawMldsa87PrivateKeySize != sMlcaRet))
                     {
                         printf("**** ERROR: Unable to convert private key : %d\n", sMlcaRet);
                         sRc = 1;
