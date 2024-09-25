@@ -182,7 +182,7 @@ int main(int argc, char** argv)
                 sMlcaRet = mlca_wire2key(sRawKey, sRawBytes, &sWireType, sKey, sKeyBytes, NULL, ~0);
                 if(sVerbose)
                     printf("extractdilkey: Found public key\n");
-                // We have a raw Dilithium R2 8x7 public key
+                // We have a raw Dilithium R2 8x7 or MLDSA-87 public key
                 if(RawDilithiumR28x7PublicKeySize != sMlcaRet
                    && RawMldsa87PublicKeySize != sMlcaRet)
                 {
@@ -207,6 +207,10 @@ int main(int argc, char** argv)
                 {
                     sRc = writeFile(sKey, sKeyBytes, sOutFile);
                 }
+            }
+            else if (RawMldsa87PublicKeySize == sRawBytes)
+            {
+                printf("Valid MLDSA-87 public keyfile detected\n");
             }
             else
             {
@@ -308,7 +312,7 @@ int main(int argc, char** argv)
                     sMlcaRet = mlca_wire2key(
                         sRawKey, sRawBytes, &sWireType, sKey, sKeyBytes, NULL, ~0);
 
-                    // Raw private key size for dilithium r2 8/7
+                    // Raw private key size for dilithium r2 8/7 or MLDSA-87
                     if(0 >= sMlcaRet
                        || (RawDilithiumR28x7PrivateKeySize != sMlcaRet
                            && RawMldsa87PrivateKeySize != sMlcaRet))
@@ -335,6 +339,10 @@ int main(int argc, char** argv)
                 {
                     sRc = writeFile(sKey, sKeyBytes, sOutFile);
                 }
+            }
+            else if(RawMldsa87PrivateKeySize == sRawBytes)
+            {
+                printf("Valid MLDSA-87 private keyfile detected\n");
             }
             else
             {

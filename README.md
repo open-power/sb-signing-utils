@@ -125,10 +125,10 @@ To clean the project, run the following, which is really just doing a
 
 $ clean_all.sh lite
 
-Building the project with v2/v3 container support
+Building the project with v2 container support
 --------------------
 
-To support v2/v3 containers you will need to build the mlca library with
+To support v2 containers you will need to build the mlca library with
 dilithium support.
 
 This library can be found at : https://github.com/IBM/mlca/
@@ -138,6 +138,18 @@ To build with full GNU toolchain support, run "build_all.sh" passing
 
 $ MLCA_PATH=<Path to built mlca repo> build_all.sh gnuv2
 
+Building the project with v3 container support
+--------------------
+
+To support v3 containers you will need to build the mlca library with
+mldsa-87 support.
+
+This library can be found at : https://github.com/IBM/mlca/
+
+To build with full GNU toolchain support, run "build_all.sh" passing
+"gnu" on the command-line:
+
+$ MLCA_PATH=<Path to built mlca repo> build_all.sh gnuv3
 
 
 Installing the project
