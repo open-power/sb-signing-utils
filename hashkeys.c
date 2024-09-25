@@ -431,6 +431,10 @@ int main(int argc, char* argv[])
 		getPublicKeyRaw(&pubkeyraw, params.hw_keyfn_a);
 		verbose_print((char *) "pubkey A = ", pubkeyraw, sizeof(pubkeyraw));
 		memcpy(c_v2->hw_pkey_a, pubkeyraw, sizeof(ecc_key_t));
+	} else if (params.hw_keyfn_a && params.container_version == 3) {
+		getPublicKeyRaw(&pubkeyraw, params.hw_keyfn_a);
+		verbose_print((char *) "pubkey A = ", pubkeyraw, sizeof(pubkeyraw));
+		memcpy(c_v3->hw_pkey_a, pubkeyraw, sizeof(ecc_key_t));
 	}
 	if (params.hw_keyfn_b && params.container_version == 1) {
 		getPublicKeyRaw(&pubkeyraw, params.hw_keyfn_b);

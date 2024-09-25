@@ -82,6 +82,8 @@ static bool verify_signature(const char *moniker, const unsigned char *dgst,
 		int dgst_len, const ecc_signature_t sig_raw, const ecc_key_t key_raw);
 static bool verify_dilithium_signature(const char *moniker, const unsigned char *dgst,
 				       int dgst_len, const dilithium_signature_t sig_raw, const dilithium_key_t key_raw);
+static bool verify_mldsa_87_signature(const char *moniker, const unsigned char *dgst,
+				       int dgst_len, const mldsa_signature_t sig_raw, const mldsa_key_t key_raw);
 
 
 unsigned char *ossl_sha3_512(const unsigned char *data, size_t len, unsigned char *md)
@@ -767,7 +769,7 @@ static bool validate_container_v3(struct parsed_stb_container_v3 c, int fdin)
 		printf("HW_key_A is NULL, skipping signature check.\n");
 	}
 	if (memcmp(&(c.c->hw_pkey_d), &ECDSA_KEY_NULL, sizeof(ecc_key_t))) {
-		status = verify_dilithium_signature("HW_key_D", md, SHA512_DIGEST_LENGTH,
+		status = verify_mldsa_87_signature("HW_key_D", md, SHA512_DIGEST_LENGTH,
 						    c.pd->hw_sig_d, c.c->hw_pkey_d) && status;
 	} else if (verbose) {
 		printf("HW_key_D is NULL, skipping signature check.\n");
@@ -790,7 +792,7 @@ static bool validate_container_v3(struct parsed_stb_container_v3 c, int fdin)
 		printf("%s is NULL, skipping\n", "SW_key_P");
 	}
 	if (memcmp(&(c.pd->sw_pkey_s), &ECDSA_KEY_NULL, sizeof(ecc_key_t))) {
-		status = verify_dilithium_signature("SW_key_S", md, SHA512_DIGEST_LENGTH,
+		status = verify_mldsa_87_signature("SW_key_S", md, SHA512_DIGEST_LENGTH,
 						    c.ssig->sw_sig_s, c.pd->sw_pkey_s) && status;
 		sSwKeySize += sizeof(mldsa_key_t);
 	} else if (verbose) {
@@ -1048,6 +1050,56 @@ static bool verify_dilithium_signature(const char *moniker, const unsigned char 
 	}
 #else
 	die(EX_SOFTWARE, "%s", "Cannot Dilithium_do_verify");
+#endif
+	return sRet;
+}
+
+static bool verify_mldsa_87_signature(const char *moniker, const unsigned char *dgst,
+				       int dgst_len, const mldsa_signature_t sig_raw, const mldsa_key_t key_raw)
+{
+	bool sRet = false;
+#ifdef ADD_DILITHIUM
+    mlca_ctx_t sCtx;
+	MLCA_RC    sMlRc = 0;
+
+	sMlRc = mlca_init(&sCtx,1,0);
+	if (sMlRc)
+	{
+		printf("**** ERROR : Failed mlca_init : %d\n", sMlRc);
+	}
+	if (0 == sMlRc)
+	{
+		sMlRc = mlca_set_alg(&sCtx, MLCA_ALGORITHM_SIG_MLDSA_87, OPT_LEVEL_AUTO);
+		if (sMlRc)
+		{
+			printf("**** ERROR : Failed mlca_set_alg : %d\n", sMlRc);
+		}
+	}
+	if (0 == sMlRc)
+	{
+		sMlRc = mlca_set_encoding_by_idx(&sCtx, 0);
+		if (sMlRc)
+		{
+			printf("**** ERROR : Failed mlca_set_encoding_by_name_oid : %d\n", sMlRc);
+		}
+	}
+	if (0 == sMlRc)
+	{
+		printf("Verifying MLDSA-87 signature ...\n");
+		sMlRc = mlca_sig_verify(&sCtx, dgst, dgst_len, sig_raw, sizeof(mldsa_signature_t), key_raw);
+		if (1 != sMlRc)
+		{
+			if (verbose) printf("%s signature FAILED to verify.\n", moniker);
+			sRet = false;
+		}
+		else
+		{
+			if (verbose) printf("%s signature is good: VERIFIED ./\n", moniker);
+			sRet = true;
+		}
+	}
+#else
+	die(EX_SOFTWARE, "%s", "Cannot mldsa_do_verify");
 #endif
 	return sRet;
 }

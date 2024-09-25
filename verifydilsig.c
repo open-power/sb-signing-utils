@@ -24,6 +24,7 @@
 #include <string.h>
 
 #define BUF_SIZE 8000
+char* gAlgname = MLCA_ALGORITHM_SIG_DILITHIUM_87_R2;
 
 int main(int argc, char** argv)
 {
@@ -117,6 +118,13 @@ int main(int argc, char** argv)
             memcpy(sPubKey, sWirePubKey, sWirePubKeyBytes);
             sPubKeyBytes = sWirePubKeyBytes;
         }
+        else if (RawMldsa87PublicKeySize == sWirePubKeyBytes)
+        {
+            // Raw key, just copy
+            memcpy(sPubKey, sWirePubKey, sWirePubKeyBytes);
+            sPubKeyBytes = sWirePubKeyBytes;
+            gAlgname = MLCA_ALGORITHM_SIG_MLDSA_87;
+        }
         else
         {
 
@@ -132,6 +140,11 @@ int main(int argc, char** argv)
             {
                 sPubKeyBytes = sRc;
                 sRc          = 0;
+                if (RawMldsa87PublicKeySize == sPubKeyBytes) 
+                {
+                    gAlgname = MLCA_ALGORITHM_SIG_MLDSA_87;
+                }
+
             }
         }
     }
@@ -147,7 +160,7 @@ int main(int argc, char** argv)
     }
     if(0 == sRc)
     {
-        sMlRc = mlca_set_alg(&sCtx, MLCA_ALGORITHM_SIG_DILITHIUM_R2_8x7_OID, OPT_LEVEL_AUTO);
+        sMlRc = mlca_set_alg(&sCtx, gAlgname, OPT_LEVEL_AUTO);
         if(sMlRc)
         {
             printf("**** ERROR : Failed mlca_set_alg : %d\n", sMlRc);
@@ -165,7 +178,7 @@ int main(int argc, char** argv)
     }
     if(0 == sRc)
     {
-        printf("Verifying Dilthium R2 8x7 signature ...\n");
+        printf("Verifying %s signature ...\n", gAlgname);
         sMlRc = mlca_sig_verify(&sCtx, sDigest, sDigestBytes, sSignature, sSignatureBytes, sPubKey);
         if(1 != sMlRc)
         {
