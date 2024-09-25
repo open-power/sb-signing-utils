@@ -61,7 +61,7 @@ usage () {
     echo "	                            files should be comma separated \"file1.ini,file2.ini,etc\"."
     echo "	                            Options set here override those set via cmdline or environment"
     echo "	-S, --security-version  Integer, sets the security version container field"
-    echo "	-V, --container-version Container version to generate (1, 2)"
+    echo "	-V, --container-version Container version to generate (1, 2, 3)"
     echo "	-P  --password          ENV variable containing the sf_client password to pass to sf_client via 'sf_client --password"
     echo ""
     exit 1
@@ -444,6 +444,14 @@ if [ $CONTAINER_VERSION = 2 ]; then
    done
 fi
 
+if [ $CONTAINER_VERSION = 3 ]; then
+   for p in gendilkey gendilsig verifydilsig
+   do
+       is_cmd_available $p || \
+           die "Required command \"$p\" not available or not found in PATH"
+   done
+fi
+
 # Sanitize boolean values
 SB_VERBOSE="$(make_bool "$SB_VERBOSE")"
 SB_DEBUG="$(make_bool "$SB_DEBUG")"
@@ -640,6 +648,7 @@ test "$FW_ECID" && ADDL_ARGS="$ADDL_ARGS --fw-ecid $FW_ECID"
 test "$SB_VERBOSE" && SF_DEBUG_ARGS=" -v"
 test "$SB_DEBUG" && SF_DEBUG_ARGS="$SF_DEBUG_ARGS -d -stdout"
 test $CONTAINER_VERSION == 2 && DIGEST_ARG="-sha3-512"
+test $CONTAINER_VERSION == 3 && DIGEST_ARG="-sha3-512"
 
 test "$SF_PWD_ENV" && SF_COMMON_ARGS="$SF_COMMON_ARGS --password $SF_PWD_ENV"
 

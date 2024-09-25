@@ -298,7 +298,27 @@ void writeHdr(void *hdr, const char *outFile, int hdr_type, int container_versio
 	unsigned char md_buf[SHA512_DIGEST_LENGTH];
 	unsigned char *md = NULL;
 
-	if (container_version == 2)
+	if (container_version == 3)
+	{
+		switch (hdr_type) {
+                  case CONTAINER_HDR:
+                    hdr_sz = SECURE_BOOT_HEADERS_V3_SIZE;
+                    break;
+                  case PREFIX_HDR:
+                    hdr_sz = sizeof(ROM_prefix_header_v3_raw);
+                    md = sha3_512(hdr, hdr_sz, md_buf);
+                    verbose_print((char *) "PR header hash  = ", md_buf, sizeof(md_buf));
+                    break;
+                  case SOFTWARE_HDR:
+                    hdr_sz = sizeof(ROM_sw_header_v3_raw);
+                    md = sha3_512(hdr, hdr_sz, md_buf);
+                    verbose_print((char *) "SW header hash  = ", md_buf, sizeof(md_buf));
+                    break;
+                  default:
+                    die(EX_SOFTWARE, "Unknown header type (%d)", hdr_type);
+                }
+	}
+	else if (container_version == 2)
 	{
 		switch (hdr_type) {
 		  case CONTAINER_HDR:
@@ -423,7 +443,7 @@ __attribute__((__noreturn__)) void usage (int status)
 			"     --dumpSwHdr         file to dump Software header blob (to be signed)\n"
 			"     --dumpContrHdr      file to dump full Container header (w/o payload)\n"
 			"     --security-version  Integer, sets the security version container field\n"
-			" -V, --container-version Container version to generate (1, 2)\n"
+			" -V, --container-version Container version to generate (1, 2, 3)\n"
 			"Note:\n"
 			"- Keys A,B,C,P,Q,R must be valid p521 ECC keys. Keys may be provided as public\n"
 			"  or private key in PEM format, or public key in uncompressed raw format.\n"
@@ -525,6 +545,11 @@ int main(int argc, char* argv[])
 	ROM_prefix_data_v2_raw *pd_v2;
 	ROM_sw_header_v2_raw *swh_v2;
 	ROM_sw_sig_v2_raw *ssig_v2;
+	ROM_container_v3_raw *c_v3 = (ROM_container_v3_raw*) container;
+        ROM_prefix_header_v3_raw *ph_v3;
+        ROM_prefix_data_v3_raw *pd_v3;
+        ROM_sw_header_v3_raw *swh_v3;
+        ROM_sw_sig_v3_raw *ssig_v3;
 
 	unsigned char md[SHA512_DIGEST_LENGTH];
 	void *p;
@@ -777,7 +802,7 @@ int main(int argc, char* argv[])
 		close(fdin);
 	}
 
-	if (params.container_version < 1 || params.container_version > 2)
+	if (params.container_version < 1 || params.container_version > 3)
 	{
 		die(EX_NOINPUT, "Invalid container version: %d", params.container_version);
 	}
@@ -1036,7 +1061,7 @@ int main(int argc, char* argv[])
 			    strerror(errno));
 
 
-	} else {
+	} else if (params.container_version == 2) {
 		// VERSION 2 CONTAINER
 
 		c_v2->magic_number = cpu_to_be32(ROM_MAGIC_NUMBER);
@@ -1171,14 +1196,13 @@ int main(int argc, char* argv[])
 
         // Set the FW ECID if provided
 		memset(swh_v2->ecid, 0, ECID_SIZE);
-        if (params.fw_ecid) {
+		if (params.fw_ecid) {
 			if (!isValidHex(params.fw_ecid, ECID_SIZE))
 				die(EX_DATAERR, "%s",
 				    "Invalid input for sw-ecid, expecting a 16 byte hexadecimal value");
-            for (int x = 0; x < ECID_SIZE; x++) {
-                sscanf(&(params.fw_ecid[x*2]), "%2hhx", &(swh_v2->ecid[x]));
-                //swh_v2->ecid[x]=x;
-            }
+			for (int x = 0; x < ECID_SIZE; x++) {
+				sscanf(&(params.fw_ecid[x*2]), "%2hhx", &(swh_v2->ecid[x]));
+			}
 			verbose_print((char *) "FW ECID = ", swh_v2->ecid, sizeof(swh_v2->ecid));
         }
 
@@ -1244,6 +1268,217 @@ int main(int argc, char* argv[])
 
 		// Write container.
 		if ((r = write(fdout, container, SECURE_BOOT_HEADERS_V2_SIZE)) != SECURE_BOOT_HEADERS_V2_SIZE)
+			die(EX_SOFTWARE, "Cannot write container header (r = %d) (%s)", r,
+			    strerror(errno));
+
+	} else {
+		// VERSION 3 CONTAINER
+
+		c_v3->magic_number = cpu_to_be32(ROM_MAGIC_NUMBER);
+		c_v3->version = cpu_to_be16(3);
+		c_v3->container_size = cpu_to_be64(SECURE_BOOT_HEADERS_V3_SIZE + payload_st.st_size);
+		memset(c_v3->hw_pkey_a, 0, sizeof(ecc_key_t));
+		memset(c_v3->hw_pkey_d, 0, sizeof(mldsa_key_t));
+		if (params.hw_keyfn_a) {
+			getPublicKeyRaw(&pubkeyraw, params.hw_keyfn_a);
+			verbose_print((char *) "pubkey A = ", pubkeyraw, sizeof(pubkeyraw));
+			memcpy(c_v3->hw_pkey_a, pubkeyraw, sizeof(ecc_key_t));
+		}
+		if (params.hw_keyfn_d) {
+			size_t sLen = sizeof(c_v3->hw_pkey_d);
+			int r = readBinaryFile(c_v3->hw_pkey_d, &sLen,params.hw_keyfn_d);
+			//To do : Should be updated to MLDSA_87_PUB_KEY_LENGTH
+			if (0 != r || sLen != DILITHIUM_PUB_KEY_LENGTH)
+				die(EX_SOFTWARE, "Failure reading HW PUBKEY D : %s",params.hw_keyfn_d);
+			verbose_print((char *) "pubkey D = ", c_v3->hw_pkey_d, sizeof(c_v3->hw_pkey_d));
+		}
+		p = sha3_512(c_v3->hw_pkey_a, sizeof(ecc_key_t) + sizeof(mldsa_key_t), md);
+		if (!p)
+			die(EX_SOFTWARE, "%s", "Cannot get SHA3-512");
+		verbose_print((char *) "HW keys hash = ", md, sizeof(md));
+
+		ph_v3 = (ROM_prefix_header_v3_raw*)&(c_v3->prefix);
+		ph_v3->ver_alg.version = cpu_to_be16(3);
+		ph_v3->ver_alg.hash_alg = 2;
+		ph_v3->ver_alg.sig_alg = 3;
+		ph_v3->reserved = 0;
+
+		// Set flags.
+		if (params.hw_flags) {
+			if (!isValidHex(params.hw_flags, 4))
+				die(EX_DATAERR, "%s",
+				    "Invalid input for hw-flags, expecting a 4 byte hexadecimal value");
+			uint32_t data;
+			sscanf(params.hw_flags, "%x", &data);
+			ph_v3->flags = cpu_to_be32(data);
+			verbose_msg("hw-flags = %#010x", data);
+		} else {
+			ph_v3->flags = cpu_to_be32(0x80000000);
+		}
+		memset(ph_v3->payload_hash, 0, sizeof(sha2_hash_t));
+		memset(ph_v3->ecid, 0, ECID_SIZE);
+		memset(ph_v3->reserved2, 0, sizeof(ph_v3->reserved2));
+
+		pd_v3 = (ROM_prefix_data_v3_raw*)&c_v3->prefix_data;
+		memset(pd_v3->hw_sig_a, 0, sizeof(ecc_signature_t));
+		memset(pd_v3->hw_sig_d, 0, sizeof(mldsa_signature_t));
+
+		// Write the HW signatures.
+		if (params.hw_sigfn_a) {
+			getSigRaw(&sigraw, params.hw_sigfn_a);
+			verbose_print((char *) "signature A = ", sigraw, sizeof(sigraw));
+			memcpy(pd_v3->hw_sig_a, sigraw, sizeof(ecc_key_t));
+		}
+		if (params.hw_sigfn_d) {
+			size_t sLen = sizeof(pd_v3->hw_sig_d);
+			int r = readBinaryFile(pd_v3->hw_sig_d, &sLen,params.hw_sigfn_d);
+			if (0 != r || sLen != MLDSA_87_SIG_LENGTH)
+				die(EX_SOFTWARE, "Failure reading HW SIG D : %s",params.hw_sigfn_d);
+			verbose_print((char *) "signature D = ", pd_v3->hw_sig_d, sizeof(pd_v3->hw_sig_d));
+		}
+		memset(pd_v3->sw_pkey_p, 0, sizeof(ecc_key_t));
+		memset(pd_v3->sw_pkey_s, 0, sizeof(mldsa_key_t));
+
+		// Write the FW keys.
+		if (params.sw_keyfn_p) {
+			getPublicKeyRaw(&pubkeyraw, params.sw_keyfn_p);
+			verbose_print((char *) "pubkey P = ", pubkeyraw, sizeof(pubkeyraw));
+			memcpy(pd_v3->sw_pkey_p, pubkeyraw, sizeof(ecc_key_t));
+			ph_v3->sw_key_count++;
+			ph_v3->payload_size += sizeof(ecc_key_t);
+		}
+		if (params.sw_keyfn_s) {
+			size_t sLen = sizeof(pd_v3->sw_pkey_s);
+			int r = readBinaryFile(pd_v3->sw_pkey_s, &sLen,params.sw_keyfn_s);
+			//To do : Should be updated to MLDSA_87_PUB_KEY_LENGTH
+			if (0 != r || sLen != DILITHIUM_PUB_KEY_LENGTH)
+				die(EX_SOFTWARE, "Failure reading SW PUBKEY S : %s",params.sw_keyfn_s);
+			verbose_print((char *) "pubkey S = ", pd_v3->sw_pkey_s, sizeof(pd_v3->sw_pkey_s));
+			ph_v3->sw_key_count++;
+			ph_v3->payload_size += sizeof(mldsa_key_t);
+		}
+		ph_v3->payload_size = cpu_to_be64(ph_v3->payload_size);
+		debug_msg("sw_key_count = %u", ph_v3->sw_key_count);
+
+		// Calculate the SW keys hash.
+		p = sha3_512(pd_v3->sw_pkey_p, be64_to_cpu(ph_v3->payload_size), md);
+		if (!p)
+			die(EX_SOFTWARE, "%s", "Cannot get SHA3-512");
+		memcpy(ph_v3->payload_hash, md, sizeof(sha2_hash_t));
+		verbose_print((char *) "SW keys hash = ", md, sizeof(md));
+
+		// Dump the Prefix header.
+		if (params.prhdrfn)
+			writeHdr((void *) ph_v3, params.prhdrfn, PREFIX_HDR, params.container_version);
+
+		swh_v3 = (ROM_sw_header_v3_raw*) &c_v3->swheader;
+		swh_v3->ver_alg.version = cpu_to_be16(3);
+		swh_v3->ver_alg.hash_alg = 2;
+		swh_v3->ver_alg.sig_alg = 3;
+		swh_v3->reserved = 0;
+
+		// Add component ID (label).
+		if (params.label) {
+			if (!isValidAscii(params.label, 0))
+				die(EX_DATAERR, "%s",
+				    "Invalid input for label, expecting a 8 char ASCII value");
+			strncpy((char *) &swh_v3->component_id, params.label, 8);
+			verbose_msg("component ID = %.8s",
+				    (char * ) &swh_v3->component_id);
+		} else {
+			swh_v3->component_id = 0;
+		}
+
+		// Set flags.
+		if (params.sw_flags) {
+			if (!isValidHex(params.sw_flags, 4))
+				die(EX_DATAERR, "%s",
+				    "Invalid input for sw-flags, expecting a 4 byte hexadecimal value");
+			uint32_t data;
+			sscanf(params.sw_flags, "%x", &data);
+			swh_v3->flags = cpu_to_be32(data);
+			verbose_msg("sw-flags = %#010x", data);
+		} else {
+			swh_v3->flags = cpu_to_be32(0x00000000);
+		}
+		swh_v3->security_version = params.security_version;
+		swh_v3->payload_size = cpu_to_be64(payload_st.st_size);
+		swh_v3->unprotected_payload_size = 0;
+
+		// Set the FW ECID if provided
+		memset(swh_v3->ecid, 0, ECID_SIZE);
+		if (params.fw_ecid) {
+			if (!isValidHex(params.fw_ecid, ECID_SIZE))
+				die(EX_DATAERR, "%s",
+				    "Invalid input for sw-ecid, expecting a 16 byte hexadecimal value");
+			for (int x = 0; x < ECID_SIZE; x++) {
+				sscanf(&(params.fw_ecid[x*2]), "%2hhx", &(swh_v3->ecid[x]));
+			}
+			verbose_print((char *) "FW ECID = ", swh_v3->ecid, sizeof(swh_v3->ecid));
+		}
+
+		memset(swh_v3->reserved2,0, sizeof(swh_v3->reserved2));
+
+		// Calculate the payload hash.
+		p = sha3_512(infile, payload_st.st_size, md);
+		if (!p)
+			die(EX_SOFTWARE, "%s", "Cannot get SHA3-512");
+		memcpy(swh_v3->payload_hash, md, sizeof(sha2_hash_t));
+		verbose_print((char *) "Payload hash = ", md, sizeof(md));
+
+		// Dump the Software header.
+		if (params.swhdrfn)
+			writeHdr((void *) swh_v3, params.swhdrfn, SOFTWARE_HDR, params.container_version);
+
+		ssig_v3 = (ROM_sw_sig_v3_raw*)&c_v3->sw_data;
+		memset(ssig_v3->sw_sig_p, 0, sizeof(ecc_signature_t));
+		memset(ssig_v3->sw_sig_s, 0, sizeof(mldsa_signature_t));
+
+		// Write the HW signatures.
+		if (params.sw_sigfn_p) {
+			getSigRaw(&sigraw, params.sw_sigfn_p);
+			verbose_print((char *) "signature P = ", sigraw, sizeof(sigraw));
+			memcpy(ssig_v3->sw_sig_p, sigraw, sizeof(ecc_key_t));
+		}
+		if (params.sw_sigfn_s) {
+			size_t sLen = sizeof(ssig_v3->sw_sig_s);
+			int r = readBinaryFile(ssig_v3->sw_sig_s, &sLen,params.sw_sigfn_s);
+			if (0 != r || sLen != MLDSA_87_SIG_LENGTH)
+				die(EX_SOFTWARE, "Failure reading SW SIG S : %s",params.sw_sigfn_s);
+			verbose_print((char *) "signature S = ", ssig_v3->sw_sig_s, sizeof(ssig_v3->sw_sig_s));
+		}
+
+		// Dump the full container header.
+		if (params.cthdrfn)
+			writeHdr((void *) c, params.cthdrfn, CONTAINER_HDR, params.container_version);
+
+		// Print container stats.
+		size = (uint8_t*) ph_v3 - (uint8_t *) c_v3;
+		offset = 0;
+		verbose_msg("HW header size        = %4u (%#06x) at offset %4u (%#06x)",
+			    size, size, offset, offset);
+		size = (uint8_t*) pd_v3 - (uint8_t *) ph_v3;
+		offset = (uint8_t*) ph_v3 - (uint8_t *) c_v3;
+		verbose_msg("Prefix header size    = %4u (%#06x) at offset %4u (%#06x)",
+			    size, size, offset, offset);
+		size = (uint8_t*) swh_v3 - (uint8_t *) pd_v3;
+		offset = (uint8_t*) pd_v3 - (uint8_t *) c_v3;
+		verbose_msg("Prefix data size      = %4u (%#06x) at offset %4u (%#06x)",
+			    size, size, offset, offset);
+		size = (uint8_t*) ssig_v3 - (uint8_t *) swh_v3;
+		offset = (uint8_t*) swh_v3 - (uint8_t *) c_v3;
+		verbose_msg("SW header size        = %4u (%#06x) at offset %4u (%#06x)",
+			    size, size, offset, offset);
+
+		verbose_msg("TOTAL HEADER SIZE     = %4d (%#0x)", SECURE_BOOT_HEADERS_V3_SIZE,
+			    SECURE_BOOT_HEADERS_V3_SIZE);
+		verbose_msg("PAYLOAD SIZE          = %4lu (%#0lx)",
+			    be64_to_cpu(swh_v3->payload_size), be64_to_cpu(swh_v3->payload_size));
+		verbose_msg("TOTAL CONTAINER SIZE  = %4lu (%#0lx)",
+			    be64_to_cpu(c_v3->container_size), be64_to_cpu(c_v3->container_size));
+
+		// Write container.
+		if ((r = write(fdout, container, SECURE_BOOT_HEADERS_V3_SIZE)) != SECURE_BOOT_HEADERS_V3_SIZE)
 			die(EX_SOFTWARE, "Cannot write container header (r = %d) (%s)", r,
 			    strerror(errno));
 
