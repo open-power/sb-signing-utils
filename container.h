@@ -61,7 +61,7 @@ typedef uint8_t dilithium_key_t[DILITHIUM_PUB_KEY_LENGTH];
 typedef uint8_t dilithium_signature_t[DILITHIUM_SIG_LENGTH];
 
 #define MLDSA_87_PUB_KEY_LENGTH 2592
-#define MLDSA_87_SIG_LENGTH 4668
+#define MLDSA_87_SIG_LENGTH 4627
 
 typedef uint8_t mldsa_key_t[MLDSA_87_PUB_KEY_LENGTH];
 typedef uint8_t mldsa_signature_t[MLDSA_87_SIG_LENGTH];

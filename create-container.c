@@ -1287,8 +1287,7 @@ int main(int argc, char* argv[])
 		if (params.hw_keyfn_d) {
 			size_t sLen = sizeof(c_v3->hw_pkey_d);
 			int r = readBinaryFile(c_v3->hw_pkey_d, &sLen,params.hw_keyfn_d);
-			//To do : Should be updated to MLDSA_87_PUB_KEY_LENGTH
-			if (0 != r || sLen != DILITHIUM_PUB_KEY_LENGTH)
+			if (0 != r || sLen != MLDSA_87_PUB_KEY_LENGTH)
 				die(EX_SOFTWARE, "Failure reading HW PUBKEY D : %s",params.hw_keyfn_d);
 			verbose_print((char *) "pubkey D = ", c_v3->hw_pkey_d, sizeof(c_v3->hw_pkey_d));
 		}
@@ -1350,8 +1349,7 @@ int main(int argc, char* argv[])
 		if (params.sw_keyfn_s) {
 			size_t sLen = sizeof(pd_v3->sw_pkey_s);
 			int r = readBinaryFile(pd_v3->sw_pkey_s, &sLen,params.sw_keyfn_s);
-			//To do : Should be updated to MLDSA_87_PUB_KEY_LENGTH
-			if (0 != r || sLen != DILITHIUM_PUB_KEY_LENGTH)
+			if (0 != r || sLen != MLDSA_87_PUB_KEY_LENGTH)
 				die(EX_SOFTWARE, "Failure reading SW PUBKEY S : %s",params.sw_keyfn_s);
 			verbose_print((char *) "pubkey S = ", pd_v3->sw_pkey_s, sizeof(pd_v3->sw_pkey_s));
 			ph_v3->sw_key_count++;
