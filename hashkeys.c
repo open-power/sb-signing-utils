@@ -237,7 +237,7 @@ __attribute__((__noreturn__)) void usage (int status)
 			" -c, --hw_key_c          file containing HW key C key in PEM or RAW format\n"
 			" -d, --hw_key_d          file containing HW key D key in PEM or RAW format\n"
 			" -o, --outfile           file to write HW keys hash (default is stdout)\n"
-			" -V, --container-version Container version (1,2)\n"
+			" -V, --container-version Container version (1,2,3)\n"
 			"     --ascii             output in hexascii (default)\n"
 			"     --binary            output in binary\n"
 			"     --pretty            add 0x the start of the string, for --ascii\n"
