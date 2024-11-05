@@ -1,0 +1,40 @@
+CXX=xlC
+
+all: create-container print-container hashkeys gendilkey gendilsig verifydilsig extractdilkey
+
+create-container: create-container.c
+	$(CXX) -I. $^ -o $@ -lssl -lcrypto
+
+print-container: print-container.c
+	$(CXX) -DADD_DILITHIUM -I${MLCA_PATH}/include -I${MLCA_PATH}/qsc/crystals -I. $^ -o $@ -lssl -lcrypto ${MLCA_PATH}/build/libmlca.a
+
+hashkeys: hashkeys.c
+	$(CXX) -I. $^ -o $@ -lssl -lcrypto
+
+gendilkey: gendilkey.c
+	$(CXX)  -I. -I${MLCA_PATH}/include -I${MLCA_PATH}/qsc/crystals $^ -o $@ ${MLCA_PATH}/build/libmlca.a
+
+gendilsig: gendilsig.c
+	$(CXX)  -I. -I${MLCA_PATH}/include -I${MLCA_PATH}/qsc/crystals $^ -o $@ ${MLCA_PATH}/build/libmlca.a
+
+verifydilsig: verifydilsig.c
+	$(CXX)  -I. -I${MLCA_PATH}/include -I${MLCA_PATH}/qsc/crystals $^ -o $@ ${MLCA_PATH}/build/libmlca.a
+
+extractdilkey: extractdilkey.c
+	$(CXX)  -I. -I${MLCA_PATH}/include -I${MLCA_PATH}/qsc/crystals $^ -o $@ ${MLCA_PATH}/build/libmlca.a
+
+clean:
+	$(RM) create-container print-container hashkeys gendilkey gendilsig verifydilsig extractdilkey
+
+prefix = /usr/local
+exec_prefix = $(prefix)
+bindir = $(exec_prefix)/bin
+
+install:
+	cp create-container print-container hashkeys gendilkey gendilsig verifydilsig extractdilkey "$(bindir)"
+	cp bulkSign.sh crtSignedContainer.sh sign-with-local-keys.sh "$(bindir)"
+
+uninstall:
+	cd "$(bindir)" && $(RM) create-container print-container hashkeys gendilkey gendilsig verifydilsig extractdilkey
+	cd "$(bindir)" && $(RM) bulkSign.sh crtSignedContainer.sh sign-with-local-keys.sh
+
