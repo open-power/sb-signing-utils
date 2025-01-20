@@ -26,7 +26,16 @@ case "$(echo "$1" | tr "[:upper:]" "[:lower:]")" in
   aix)
     cp -p config.h.aix config.h
     cp -p Makefile.aix Makefile
-    gnu-make
+    gmake
+    ;;
+  aixv3)
+      if [ "X$MLCA_PATH" = "X" ]; then
+          echo "Must set MLCA_PATH env variable to point to mlca_framework repository"
+          exit 1
+      fi
+    cp -p config.h.aix config.h
+    cp -p Makefile.aix.v3 Makefile
+    gmake
     ;;
   gnuv2)
       if [ "X$MLCA_PATH" = "X" ]; then
