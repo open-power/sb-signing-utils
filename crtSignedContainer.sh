@@ -60,6 +60,7 @@ usage () {
     echo "	    --sign-project-config   INI file(s) containing configuration properties. Multiple"
     echo "	                            files should be comma separated \"file1.ini,file2.ini,etc\"."
     echo "	                            Options set here override those set via cmdline or environment"
+    echo "	                            Only valid for production signing mode"
     echo "	-S, --security-version  Integer, sets the security version container field"
     echo "	-V, --container-version Container version to generate (1, 2, 3)"
     echo "	-P  --password          ENV variable containing the sf_client password to pass to sf_client via 'sf_client --password"
@@ -475,7 +476,7 @@ then
     test "$SB_PROJECT_INI_TRANS" && PROJECT_INI=$SB_PROJECT_INI_TRANS
 fi
 
-if [ "$PROJECT_INI" ]
+if [ "$PROJECT_INI" ] && [ "$SIGN_MODE" == "production" ]
 then
     signer_userid=""
     signer_sshkey_file=""
