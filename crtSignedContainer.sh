@@ -475,7 +475,7 @@ then
     test "$SB_PROJECT_INI_TRANS" && PROJECT_INI=$SB_PROJECT_INI_TRANS
 fi
 
-if [ "$PROJECT_INI" ]
+if [ "$PROJECT_INI" ] && [ "$SIGN_MODE" == "production" ]
 then
     signer_userid=""
     signer_sshkey_file=""
