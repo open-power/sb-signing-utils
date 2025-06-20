@@ -862,7 +862,7 @@ int main(int argc, char* argv[])
 			if (!isValidHex(params.hw_cs_offset, 4))
 				die(EX_DATAERR, "%s",
 				    "Invalid input for hw-cs-offset, expecting a 4 byte hexadecimal value");
-			uint64_t data;
+			uint64_t data = 0;
 			sscanf(params.hw_cs_offset, "%lx", &data);
 			ph->code_start_offset = cpu_to_be64(data);
 			verbose_msg("hw-cs-offset = %#010lx", data);
@@ -955,7 +955,7 @@ int main(int argc, char* argv[])
 			if (!isValidHex(params.sw_cs_offset, 4))
 				die(EX_DATAERR, "%s",
 				    "Invalid input for sw-cs-offset, expecting a 4 byte hexadecimal value");
-			uint64_t data;
+			uint64_t data = 0;
 			sscanf(params.sw_cs_offset, "%lx", &data);
 			swh->code_start_offset = cpu_to_be64(data);
 			verbose_msg("sw-cs-offset = %#010lx", data);
