@@ -3,13 +3,13 @@ CXX=xlC
 all: create-container print-container hashkeys
 
 create-container: create-container.c
-	$(CXX) -I. $^ -o $@ -lssl -lcrypto
+	$(CXX) -q64 -I. $^ -o $@ -lssl -lcrypto
 
 print-container: print-container.c
-	$(CXX) -I. $^ -o $@ -lssl -lcrypto
+	$(CXX) -q64 -I. $^ -o $@ -lssl -lcrypto
 
 hashkeys: hashkeys.c
-	$(CXX) -I. $^ -o $@ -lssl -lcrypto
+	$(CXX) -q64 -I. $^ -o $@ -lssl -lcrypto
 
 clean:
 	$(RM) create-container print-container hashkeys
