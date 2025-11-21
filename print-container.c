@@ -1009,7 +1009,7 @@ static bool verify_dilithium_signature(const char *moniker, const unsigned char 
 {
 	bool sRet = false;
 #ifdef ADD_DILITHIUM
-    mlca_ctx_t sCtx;
+	mlca_ctx_t sCtx;
 	MLCA_RC    sMlRc = 0;
 
 	sMlRc = mlca_init(&sCtx,1,0);
@@ -1059,7 +1059,7 @@ static bool verify_mldsa_87_signature(const char *moniker, const unsigned char *
 {
 	bool sRet = false;
 #ifdef ADD_DILITHIUM
-    mlca_ctx_t sCtx;
+	mlca_ctx_t sCtx;
 	MLCA_RC    sMlRc = 0;
 
 	sMlRc = mlca_init(&sCtx,1,0);
@@ -1220,7 +1220,7 @@ static bool getVerificationHash(char *input, unsigned char *md, int len)
 __attribute__((__noreturn__)) static void usage (int status)
 {
 	if (status != 0) {
-			fprintf(stderr, "Try '%s --help' for more information.\n", progname);
+		fprintf(stderr, "Try '%s --help' for more information.\n", progname);
 	}
 	else {
 		printf("Usage: %s [options]\n", progname);

@@ -69,7 +69,7 @@ unsigned char *sha3_512(const unsigned char *data, size_t len, unsigned char *md
 	EVP_MD_CTX_destroy(ctx);
 	return md;
 #else
-    return NULL;
+	return NULL;
 #endif
 }
 
@@ -488,7 +488,7 @@ static struct option const opts[] = {
 	{ "dumpSwHdr",        required_argument, 0,  '2' },
 	{ "security-version", required_argument, 0,  'S' },
 	{ "container-version",required_argument, 0,  'V' },
-    { "fw-ecid",          required_argument, 0,  '3' },
+	{ "fw-ecid",          required_argument, 0,  '3' },
 	{ NULL, 0, NULL, 0 }
 };
 #endif
@@ -716,7 +716,7 @@ int main(int argc, char* argv[])
 		case 'R':
 			params.sw_sigfn_r = optarg;
 			break;
-		  case '}':
+		case '}':
 			params.sw_sigfn_s = optarg;
 			break;
 		case 'l':
@@ -752,34 +752,34 @@ int main(int argc, char* argv[])
 		case '0':
 			params.cthdrfn = optarg;
 			break;
-		  case 'S':
-			  {
-				  int value = atoi(optarg);
-				  if(value < 0 || value >= 256)
-				  {
-					  die(EX_DATAERR, "security-version (%d) must fit into a 1-byte field", value);
-				  }
-				  else
-				  {
-					  params.security_version = (uint8_t)value;
-				  }
-				  break;
-			  }
-		  case 'V':
-			  {
-				  int value = atoi(optarg);
-				  if(value < 0 || value >= 0x10000)
-				  {
-					  die(EX_DATAERR, "container-version (%d) must fit into a 2-byte field", value);
-				  }
-				  else
-				  {
-					  params.container_version = (uint8_t)value;
-				  }
-				  break;
-			  }
-		  default:
-		    usage(EX_USAGE);
+		case 'S':
+			{
+				int value = atoi(optarg);
+				if(value < 0 || value >= 256)
+				{
+					die(EX_DATAERR, "security-version (%d) must fit into a 1-byte field", value);
+				}
+				else
+				{
+					params.security_version = (uint8_t)value;
+				}
+				break;
+			}
+		case 'V':
+			{
+				int value = atoi(optarg);
+				if(value < 0 || value >= 0x10000)
+				{
+					die(EX_DATAERR, "container-version (%d) must fit into a 2-byte field", value);
+				}
+				else
+				{
+					params.container_version = (uint8_t)value;
+				}
+				break;
+			}
+		default:
+			usage(EX_USAGE);
 		}
 	}
 
@@ -807,10 +807,10 @@ int main(int argc, char* argv[])
 		die(EX_NOINPUT, "Invalid container version: %d", params.container_version);
 	}
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
-    else if (params.container_version == 2)
-    {
+	else if (params.container_version == 2)
+	{
 		die(EX_NOINPUT, "Invalid container version due to downlevel openssl version : %d", params.container_version);
-    }
+	}
 #endif
 
 	if (!infile)
@@ -1194,7 +1194,7 @@ int main(int argc, char* argv[])
 		swh_v2->payload_size = cpu_to_be64(payload_st.st_size);
 		swh_v2->unprotected_payload_size = 0;
 
-        // Set the FW ECID if provided
+		// Set the FW ECID if provided
 		memset(swh_v2->ecid, 0, ECID_SIZE);
 		if (params.fw_ecid) {
 			if (!isValidHex(params.fw_ecid, ECID_SIZE))
@@ -1204,9 +1204,9 @@ int main(int argc, char* argv[])
 				sscanf(&(params.fw_ecid[x*2]), "%2hhx", &(swh_v2->ecid[x]));
 			}
 			verbose_print((char *) "FW ECID = ", swh_v2->ecid, sizeof(swh_v2->ecid));
-        }
+		}
 
-        memset(swh_v2->reserved2,0, sizeof(swh_v2->reserved2));
+		memset(swh_v2->reserved2,0, sizeof(swh_v2->reserved2));
 
 		// Calculate the payload hash.
 		p = sha3_512(infile, payload_st.st_size, md);

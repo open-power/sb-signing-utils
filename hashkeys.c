@@ -63,7 +63,7 @@ unsigned char *sha3_512(const unsigned char *data, size_t len, unsigned char *md
 	EVP_MD_CTX_destroy(ctx);
 	return md;
 #else
-    return NULL;
+	return NULL;
 #endif
 }
 
