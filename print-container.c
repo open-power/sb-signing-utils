@@ -76,7 +76,8 @@ static struct {
 
 static void usage(int status);
 
-static bool getPayloadHash(int fdin, uint64_t pl_sz_expected, unsigned char *md, int container_version);
+static bool getPayloadHash(int fdin, uint64_t pl_sz_expected, unsigned char *md, int container_version,
+			   uint8_t hash_alg);
 static bool getVerificationHash(char *input, unsigned char *md, int len);
 static bool verify_signature(const char *moniker, const unsigned char *dgst,
 		int dgst_len, const ecc_signature_t sig_raw, const ecc_key_t key_raw);
@@ -96,6 +97,9 @@ unsigned char *calc_hash(uint8_t hash_alg,
 	const EVP_MD* alg;
 
 	switch (hash_alg) {
+	case HASH_ALG_SHA512:
+		alg = EVP_sha512();
+		break;
 	case HASH_ALG_SHA3_512:
 		alg = EVP_sha3_512();
 		break;
@@ -227,6 +231,7 @@ static void display_version_raw(const ROM_version_raw v)
 	if (v.sig_alg == SIG_ALG_SHA512_ECDSA)	printf("  sig_alg:  %02x (%s)\n", v.sig_alg, "SHA512/ECDSA-521");
 	else if (v.sig_alg == SIG_ALG_SHA3_512_ECDSA_DIL) printf("  sig_alg:  %02x (%s)\n", v.sig_alg, "SHA3-512, ECDSA-521/Dilithium r2 8/7");
 	else if (v.sig_alg == SIG_ALG_SHA3_512_ECDSA_MLDSA) printf(" sig_alg:  %02x (%s)\n", v.sig_alg, "SHA3-512, ECDSA 521/ML-DSA-87");
+	else if (v.sig_alg == SIG_ALG_SHA512_ECDSA_MLDSA) printf(" sig_alg:  %02x (%s)\n", v.sig_alg, "SHA512, ECDSA 521/ML-DSA-87");
 	else printf("  sig_alg:  %02x (%s)\n", v.sig_alg, "UNKNOWN");
 }
 
@@ -437,7 +442,7 @@ static void display_container_v2(struct parsed_stb_container_v2 c)
 
 	p = calc_hash(HASH_ALG_SHA3_512, c.c->hw_pkey_a, sizeof(ecc_key_t) + sizeof(dilithium_key_t), md);
 	if (!p)
-		die(EX_SOFTWARE, "%s", "Cannot get SHA3-512");
+		die(EX_SOFTWARE, "%s", "Cannot get SHA3-512/SHA512");
 	printf("HW keys hash (calculated):\n");
 	print_bytes((char *) "           ", (uint8_t *) md, sizeof(md));
 	printf("\n");
@@ -494,7 +499,7 @@ static void display_container_v2(struct parsed_stb_container_v2 c)
         display_container_stats_v2(&c);
 }
 
-static void display_container_v3(struct parsed_stb_container_v3 c)
+static void display_container_v3(struct parsed_stb_container_v3 c, uint8_t hash_alg)
 {
 	unsigned char md[SHA512_DIGEST_LENGTH];
 	void *p;
@@ -509,9 +514,9 @@ static void display_container_v3(struct parsed_stb_container_v3 c)
 	print_bytes((char *) "hw_pkey_d: ", (uint8_t *) c.c->hw_pkey_d,
 			sizeof(c.c->hw_pkey_d));
 
-	p = calc_hash(HASH_ALG_SHA3_512, c.c->hw_pkey_a, sizeof(ecc_key_t) + sizeof(mldsa_key_t), md);
+	p = calc_hash(hash_alg, c.c->hw_pkey_a, sizeof(ecc_key_t) + sizeof(mldsa_key_t), md);
 	if (!p)
-		die(EX_SOFTWARE, "%s", "Cannot get SHA3-512");
+		die(EX_SOFTWARE, "%s", "Cannot get SHA3-512/SHA512");
 	printf("HW keys hash (calculated):\n");
 	print_bytes((char *) "           ", (uint8_t *) md, sizeof(md));
 	printf("\n");
@@ -628,7 +633,7 @@ static bool validate_container(struct parsed_stb_container c, int fdin)
 	if (verbose) printf("\n");
 
 	// Verify Payload hash.
-	status = getPayloadHash(fdin, be64_to_cpu(c.sh->payload_size), md, 1)
+	status = getPayloadHash(fdin, be64_to_cpu(c.sh->payload_size), md, 1, HASH_ALG_SHA512)
 			&& status;
 	if (verbose) print_bytes((char *) "Payload hash = ", (uint8_t *) md,
 			SHA512_DIGEST_LENGTH);
@@ -676,7 +681,7 @@ static bool validate_container_v2(struct parsed_stb_container_v2 c, int fdin)
 	// Get Prefix header hash.
 	p = calc_hash(HASH_ALG_SHA3_512, (uint8_t *) c.ph, sizeof(ROM_prefix_header_v2_raw), md);
 	if (!p)
-		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
+		die(EX_SOFTWARE, "%s", "Cannot get SHA3-512");
 	if (verbose) print_bytes((char *) "PR header hash = ", (uint8_t *) md,
 			SHA512_DIGEST_LENGTH);
 
@@ -720,7 +725,7 @@ static bool validate_container_v2(struct parsed_stb_container_v2 c, int fdin)
 	if (verbose) printf("\n");
 
 	// Verify Payload hash.
-	status = getPayloadHash(fdin, be64_to_cpu(c.sh->payload_size), md, 2)
+	status = getPayloadHash(fdin, be64_to_cpu(c.sh->payload_size), md, 2, HASH_ALG_SHA3_512)
 			&& status;
 	if (verbose) print_bytes((char *) "Payload hash = ", (uint8_t *) md,
 			SHA512_DIGEST_LENGTH);
@@ -739,7 +744,7 @@ static bool validate_container_v2(struct parsed_stb_container_v2 c, int fdin)
 	// Verify SW keys hash.
 	p = calc_hash(HASH_ALG_SHA3_512, c.pd->sw_pkey_p, sSwKeySize,md );
 	if (!p)
-		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
+		die(EX_SOFTWARE, "%s", "Cannot get SHA3-512");
 	if (verbose) print_bytes((char *) "SW keys hash = ", (uint8_t *) md,
 			SHA512_DIGEST_LENGTH);
 
@@ -756,7 +761,7 @@ static bool validate_container_v2(struct parsed_stb_container_v2 c, int fdin)
 	return status;
 }
 
-static bool validate_container_v3(struct parsed_stb_container_v3 c, int fdin)
+static bool validate_container_v3(struct parsed_stb_container_v3 c, int fdin, uint8_t hash_alg)
 {
 	static int status = true;
 
@@ -765,9 +770,9 @@ static bool validate_container_v3(struct parsed_stb_container_v3 c, int fdin)
 	size_t sSwKeySize = 0;
 
 	// Get Prefix header hash.
-	p = calc_hash(HASH_ALG_SHA3_512, (uint8_t *) c.ph, sizeof(ROM_prefix_header_v3_raw), md);
+	p = calc_hash(hash_alg, (uint8_t *) c.ph, sizeof(ROM_prefix_header_v3_raw), md);
 	if (!p)
-		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
+		die(EX_SOFTWARE, "%s", "Cannot get SHA3-512");
 	if (verbose) print_bytes((char *) "PR header hash = ", (uint8_t *) md,
 			SHA512_DIGEST_LENGTH);
 
@@ -787,9 +792,9 @@ static bool validate_container_v3(struct parsed_stb_container_v3 c, int fdin)
 	if (verbose) printf("\n");
 
 	// Get SW header hash.
-	p = calc_hash(HASH_ALG_SHA3_512, (uint8_t *) c.sh, sizeof(ROM_sw_header_v3_raw), md);
+	p = calc_hash(hash_alg, (uint8_t *) c.sh, sizeof(ROM_sw_header_v3_raw), md);
 	if (!p)
-		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
+		die(EX_SOFTWARE, "%s", "Cannot get SHA3-512");
 	if (verbose) print_bytes((char *) "SW header hash = ", (uint8_t *) md,
 			SHA512_DIGEST_LENGTH);
 
@@ -811,7 +816,7 @@ static bool validate_container_v3(struct parsed_stb_container_v3 c, int fdin)
 	if (verbose) printf("\n");
 
 	// Verify Payload hash.
-	status = getPayloadHash(fdin, be64_to_cpu(c.sh->payload_size), md, 2)
+	status = getPayloadHash(fdin, be64_to_cpu(c.sh->payload_size), md, 3, hash_alg)
 			&& status;
 	if (verbose) print_bytes((char *) "Payload hash = ", (uint8_t *) md,
 			SHA512_DIGEST_LENGTH);
@@ -828,9 +833,9 @@ static bool validate_container_v3(struct parsed_stb_container_v3 c, int fdin)
 	if (verbose) printf("\n");
 
 	// Verify SW keys hash.
-	p = calc_hash(HASH_ALG_SHA3_512, c.pd->sw_pkey_p, sSwKeySize,md );
+	p = calc_hash(hash_alg, c.pd->sw_pkey_p, sSwKeySize,md );
 	if (!p)
-		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
+		die(EX_SOFTWARE, "%s", "Cannot get SHA3-512");
 	if (verbose) print_bytes((char *) "SW keys hash = ", (uint8_t *) md,
 			SHA512_DIGEST_LENGTH);
 
@@ -884,7 +889,7 @@ static bool verify_container_v2(struct parsed_stb_container_v2 c, char * verify)
 
 	p = calc_hash(HASH_ALG_SHA3_512, c.c->hw_pkey_a, sizeof(ecc_key_t) + sizeof(dilithium_key_t), md);
 	if (!p)
-		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
+		die(EX_SOFTWARE, "%s", "Cannot get SHA3-512");
 	if (verbose) print_bytes((char *) "HW keys hash = ", (uint8_t *) md,
 			SHA512_DIGEST_LENGTH);
 
@@ -903,16 +908,16 @@ static bool verify_container_v2(struct parsed_stb_container_v2 c, char * verify)
 	return status;
 }
 
-static bool verify_container_v3(struct parsed_stb_container_v3 c, char * verify)
+static bool verify_container_v3(struct parsed_stb_container_v3 c, char * verify, uint8_t hash_alg)
 {
 	static int status = false;
 
 	void *md = alloca(SHA512_DIGEST_LENGTH);
 	void *p;
 
-	p = calc_hash(HASH_ALG_SHA3_512, c.c->hw_pkey_a, sizeof(ecc_key_t) + sizeof(mldsa_key_t), md);
+	p = calc_hash(hash_alg, c.c->hw_pkey_a, sizeof(ecc_key_t) + sizeof(mldsa_key_t), md);
 	if (!p)
-		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
+		die(EX_SOFTWARE, "%s", "Cannot get SHA3-512/SHA512");
 	if (verbose) print_bytes((char *) "HW keys hash = ", (uint8_t *) md,
 			SHA512_DIGEST_LENGTH);
 
@@ -1114,7 +1119,8 @@ static bool verify_mldsa_87_signature(const char *moniker, const unsigned char *
 	return sRet;
 }
 
-static bool getPayloadHash(int fdin, uint64_t pl_sz_expected, unsigned char *md, int container_version)
+static bool getPayloadHash(int fdin, uint64_t pl_sz_expected, unsigned char *md, int container_version,
+			   uint8_t hash_alg)
 {
 	struct stat st;
 	void *file;
@@ -1158,12 +1164,12 @@ static bool getPayloadHash(int fdin, uint64_t pl_sz_expected, unsigned char *md,
 			     (params.ignore_remainder ?
 			      min(pl_sz_actual, pl_sz_expected) : pl_sz_actual), md);
 	} else {
-		p = calc_hash(HASH_ALG_SHA3_512, file + SECURE_BOOT_HEADERS_V3_SIZE,
+		p = calc_hash(hash_alg, file + SECURE_BOOT_HEADERS_V3_SIZE,
 			     (params.ignore_remainder ?
 			      min(pl_sz_actual, pl_sz_expected) : pl_sz_actual), md);
 	}
 	if (!p)
-		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
+		die(EX_SOFTWARE, "%s", "Cannot get SHA3-512/SHA512");
 
 	return true;
 }
@@ -1451,14 +1457,24 @@ int main(int argc, char* argv[])
 		if (parse_stb_container_v3(container, SECURE_BOOT_HEADERS_V3_SIZE, &c_v3) != 0)
 			die(EX_DATAERR, "%s", "Failed to parse container");
 
+		if ((c_v3.ph->ver_alg.hash_alg == HASH_ALG_SHA512 &&
+		     c_v3.ph->ver_alg.sig_alg  != SIG_ALG_SHA512_ECDSA_MLDSA) ||
+		    (c_v3.ph->ver_alg.hash_alg == HASH_ALG_SHA3_512 &&
+                     c_v3.ph->ver_alg.sig_alg  != SIG_ALG_SHA3_512_ECDSA_MLDSA))
+			die(EX_DATAERR,
+			    "There's an inconsistency between the hash used by "
+			    "hash_alg '%u' and sig_alg '%u'\n",
+			    c_v3.ph->ver_alg.hash_alg, c_v3.ph->ver_alg.sig_alg);
+
 		if (params.print_container)
-			display_container_v3(c_v3);
+			display_container_v3(c_v3, c_v3.ph->ver_alg.hash_alg);
 
 		if (params.validate)
-			validate_status = validate_container_v3(c_v3, fdin);
+			validate_status = validate_container_v3(c_v3, fdin, c_v3.ph->ver_alg.hash_alg);
 
 		if (params.verify)
-			verify_status = verify_container_v3(c_v3, params.verify);
+			verify_status = verify_container_v3(c_v3, params.verify,
+							    c_v3.ph->ver_alg.hash_alg);
 	}
 	if ((validate_status != UNATTEMPTED) || (verify_status != UNATTEMPTED)) {
 		printf("Container validity check %s. Container verification check %s.\n\n",
