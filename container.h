@@ -72,6 +72,8 @@ typedef uint8_t mldsa_signature_t[MLDSA_87_SIG_LENGTH];
 typedef struct {
 	be16 version;		/* (1: see versions above) */
 	uint8_t hash_alg;	/* (1: SHA-512 2: SHA3-512) */
+#define HASH_ALG_SHA512		1
+#define HASH_ALG_SHA3_512	2
 	uint8_t sig_alg;	/* (1: SHA-512/ECDSA-521) 2: SHA3-512 ECDSA-521/Dilithium r2 8/7
                                                           3: SHA3-512 ECDSA 521/ML-DSA-87 */
 }__attribute__((packed)) ROM_version_raw;

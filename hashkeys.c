@@ -51,12 +51,22 @@ int wrap = 100;
 
 void usage(int status);
 
-unsigned char *sha3_512(const unsigned char *data, size_t len, unsigned char *md)
+unsigned char *calc_hash(unsigned hashalg,
+			 const unsigned char *data, size_t len,
+			 unsigned char *md)
 {
 #if OPENSSL_VERSION_NUMBER >= 0x10100000L
-	const EVP_MD* alg = EVP_sha3_512();
 	uint32_t md_len = SHA512_DIGEST_LENGTH;
 	EVP_MD_CTX* ctx = EVP_MD_CTX_new();
+	const EVP_MD* alg;
+
+	switch (hashalg) {
+	case HASH_ALG_SHA3_512:
+		alg = EVP_sha3_512();
+		break;
+	default:
+		return NULL;
+	}
 	EVP_DigestInit_ex(ctx, alg, NULL);
 	EVP_DigestUpdate(ctx, data, len);
 	EVP_DigestFinal_ex(ctx, md, &md_len);
@@ -460,9 +470,9 @@ int main(int argc, char* argv[])
 	if (params.container_version == 1) {
 		p = SHA512(c->hw_pkey_a, sizeof(ecc_key_t) * 3, md);
 	} else if (params.container_version == 2) {
-		p = sha3_512(c_v2->hw_pkey_a, sizeof(ecc_key_t) + sizeof(dilithium_key_t), md);
+		p = calc_hash(HASH_ALG_SHA3_512, c_v2->hw_pkey_a, sizeof(ecc_key_t) + sizeof(dilithium_key_t), md);
 	} else if (params.container_version == 3) {
-		p = sha3_512(c_v3->hw_pkey_a, sizeof(ecc_key_t) + sizeof(mldsa_key_t), md);
+		p = calc_hash(HASH_ALG_SHA3_512, c_v3->hw_pkey_a, sizeof(ecc_key_t) + sizeof(mldsa_key_t), md);
 	} else {
 		die(EX_SOFTWARE, "Invalid container version : %d", params.container_version);
 	}

@@ -57,12 +57,22 @@ int wrap = 100;
 
 void usage(int status);
 
-unsigned char *sha3_512(const unsigned char *data, size_t len, unsigned char *md)
+unsigned char *calc_hash(uint8_t hash_alg,
+			 const unsigned char *data, size_t len,
+			 unsigned char *md)
 {
 #if OPENSSL_VERSION_NUMBER >= 0x10100000L
-	const EVP_MD* alg = EVP_sha3_512();
 	uint32_t md_len = SHA512_DIGEST_LENGTH;
 	EVP_MD_CTX* ctx = EVP_MD_CTX_new();
+	const EVP_MD* alg;
+
+	switch (hash_alg) {
+	case HASH_ALG_SHA3_512:
+		alg = EVP_sha3_512();
+		break;
+	default:
+		return NULL;
+	}
 	EVP_DigestInit_ex(ctx, alg, NULL);
 	EVP_DigestUpdate(ctx, data, len);
 	EVP_DigestFinal_ex(ctx, md, &md_len);
@@ -306,12 +316,12 @@ void writeHdr(void *hdr, const char *outFile, int hdr_type, int container_versio
                     break;
                   case PREFIX_HDR:
                     hdr_sz = sizeof(ROM_prefix_header_v3_raw);
-                    md = sha3_512(hdr, hdr_sz, md_buf);
+                    md = calc_hash(HASH_ALG_SHA3_512, hdr, hdr_sz, md_buf);
                     verbose_print((char *) "PR header hash  = ", md_buf, sizeof(md_buf));
                     break;
                   case SOFTWARE_HDR:
                     hdr_sz = sizeof(ROM_sw_header_v3_raw);
-                    md = sha3_512(hdr, hdr_sz, md_buf);
+                    md = calc_hash(HASH_ALG_SHA3_512, hdr, hdr_sz, md_buf);
                     verbose_print((char *) "SW header hash  = ", md_buf, sizeof(md_buf));
                     break;
                   default:
@@ -326,12 +336,12 @@ void writeHdr(void *hdr, const char *outFile, int hdr_type, int container_versio
 		    break;
 		  case PREFIX_HDR:
 		    hdr_sz = sizeof(ROM_prefix_header_v2_raw);
-		    md = sha3_512(hdr, hdr_sz, md_buf);
+		    md = calc_hash(HASH_ALG_SHA3_512, hdr, hdr_sz, md_buf);
 		    verbose_print((char *) "PR header hash  = ", md_buf, sizeof(md_buf));
 		    break;
 		  case SOFTWARE_HDR:
 		    hdr_sz = sizeof(ROM_sw_header_v2_raw);
-		    md = sha3_512(hdr, hdr_sz, md_buf);
+		    md = calc_hash(HASH_ALG_SHA3_512, hdr, hdr_sz, md_buf);
 		    verbose_print((char *) "SW header hash  = ", md_buf, sizeof(md_buf));
 		    break;
 		  default:
@@ -854,7 +864,7 @@ int main(int argc, char* argv[])
 
 		ph = container + sizeof(ROM_container_raw);
 		ph->ver_alg.version = cpu_to_be16(1);
-		ph->ver_alg.hash_alg = 1;
+		ph->ver_alg.hash_alg = HASH_ALG_SHA512;
 		ph->ver_alg.sig_alg = 1;
 
 		// Set code-start-offset.
@@ -947,7 +957,7 @@ int main(int argc, char* argv[])
 		swh = (ROM_sw_header_raw*) (((uint8_t*) pd) + sizeof(ecc_signature_t) * 3
 					    + be64_to_cpu(ph->payload_size));
 		swh->ver_alg.version = cpu_to_be16(1);
-		swh->ver_alg.hash_alg = 1;
+		swh->ver_alg.hash_alg = HASH_ALG_SHA512;
 		swh->ver_alg.sig_alg = 1;
 
 		// Set code-start-offset.
@@ -1081,14 +1091,14 @@ int main(int argc, char* argv[])
 				die(EX_SOFTWARE, "Failure reading HW PUBKEY D : %s",params.hw_keyfn_d);
 			verbose_print((char *) "pubkey D = ", c_v2->hw_pkey_d, sizeof(c_v2->hw_pkey_d));
 		}
-		p = sha3_512(c_v2->hw_pkey_a, sizeof(ecc_key_t) + sizeof(dilithium_key_t), md);
+		p = calc_hash(HASH_ALG_SHA3_512, c_v2->hw_pkey_a, sizeof(ecc_key_t) + sizeof(dilithium_key_t), md);
 		if (!p)
 			die(EX_SOFTWARE, "%s", "Cannot get SHA3-512");
 		verbose_print((char *) "HW keys hash = ", md, sizeof(md));
 
 		ph_v2 = (ROM_prefix_header_v2_raw*)&(c_v2->prefix);
 		ph_v2->ver_alg.version = cpu_to_be16(2);
-		ph_v2->ver_alg.hash_alg = 2;
+		ph_v2->ver_alg.hash_alg = HASH_ALG_SHA3_512;
 		ph_v2->ver_alg.sig_alg = 2;
 		ph_v2->reserved = 0;
 
@@ -1149,7 +1159,7 @@ int main(int argc, char* argv[])
 		debug_msg("sw_key_count = %u", ph_v2->sw_key_count);
 
 		// Calculate the SW keys hash.
-		p = sha3_512(pd_v2->sw_pkey_p, be64_to_cpu(ph_v2->payload_size), md);
+		p = calc_hash(HASH_ALG_SHA3_512, pd_v2->sw_pkey_p, be64_to_cpu(ph_v2->payload_size), md);
 		if (!p)
 			die(EX_SOFTWARE, "%s", "Cannot get SHA3-512");
 		memcpy(ph_v2->payload_hash, md, sizeof(sha2_hash_t));
@@ -1161,7 +1171,7 @@ int main(int argc, char* argv[])
 
 		swh_v2 = (ROM_sw_header_v2_raw*) &c_v2->swheader;
 		swh_v2->ver_alg.version = cpu_to_be16(2);
-		swh_v2->ver_alg.hash_alg = 2;
+		swh_v2->ver_alg.hash_alg = HASH_ALG_SHA3_512;
 		swh_v2->ver_alg.sig_alg = 2;
 
 		swh_v2->reserved = 0;
@@ -1209,7 +1219,7 @@ int main(int argc, char* argv[])
 		memset(swh_v2->reserved2,0, sizeof(swh_v2->reserved2));
 
 		// Calculate the payload hash.
-		p = sha3_512(infile, payload_st.st_size, md);
+		p = calc_hash(HASH_ALG_SHA3_512, infile, payload_st.st_size, md);
 		if (!p)
 			die(EX_SOFTWARE, "%s", "Cannot get SHA3-512");
 		memcpy(swh_v2->payload_hash, md, sizeof(sha2_hash_t));
@@ -1291,14 +1301,14 @@ int main(int argc, char* argv[])
 				die(EX_SOFTWARE, "Failure reading HW PUBKEY D : %s",params.hw_keyfn_d);
 			verbose_print((char *) "pubkey D = ", c_v3->hw_pkey_d, sizeof(c_v3->hw_pkey_d));
 		}
-		p = sha3_512(c_v3->hw_pkey_a, sizeof(ecc_key_t) + sizeof(mldsa_key_t), md);
+		p = calc_hash(HASH_ALG_SHA3_512, c_v3->hw_pkey_a, sizeof(ecc_key_t) + sizeof(mldsa_key_t), md);
 		if (!p)
 			die(EX_SOFTWARE, "%s", "Cannot get SHA3-512");
 		verbose_print((char *) "HW keys hash = ", md, sizeof(md));
 
 		ph_v3 = (ROM_prefix_header_v3_raw*)&(c_v3->prefix);
 		ph_v3->ver_alg.version = cpu_to_be16(3);
-		ph_v3->ver_alg.hash_alg = 2;
+		ph_v3->ver_alg.hash_alg = HASH_ALG_SHA3_512;
 		ph_v3->ver_alg.sig_alg = 3;
 		ph_v3->reserved = 0;
 
@@ -1359,7 +1369,7 @@ int main(int argc, char* argv[])
 		debug_msg("sw_key_count = %u", ph_v3->sw_key_count);
 
 		// Calculate the SW keys hash.
-		p = sha3_512(pd_v3->sw_pkey_p, be64_to_cpu(ph_v3->payload_size), md);
+		p = calc_hash(HASH_ALG_SHA3_512, pd_v3->sw_pkey_p, be64_to_cpu(ph_v3->payload_size), md);
 		if (!p)
 			die(EX_SOFTWARE, "%s", "Cannot get SHA3-512");
 		memcpy(ph_v3->payload_hash, md, sizeof(sha2_hash_t));
@@ -1371,7 +1381,7 @@ int main(int argc, char* argv[])
 
 		swh_v3 = (ROM_sw_header_v3_raw*) &c_v3->swheader;
 		swh_v3->ver_alg.version = cpu_to_be16(3);
-		swh_v3->ver_alg.hash_alg = 2;
+		swh_v3->ver_alg.hash_alg = HASH_ALG_SHA3_512;
 		swh_v3->ver_alg.sig_alg = 3;
 		swh_v3->reserved = 0;
 
@@ -1418,7 +1428,7 @@ int main(int argc, char* argv[])
 		memset(swh_v3->reserved2,0, sizeof(swh_v3->reserved2));
 
 		// Calculate the payload hash.
-		p = sha3_512(infile, payload_st.st_size, md);
+		p = calc_hash(HASH_ALG_SHA3_512, infile, payload_st.st_size, md);
 		if (!p)
 			die(EX_SOFTWARE, "%s", "Cannot get SHA3-512");
 		memcpy(swh_v3->payload_hash, md, sizeof(sha2_hash_t));

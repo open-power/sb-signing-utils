@@ -86,19 +86,29 @@ static bool verify_mldsa_87_signature(const char *moniker, const unsigned char *
 				       int dgst_len, const mldsa_signature_t sig_raw, const mldsa_key_t key_raw);
 
 
-unsigned char *ossl_sha3_512(const unsigned char *data, size_t len, unsigned char *md)
+unsigned char *calc_hash(uint8_t hash_alg,
+			 const unsigned char *data, size_t len,
+			 unsigned char *md)
 {
 #if OPENSSL_VERSION_NUMBER >= 0x10100000L
-	const EVP_MD* alg = EVP_sha3_512();
 	uint32_t md_len = SHA512_DIGEST_LENGTH;
 	EVP_MD_CTX* ctx = EVP_MD_CTX_new();
+	const EVP_MD* alg;
+
+	switch (hash_alg) {
+	case HASH_ALG_SHA3_512:
+		alg = EVP_sha3_512();
+		break;
+	default:
+		return NULL;
+	}
 	EVP_DigestInit_ex(ctx, alg, NULL);
 	EVP_DigestUpdate(ctx, data, len);
 	EVP_DigestFinal_ex(ctx, md, &md_len);
 	EVP_MD_CTX_destroy(ctx);
 	return md;
 #else
-    return NULL;
+	return NULL;
 #endif
 }
 
@@ -211,8 +221,8 @@ static void display_version_raw(const ROM_version_raw v)
 {
 	printf("ver_alg:\n");
 	printf("  version:  %04x\n", be16_to_cpu(v.version));
-	if (v.hash_alg == 1) printf("  hash_alg: %02x (%s)\n", v.hash_alg, "SHA512");
-	else if (v.hash_alg == 2) printf("  hash_alg: %02x (%s)\n", v.hash_alg, "SHA3-512");
+	if (v.hash_alg == HASH_ALG_SHA512) printf("  hash_alg: %02x (%s)\n", v.hash_alg, "SHA512");
+	else if (v.hash_alg == HASH_ALG_SHA3_512) printf("  hash_alg: %02x (%s)\n", v.hash_alg, "SHA3-512");
 	else printf("  hash_alg: %02x (%s)\n", v.hash_alg, "UNKNOWN");
 	if (v.sig_alg == 1)	printf("  sig_alg:  %02x (%s)\n", v.sig_alg, "SHA512/ECDSA-521");
 	else if (v.sig_alg == 2) printf("  sig_alg:  %02x (%s)\n", v.sig_alg, "SHA3-512, ECDSA-521/Dilithium r2 8/7");
@@ -425,7 +435,7 @@ static void display_container_v2(struct parsed_stb_container_v2 c)
 	print_bytes((char *) "hw_pkey_d: ", (uint8_t *) c.c->hw_pkey_d,
 			sizeof(c.c->hw_pkey_d));
 
-	p = ossl_sha3_512(c.c->hw_pkey_a, sizeof(ecc_key_t) + sizeof(dilithium_key_t), md);
+	p = calc_hash(HASH_ALG_SHA3_512, c.c->hw_pkey_a, sizeof(ecc_key_t) + sizeof(dilithium_key_t), md);
 	if (!p)
 		die(EX_SOFTWARE, "%s", "Cannot get SHA3-512");
 	printf("HW keys hash (calculated):\n");
@@ -499,7 +509,7 @@ static void display_container_v3(struct parsed_stb_container_v3 c)
 	print_bytes((char *) "hw_pkey_d: ", (uint8_t *) c.c->hw_pkey_d,
 			sizeof(c.c->hw_pkey_d));
 
-	p = ossl_sha3_512(c.c->hw_pkey_a, sizeof(ecc_key_t) + sizeof(mldsa_key_t), md);
+	p = calc_hash(HASH_ALG_SHA3_512, c.c->hw_pkey_a, sizeof(ecc_key_t) + sizeof(mldsa_key_t), md);
 	if (!p)
 		die(EX_SOFTWARE, "%s", "Cannot get SHA3-512");
 	printf("HW keys hash (calculated):\n");
@@ -664,7 +674,7 @@ static bool validate_container_v2(struct parsed_stb_container_v2 c, int fdin)
 	size_t sSwKeySize = 0;
 
 	// Get Prefix header hash.
-	p = ossl_sha3_512((uint8_t *) c.ph, sizeof(ROM_prefix_header_v2_raw), md);
+	p = calc_hash(HASH_ALG_SHA3_512, (uint8_t *) c.ph, sizeof(ROM_prefix_header_v2_raw), md);
 	if (!p)
 		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
 	if (verbose) print_bytes((char *) "PR header hash = ", (uint8_t *) md,
@@ -686,7 +696,7 @@ static bool validate_container_v2(struct parsed_stb_container_v2 c, int fdin)
 	if (verbose) printf("\n");
 
 	// Get SW header hash.
-	p = ossl_sha3_512((uint8_t *) c.sh, sizeof(ROM_sw_header_v2_raw), md);
+	p = calc_hash(HASH_ALG_SHA3_512, (uint8_t *) c.sh, sizeof(ROM_sw_header_v2_raw), md);
 	if (!p)
 		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
 	if (verbose) print_bytes((char *) "SW header hash = ", (uint8_t *) md,
@@ -727,7 +737,7 @@ static bool validate_container_v2(struct parsed_stb_container_v2 c, int fdin)
 	if (verbose) printf("\n");
 
 	// Verify SW keys hash.
-	p = ossl_sha3_512(c.pd->sw_pkey_p, sSwKeySize,md );
+	p = calc_hash(HASH_ALG_SHA3_512, c.pd->sw_pkey_p, sSwKeySize,md );
 	if (!p)
 		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
 	if (verbose) print_bytes((char *) "SW keys hash = ", (uint8_t *) md,
@@ -755,7 +765,7 @@ static bool validate_container_v3(struct parsed_stb_container_v3 c, int fdin)
 	size_t sSwKeySize = 0;
 
 	// Get Prefix header hash.
-	p = ossl_sha3_512((uint8_t *) c.ph, sizeof(ROM_prefix_header_v3_raw), md);
+	p = calc_hash(HASH_ALG_SHA3_512, (uint8_t *) c.ph, sizeof(ROM_prefix_header_v3_raw), md);
 	if (!p)
 		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
 	if (verbose) print_bytes((char *) "PR header hash = ", (uint8_t *) md,
@@ -777,7 +787,7 @@ static bool validate_container_v3(struct parsed_stb_container_v3 c, int fdin)
 	if (verbose) printf("\n");
 
 	// Get SW header hash.
-	p = ossl_sha3_512((uint8_t *) c.sh, sizeof(ROM_sw_header_v3_raw), md);
+	p = calc_hash(HASH_ALG_SHA3_512, (uint8_t *) c.sh, sizeof(ROM_sw_header_v3_raw), md);
 	if (!p)
 		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
 	if (verbose) print_bytes((char *) "SW header hash = ", (uint8_t *) md,
@@ -818,7 +828,7 @@ static bool validate_container_v3(struct parsed_stb_container_v3 c, int fdin)
 	if (verbose) printf("\n");
 
 	// Verify SW keys hash.
-	p = ossl_sha3_512(c.pd->sw_pkey_p, sSwKeySize,md );
+	p = calc_hash(HASH_ALG_SHA3_512, c.pd->sw_pkey_p, sSwKeySize,md );
 	if (!p)
 		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
 	if (verbose) print_bytes((char *) "SW keys hash = ", (uint8_t *) md,
@@ -872,7 +882,7 @@ static bool verify_container_v2(struct parsed_stb_container_v2 c, char * verify)
 	void *md = alloca(SHA512_DIGEST_LENGTH);
 	void *p;
 
-	p = ossl_sha3_512(c.c->hw_pkey_a, sizeof(ecc_key_t) + sizeof(dilithium_key_t), md);
+	p = calc_hash(HASH_ALG_SHA3_512, c.c->hw_pkey_a, sizeof(ecc_key_t) + sizeof(dilithium_key_t), md);
 	if (!p)
 		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
 	if (verbose) print_bytes((char *) "HW keys hash = ", (uint8_t *) md,
@@ -900,7 +910,7 @@ static bool verify_container_v3(struct parsed_stb_container_v3 c, char * verify)
 	void *md = alloca(SHA512_DIGEST_LENGTH);
 	void *p;
 
-	p = ossl_sha3_512(c.c->hw_pkey_a, sizeof(ecc_key_t) + sizeof(mldsa_key_t), md);
+	p = calc_hash(HASH_ALG_SHA3_512, c.c->hw_pkey_a, sizeof(ecc_key_t) + sizeof(mldsa_key_t), md);
 	if (!p)
 		die(EX_SOFTWARE, "%s", "Cannot get SHA512");
 	if (verbose) print_bytes((char *) "HW keys hash = ", (uint8_t *) md,
@@ -1144,11 +1154,11 @@ static bool getPayloadHash(int fdin, uint64_t pl_sz_expected, unsigned char *md,
 			   (params.ignore_remainder ?
 			    min(pl_sz_actual, pl_sz_expected) : pl_sz_actual), md);
 	} else if (container_version == 2) {
-		p = ossl_sha3_512(file + SECURE_BOOT_HEADERS_V2_SIZE,
+		p = calc_hash(HASH_ALG_SHA3_512, file + SECURE_BOOT_HEADERS_V2_SIZE,
 			     (params.ignore_remainder ?
 			      min(pl_sz_actual, pl_sz_expected) : pl_sz_actual), md);
 	} else {
-		p = ossl_sha3_512(file + SECURE_BOOT_HEADERS_V3_SIZE,
+		p = calc_hash(HASH_ALG_SHA3_512, file + SECURE_BOOT_HEADERS_V3_SIZE,
 			     (params.ignore_remainder ?
 			      min(pl_sz_actual, pl_sz_expected) : pl_sz_actual), md);
 	}
