@@ -61,6 +61,9 @@ unsigned char *calc_hash(unsigned hashalg,
 	const EVP_MD* alg;
 
 	switch (hashalg) {
+	case HASH_ALG_SHA512:
+		alg = EVP_sha512();
+		break;
 	case HASH_ALG_SHA3_512:
 		alg = EVP_sha3_512();
 		break;
@@ -251,6 +254,7 @@ __attribute__((__noreturn__)) void usage (int status)
 			"     --ascii             output in hexascii (default)\n"
 			"     --binary            output in binary\n"
 			"     --pretty            add 0x the start of the string, for --ascii\n"
+			"     --hash              hash to use for V3 container: sha3-512 (default), sha512\n"
 			"\n");
 	};
 	exit(status);
@@ -271,6 +275,7 @@ static struct option const opts[] = {
 	{ "ascii",            no_argument,       0,  '0' },
 	{ "binary",           no_argument,       0,  '1' },
 	{ "pretty",           no_argument,       0,  '2' },
+	{ "hash",             required_argument, 0,  'H' },
 	{ NULL, 0, NULL, 0 }
 };
 #endif
@@ -293,7 +298,8 @@ int main(int argc, char* argv[])
 	void *container = malloc(SECURE_BOOT_HEADERS_V2_SIZE);
 	ROM_container_raw *c = (ROM_container_raw*) container;
 	ROM_container_v2_raw *c_v2 = (ROM_container_v2_raw*) container;
-        ROM_container_v3_raw *c_v3 = (ROM_container_v3_raw*) container;
+	ROM_container_v3_raw *c_v3 = (ROM_container_v3_raw*) container;
+	uint8_t hash_alg = HASH_ALG_NONE;
 	params.container_version = 1;
 	
 	unsigned char md[SHA512_DIGEST_LENGTH];
@@ -336,6 +342,8 @@ int main(int argc, char* argv[])
 			*(argv + i) = "-2";
 		} else if (!strcmp(*(argv + i), "--container-version")) {
 			*(argv + i) = "-V";
+		} else if (!strcmp(*(argv + i), "--hash")) {
+			*(argv + i) = "-H";
 		} else if (!strncmp(*(argv + i), "--", 2)) {
 			fprintf(stderr, "%s: unrecognized option \'%s\'\n", progname,
 					*(argv + i));
@@ -347,9 +355,9 @@ int main(int argc, char* argv[])
 	while (1) {
 		int opt;
 #ifdef _AIX
-		opt = getopt(argc, argv, "?hv3w:a:b:c:d:V:o:012");
+		opt = getopt(argc, argv, "?hv3w:a:b:c:d:V:o:H:012");
 #else
-		opt = getopt_long(argc, argv, "?hv3w:a:b:c:d:V:o:012", opts, NULL);
+		opt = getopt_long(argc, argv, "?hv3w:a:b:c:d:V:o:H:012", opts, NULL);
 #endif
 
 		if (opt == -1)
@@ -399,9 +407,38 @@ int main(int argc, char* argv[])
 		case '2':
 			params.pretty = true;
 			break;
+		case 'H':
+			if (strcmp(optarg, "sha512") == 0)
+				hash_alg = HASH_ALG_SHA512;
+			else if (strcmp(optarg, "sha3-512") == 0)
+				hash_alg = HASH_ALG_SHA3_512;
+			else
+				die(EX_DATAERR, "Unsupported hash: %s\n", optarg);
+			break;
 		default:
 			usage(EX_USAGE);
 		}
+	}
+
+	switch (params.container_version) {
+	case 1:
+		if (hash_alg == HASH_ALG_NONE)
+			hash_alg = HASH_ALG_SHA512;
+		else if (hash_alg != HASH_ALG_SHA512)
+			die(EX_DATAERR, "%s", "Only sha512 is supported for container version 1\n");
+		break;
+	case 2:
+		if (hash_alg == HASH_ALG_NONE)
+			hash_alg = HASH_ALG_SHA3_512;
+		else if (hash_alg != HASH_ALG_SHA3_512)
+			die(EX_DATAERR, "%s", "Only sha3-512 is supported for container version 2\n");
+		break;
+	case 3:
+		if (hash_alg == HASH_ALG_NONE)
+			hash_alg = HASH_ALG_SHA3_512;
+		break;
+	default:
+		die(EX_DATAERR, "Unsupported container version '%u'\n", params.container_version);
 	}
 
 	if (params.outfile) {
@@ -472,7 +509,7 @@ int main(int argc, char* argv[])
 	} else if (params.container_version == 2) {
 		p = calc_hash(HASH_ALG_SHA3_512, c_v2->hw_pkey_a, sizeof(ecc_key_t) + sizeof(dilithium_key_t), md);
 	} else if (params.container_version == 3) {
-		p = calc_hash(HASH_ALG_SHA3_512, c_v3->hw_pkey_a, sizeof(ecc_key_t) + sizeof(mldsa_key_t), md);
+		p = calc_hash(hash_alg, c_v3->hw_pkey_a, sizeof(ecc_key_t) + sizeof(mldsa_key_t), md);
 	} else {
 		die(EX_SOFTWARE, "Invalid container version : %d", params.container_version);
 	}
