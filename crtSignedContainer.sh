@@ -63,7 +63,8 @@ usage () {
     echo "	                            Only valid for production signing mode"
     echo "	-S, --security-version  Integer, sets the security version container field"
     echo "	-V, --container-version Container version to generate (1, 2, 3)"
-    echo "	-P  --password          ENV variable containing the sf_client password to pass to sf_client via 'sf_client --password"
+    echo "	-P, --password          ENV variable containing the sf_client password to pass to sf_client via 'sf_client --password"
+    echo "	-H, --hash              Hash algorithm to use for container V3: sha3-512 (default), sha512"
     echo ""
     exit 1
 }
@@ -387,13 +388,14 @@ for arg in "$@"; do
     "--verify")     set -- "$@" "-9" ;;
     "--container-version") set -- "$@" "-V" ;;
     "--fw-ecid")    set -- "$@" "-@" ;;
-    "--password")    set -- "$@" "-P" ;;
+    "--password")   set -- "$@" "-P" ;;
+    "--hash")       set -- "$@" "-H" ;;
     *)              set -- "$@" "$arg"
   esac
 done
 
 # Process command-line arguments
-while getopts -- ?hdvw:a:b:c:0:p:q:r:1:f:F:o:l:i:m:k:s:L:S:P:V:4:5:6:7:89:@: opt
+while getopts -- ?hdvw:a:b:c:0:p:q:r:1:f:F:o:l:i:m:k:s:L:S:P:H:V:4:5:6:7:89:@: opt
 do
   case "${opt:?}" in
     v) SB_VERBOSE="TRUE";;
@@ -426,6 +428,7 @@ do
     9) SB_VERIFY="$OPTARG";;
     V) CONTAINER_VERSION="$OPTARG";;
     P) SF_PWD_ENV="$OPTARG";;
+    H) HASHALG="$OPTARG";;
     h|\?) usage;;
   esac
 done
@@ -650,6 +653,11 @@ test "$SB_VERBOSE" && SF_DEBUG_ARGS=" -v"
 test "$SB_DEBUG" && SF_DEBUG_ARGS="$SF_DEBUG_ARGS -d -stdout"
 test $CONTAINER_VERSION == 2 && DIGEST_ARG="-sha3-512"
 test $CONTAINER_VERSION == 3 && DIGEST_ARG="-sha3-512"
+# Container V3 allows choice of hash (sha3-512 or sha512)
+[[ $CONTAINER_VERSION -eq 3 && -n "$HASHALG" ]] && {
+	DIGEST_ARG="-$HASHALG"
+	ADDL_ARGS="$ADDL_ARGS --hash $HASHALG"
+}
 
 test "$SF_PWD_ENV" && SF_COMMON_ARGS="$SF_COMMON_ARGS --password $SF_PWD_ENV"
 
