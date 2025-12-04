@@ -865,7 +865,7 @@ int main(int argc, char* argv[])
 		ph = container + sizeof(ROM_container_raw);
 		ph->ver_alg.version = cpu_to_be16(1);
 		ph->ver_alg.hash_alg = HASH_ALG_SHA512;
-		ph->ver_alg.sig_alg = 1;
+		ph->ver_alg.sig_alg = SIG_ALG_SHA512_ECDSA;
 
 		// Set code-start-offset.
 		if (params.hw_cs_offset) {
@@ -958,7 +958,7 @@ int main(int argc, char* argv[])
 					    + be64_to_cpu(ph->payload_size));
 		swh->ver_alg.version = cpu_to_be16(1);
 		swh->ver_alg.hash_alg = HASH_ALG_SHA512;
-		swh->ver_alg.sig_alg = 1;
+		swh->ver_alg.sig_alg = SIG_ALG_SHA512_ECDSA;
 
 		// Set code-start-offset.
 		if (params.sw_cs_offset) {
@@ -1099,7 +1099,7 @@ int main(int argc, char* argv[])
 		ph_v2 = (ROM_prefix_header_v2_raw*)&(c_v2->prefix);
 		ph_v2->ver_alg.version = cpu_to_be16(2);
 		ph_v2->ver_alg.hash_alg = HASH_ALG_SHA3_512;
-		ph_v2->ver_alg.sig_alg = 2;
+		ph_v2->ver_alg.sig_alg = SIG_ALG_SHA3_512_ECDSA_DIL;
 		ph_v2->reserved = 0;
 
 		// Set flags.
@@ -1172,7 +1172,7 @@ int main(int argc, char* argv[])
 		swh_v2 = (ROM_sw_header_v2_raw*) &c_v2->swheader;
 		swh_v2->ver_alg.version = cpu_to_be16(2);
 		swh_v2->ver_alg.hash_alg = HASH_ALG_SHA3_512;
-		swh_v2->ver_alg.sig_alg = 2;
+		swh_v2->ver_alg.sig_alg = SIG_ALG_SHA3_512_ECDSA_DIL;
 
 		swh_v2->reserved = 0;
 
@@ -1309,7 +1309,7 @@ int main(int argc, char* argv[])
 		ph_v3 = (ROM_prefix_header_v3_raw*)&(c_v3->prefix);
 		ph_v3->ver_alg.version = cpu_to_be16(3);
 		ph_v3->ver_alg.hash_alg = HASH_ALG_SHA3_512;
-		ph_v3->ver_alg.sig_alg = 3;
+		ph_v3->ver_alg.sig_alg = SIG_ALG_SHA3_512_ECDSA_MLDSA;
 		ph_v3->reserved = 0;
 
 		// Set flags.
@@ -1382,7 +1382,7 @@ int main(int argc, char* argv[])
 		swh_v3 = (ROM_sw_header_v3_raw*) &c_v3->swheader;
 		swh_v3->ver_alg.version = cpu_to_be16(3);
 		swh_v3->ver_alg.hash_alg = HASH_ALG_SHA3_512;
-		swh_v3->ver_alg.sig_alg = 3;
+		swh_v3->ver_alg.sig_alg = SIG_ALG_SHA3_512_ECDSA_MLDSA;
 		swh_v3->reserved = 0;
 
 		// Add component ID (label).

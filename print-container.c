@@ -224,9 +224,9 @@ static void display_version_raw(const ROM_version_raw v)
 	if (v.hash_alg == HASH_ALG_SHA512) printf("  hash_alg: %02x (%s)\n", v.hash_alg, "SHA512");
 	else if (v.hash_alg == HASH_ALG_SHA3_512) printf("  hash_alg: %02x (%s)\n", v.hash_alg, "SHA3-512");
 	else printf("  hash_alg: %02x (%s)\n", v.hash_alg, "UNKNOWN");
-	if (v.sig_alg == 1)	printf("  sig_alg:  %02x (%s)\n", v.sig_alg, "SHA512/ECDSA-521");
-	else if (v.sig_alg == 2) printf("  sig_alg:  %02x (%s)\n", v.sig_alg, "SHA3-512, ECDSA-521/Dilithium r2 8/7");
-	else if (v.sig_alg == 3) printf(" sig_alg:  %02x (%s)\n", v.sig_alg, "SHA3-512, ECDSA 521/ML-DSA-87");
+	if (v.sig_alg == SIG_ALG_SHA512_ECDSA)	printf("  sig_alg:  %02x (%s)\n", v.sig_alg, "SHA512/ECDSA-521");
+	else if (v.sig_alg == SIG_ALG_SHA3_512_ECDSA_DIL) printf("  sig_alg:  %02x (%s)\n", v.sig_alg, "SHA3-512, ECDSA-521/Dilithium r2 8/7");
+	else if (v.sig_alg == SIG_ALG_SHA3_512_ECDSA_MLDSA) printf(" sig_alg:  %02x (%s)\n", v.sig_alg, "SHA3-512, ECDSA 521/ML-DSA-87");
 	else printf("  sig_alg:  %02x (%s)\n", v.sig_alg, "UNKNOWN");
 }
 

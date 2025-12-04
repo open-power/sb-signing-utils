@@ -76,6 +76,9 @@ typedef struct {
 #define HASH_ALG_SHA3_512	2
 	uint8_t sig_alg;	/* (1: SHA-512/ECDSA-521) 2: SHA3-512 ECDSA-521/Dilithium r2 8/7
                                                           3: SHA3-512 ECDSA 521/ML-DSA-87 */
+#define SIG_ALG_SHA512_ECDSA         1
+#define SIG_ALG_SHA3_512_ECDSA_DIL   2
+#define SIG_ALG_SHA3_512_ECDSA_MLDSA 3
 }__attribute__((packed)) ROM_version_raw;
 
 typedef struct {
