@@ -42,6 +42,7 @@ int main(int argc, char** argv)
     const char* sSigFile          = NULL;
     bool        sPrintHelp        = false;
     bool        sVerbose          = false;
+    bool        sMLDSAPureMode    = false;
 
     for(sIdx = 1; sIdx < argc; sIdx++)
     {
@@ -67,6 +68,10 @@ int main(int argc, char** argv)
         else if(strcmp(argv[sIdx], "-v") == 0)
         {
             sVerbose = true;
+        }
+        else if(strcmp(argv[sIdx], "--pure") == 0)
+        {
+            sMLDSAPureMode = true;
         }
         else
         {
@@ -101,7 +106,8 @@ int main(int argc, char** argv)
     }
 
     sRc = readFileAlloc(sTBSDataFile, &sTBS, &sTBSBytes);
-    if(0 == sRc && SHA3_512_DigestSize != sTBSBytes)
+    /* if pure mode was NOT chosen, then input data must be SHA3-512 or SHA512 */
+    if(0 == sRc && sMLDSAPureMode == false && SHA3_512_DigestSize != sTBSBytes)
     {
         printf("**** ERROR : %s doesn't appear to be a SHA3-512 digest\n", sTBSDataFile);
         sRc = 1;
