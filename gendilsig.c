@@ -33,12 +33,12 @@ int main(int argc, char** argv)
 {
     size_t      sPrivKeyBytes     = BUF_SIZE;
     size_t      sWirePrivKeyBytes = BUF_SIZE;
-    size_t      sDigestBytes      = BUF_SIZE;
+    size_t      sTBSBytes         = 0;
     size_t      sSignatureBytes   = BUF_SIZE;
     int         sRc               = 0;
     int         sIdx              = 0;
     const char* sPrivKeyFile      = NULL;
-    const char* sDigestFile       = NULL;
+    const char* sTBSDataFile      = NULL; /* sha512 or sha3-512 digest or plain data */
     const char* sSigFile          = NULL;
     bool        sPrintHelp        = false;
     bool        sVerbose          = false;
@@ -52,7 +52,7 @@ int main(int argc, char** argv)
         else if(strcmp(argv[sIdx], "-i") == 0)
         {
             sIdx++;
-            sDigestFile = argv[sIdx];
+            sTBSDataFile = argv[sIdx];
         }
         else if(strcmp(argv[sIdx], "-k") == 0)
         {
@@ -75,7 +75,7 @@ int main(int argc, char** argv)
         }
     }
 
-    if(!sPrintHelp && (NULL == sDigestFile || NULL == sPrivKeyFile || NULL == sSigFile))
+    if(!sPrintHelp && (NULL == sTBSDataFile || NULL == sPrivKeyFile || NULL == sSigFile))
     {
         printf("**** ERROR : Missing input parms\n");
         sPrintHelp = true;
@@ -89,21 +89,21 @@ int main(int argc, char** argv)
 
     mlca_ctx_t     sCtx;
     MLCA_RC        sMlRc        = 0;
-    unsigned char* sDigest      = malloc(BUF_SIZE);
+    unsigned char* sTBS         = NULL;
     unsigned char* sSignature   = malloc(BUF_SIZE);
     unsigned char* sPrivKey     = malloc(BUF_SIZE);
     unsigned char* sWirePrivKey = malloc(BUF_SIZE);
 
-    if(!sDigest || !sSignature || !sPrivKey || !sWirePrivKey)
+    if(!sSignature || !sPrivKey || !sWirePrivKey)
     {
         printf("**** ERROR : Allocation Failure\n");
         exit(1);
     }
 
-    sRc = readFile(sDigest, &sDigestBytes, sDigestFile);
-    if(0 == sRc && SHA3_512_DigestSize != sDigestBytes)
+    sRc = readFileAlloc(sTBSDataFile, &sTBS, &sTBSBytes);
+    if(0 == sRc && SHA3_512_DigestSize != sTBSBytes)
     {
-        printf("**** ERROR : %s doesn't appear to be a SHA3-512 digest\n", sDigestFile);
+        printf("**** ERROR : %s doesn't appear to be a SHA3-512 digest\n", sTBSDataFile);
         sRc = 1;
     }
 
@@ -202,8 +202,8 @@ int main(int argc, char** argv)
         printf("Generating %s signature ...\n",gAlgname);
         int gRc = mlca_sign(sSignature,
                             sSignatureBytes, /// validate RC
-                            sDigest,
-                            sDigestBytes,
+                            sTBS,
+                            sTBSBytes,
                             sPrivKey,
                             sPrivKeyBytes,
                             NULL,
@@ -227,7 +227,7 @@ int main(int argc, char** argv)
         writeFile(sSignature, sSignatureBytes, sSigFile);
     }
 
-    free(sDigest);
+    free(sTBS);
     free(sSignature);
     free(sPrivKey);
     free(sWirePrivKey);

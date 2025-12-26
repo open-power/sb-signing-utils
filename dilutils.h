@@ -31,6 +31,7 @@ enum
 };
 
 int readFile(unsigned char* data, size_t* length, const char* filename);
+int readFileAlloc(const char *filename, unsigned char** data, size_t* length);
 int writeFile(const unsigned char* data, size_t length, const char* filename);
 
 int readFile(unsigned char* data, size_t* length, const char* filename)
@@ -105,6 +106,85 @@ int readFile(unsigned char* data, size_t* length, const char* filename)
         if(fclose(sFile))
         {
             printf("**** ERROR: readFile: Failure closing file : %s\n", filename);
+            if(0 == sRc)
+                sRc = 1;
+        }
+    }
+    return sRc;
+}
+
+int readFileAlloc(const char* filename, unsigned char** data, size_t* length)
+{
+    int    sRc    = 0;
+    size_t sBytes = 0;
+    FILE*  sFile  = NULL;
+
+    if(NULL == data || NULL == length || NULL == filename)
+    {
+        printf("**** ERROR : readFileAlloc: Invalid parms\n");
+        sRc = 1;
+    }
+
+    if(0 == sRc)
+    {
+        sFile = fopen(filename, "rb");
+        if(NULL == sFile)
+        {
+            printf("**** ERROR: readFileAlloc: Unable to open file : %s\n", filename);
+            sRc = 1;
+        }
+    }
+
+    /* Allocate memory for file contents */
+    if(0 == sRc)
+    {
+        sRc = fseek(sFile, 0, SEEK_END);
+        if(-1 == sRc)
+        {
+            printf("**** ERROR : readFileAlloc: Unable to find end of : %s\n", filename);
+            sRc = 1;
+        }
+    }
+
+    if(0 == sRc)
+    {
+        long sLen = ftell(sFile);
+        if(-1 == sLen)
+        {
+            printf("**** ERROR : readFileAlloc: Unable to determine length of %s\n", filename);
+            sRc = 1;
+        }
+        else if ((*data = malloc(sLen)) == NULL)
+        {
+            printf(
+                "**** ERROR : readFile: Out of memory for contents of file E:%lu : %s\n",
+                (size_t)sLen,
+                filename);
+            sRc = 1;
+        }
+
+        if (0 == sRc)
+        {
+            *length = (size_t)sLen;
+        }
+    }
+
+    if(0 == sRc)
+    {
+        fseek(sFile, 0, SEEK_SET);
+
+        sBytes = fread(*data, 1, *length, sFile);
+        if(sBytes != *length)
+        {
+            printf("**** ERROR: readFileAlloc: Failure reading from file : %s\n", filename);
+            sRc = 1;
+        }
+    }
+    if(NULL != sFile)
+    {
+        if(fclose(sFile))
+        {
+            printf("**** ERROR: readFileAlloc: Failure closing file : %s\n", filename);
             if(0 == sRc)
                 sRc = 1;
         }
