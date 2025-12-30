@@ -304,7 +304,8 @@ void getSigRaw(ecc_signature_t *sigraw, char *inFile)
 	return;
 }
 
-void writeHdr(void *hdr, const char *outFile, int hdr_type, int container_version, uint8_t hash_alg)
+void writeHdr(void *hdr, const char *outFile, int hdr_type, int container_version, uint8_t hash_alg,
+              int writeRaw)
 {
 	FILE *fp;
 	int r, hdr_sz;
@@ -412,6 +413,21 @@ void writeHdr(void *hdr, const char *outFile, int hdr_type, int container_versio
 		fclose(fp);
 		free(fn);
 	}
+
+	if (writeRaw) {
+		char *fn = malloc(strlen(outFile) + 5);
+
+		// Write the raw data in binary.
+		sprintf(fn, "%s.bin", outFile);
+
+		fp = fopen(fn, "w");
+		if (!fp)
+			die(EX_CANTCREAT, "Cannot create output file: %s: %s", fn,
+					strerror(errno));
+
+		fwrite(hdr, hdr_sz, 1, fp);
+		fclose(fp);
+	}
 	return;
 }
 
@@ -458,6 +474,7 @@ __attribute__((__noreturn__)) void usage (int status)
 			"     --security-version  Integer, sets the security version container field\n"
 			" -V, --container-version Container version to generate (1, 2, 3)\n"
 			" -H, --hash              hash to use for container V3: sha3-512 (default), sha512\n"
+			"     --pure              Write raw data into a file; for ML-DSA pure mode signing\n"
 			"Note:\n"
 			"- Keys A,B,C,P,Q,R must be valid p521 ECC keys. Keys may be provided as public\n"
 			"  or private key in PEM format, or public key in uncompressed raw format.\n"
@@ -504,6 +521,7 @@ static struct option const opts[] = {
 	{ "container-version",required_argument, 0,  'V' },
 	{ "fw-ecid",          required_argument, 0,  '3' },
 	{ "hash",             required_argument, 0,  'H' },
+	{ "pure",             no_argument      , 0,  '4' },
 	{ NULL, 0, NULL, 0 }
 };
 #endif
@@ -538,6 +556,7 @@ static struct {
 	char *cthdrfn;
 	uint8_t security_version;
 	uint8_t container_version;
+	int mldsa_pure_mode;
 } params;
 
 
@@ -653,6 +672,8 @@ int main(int argc, char* argv[])
 			*(argv + i) = "-V";
 		} else if (!strcmp(*(argv + i), "--hash")) {
 			*(argv + i) = "-H";
+		} else if (!strcmp(*(argv + i), "--pure")) {
+			*(argv + i) = "-4";
 		} else if (!strncmp(*(argv + i), "--", 2)) {
 			fprintf(stderr, "%s: unrecognized option \'%s\'\n", progname,
 					*(argv + i));
@@ -664,10 +685,10 @@ int main(int argc, char* argv[])
 	while (1) {
 		int opt;
 #ifdef _AIX
-		opt = getopt(argc, argv, "?hvdw:a:b:c:[:p:q:r:]:A:B:C:{:P:Q:R:}:3:L:I:o:O:f:F:l:0:1:2:3:S:V:H:");
+		opt = getopt(argc, argv, "?hvdw:a:b:c:[:p:q:r:]:A:B:C:{:P:Q:R:}:3:L:I:o:O:f:F:l:0:1:2:3:S:V:H:4");
 #else
 		opt = getopt_long(argc, argv,
-				"hvdw:a:b:c:[:p:q:r:}:A:B:C:{:P:Q:R:}:3:L:I:o:O:f:F:l:0:1:2:3:S:V:H:", opts,
+				"hvdw:a:b:c:[:p:q:r:}:A:B:C:{:P:Q:R:}:3:L:I:o:O:f:F:l:0:1:2:3:S:V:H:4", opts,
 				NULL);
 #endif
 		if (opt == -1)
@@ -807,6 +828,9 @@ int main(int argc, char* argv[])
 					die(EX_DATAERR, "Unsupported hash: %s\n", optarg);
 				break;
 			}
+		case '4':
+			params.mldsa_pure_mode = true;
+			break;
 		default:
 			usage(EX_USAGE);
 		}
@@ -871,10 +895,14 @@ int main(int argc, char* argv[])
 
 		switch (hash_alg) {
 		case HASH_ALG_SHA3_512:
+			if (params.mldsa_pure_mode)
+				die(EX_DATAERR, "%s", "ML-DSA signing in pure mode is only supported when SHA-512 is used\n");
 			sig_alg = SIG_ALG_SHA3_512_ECDSA_MLDSA;
 			break;
 		case HASH_ALG_SHA512:
 			sig_alg = SIG_ALG_SHA512_ECDSA_MLDSA;
+			if (params.mldsa_pure_mode)
+				sig_alg = SIG_ALG_SHA512_ECDSA_MLDSA_PURE_MODE;
 			break;
 		default:
 			die(EX_DATAERR, "Unsupported hash_alg id '%u'\n", hash_alg);
@@ -1005,7 +1033,8 @@ int main(int argc, char* argv[])
 
 		// Dump the Prefix header.
 		if (params.prhdrfn)
-			writeHdr((void *) ph, params.prhdrfn, PREFIX_HDR, params.container_version, HASH_ALG_SHA512);
+			writeHdr((void *) ph, params.prhdrfn, PREFIX_HDR, params.container_version, HASH_ALG_SHA512,
+			         false);
 
 		swh = (ROM_sw_header_raw*) (((uint8_t*) pd) + sizeof(ecc_signature_t) * 3
 					    + be64_to_cpu(ph->payload_size));
@@ -1061,7 +1090,8 @@ int main(int argc, char* argv[])
 
 		// Dump the Software header.
 		if (params.swhdrfn)
-			writeHdr((void *) swh, params.swhdrfn, SOFTWARE_HDR, params.container_version, HASH_ALG_SHA512);
+			writeHdr((void *) swh, params.swhdrfn, SOFTWARE_HDR, params.container_version, HASH_ALG_SHA512,
+			         false);
 
 		ssig = (ROM_sw_sig_raw*) (((uint8_t*) swh) + sizeof(ROM_sw_header_raw));
 		memset(ssig->sw_sig_p, 0, sizeof(ecc_signature_t));
@@ -1087,7 +1117,8 @@ int main(int argc, char* argv[])
 
 		// Dump the full container header.
 		if (params.cthdrfn)
-			writeHdr((void *) c, params.cthdrfn, CONTAINER_HDR, params.container_version, HASH_ALG_SHA512);
+			writeHdr((void *) c, params.cthdrfn, CONTAINER_HDR, params.container_version, HASH_ALG_SHA512,
+			         false);
 
 		// Print container stats.
 		size = (uint8_t*) ph - (uint8_t *) c;
@@ -1220,7 +1251,8 @@ int main(int argc, char* argv[])
 
 		// Dump the Prefix header.
 		if (params.prhdrfn)
-			writeHdr((void *) ph_v2, params.prhdrfn, PREFIX_HDR, params.container_version, HASH_ALG_SHA3_512);
+			writeHdr((void *) ph_v2, params.prhdrfn, PREFIX_HDR, params.container_version, HASH_ALG_SHA3_512,
+			         false);
 
 		swh_v2 = (ROM_sw_header_v2_raw*) &c_v2->swheader;
 		swh_v2->ver_alg.version = cpu_to_be16(2);
@@ -1280,7 +1312,8 @@ int main(int argc, char* argv[])
 
 		// Dump the Software header.
 		if (params.swhdrfn)
-			writeHdr((void *) swh_v2, params.swhdrfn, SOFTWARE_HDR, params.container_version, HASH_ALG_SHA3_512);
+			writeHdr((void *) swh_v2, params.swhdrfn, SOFTWARE_HDR, params.container_version, HASH_ALG_SHA3_512,
+			         false);
 
 		ssig_v2 = (ROM_sw_sig_v2_raw*)&c_v2->sw_data;
 		memset(ssig_v2->sw_sig_p, 0, sizeof(ecc_signature_t));
@@ -1302,7 +1335,8 @@ int main(int argc, char* argv[])
 
 		// Dump the full container header.
 		if (params.cthdrfn)
-			writeHdr((void *) c, params.cthdrfn, CONTAINER_HDR, params.container_version, HASH_ALG_SHA3_512);
+			writeHdr((void *) c, params.cthdrfn, CONTAINER_HDR, params.container_version, HASH_ALG_SHA3_512,
+			         false);
 
 		// Print container stats.
 		size = (uint8_t*) ph_v2 - (uint8_t *) c_v2;
@@ -1430,7 +1464,8 @@ int main(int argc, char* argv[])
 
 		// Dump the Prefix header.
 		if (params.prhdrfn)
-			writeHdr((void *) ph_v3, params.prhdrfn, PREFIX_HDR, params.container_version, hash_alg);
+			writeHdr((void *) ph_v3, params.prhdrfn, PREFIX_HDR, params.container_version, hash_alg,
+			         params.mldsa_pure_mode);
 
 		swh_v3 = (ROM_sw_header_v3_raw*) &c_v3->swheader;
 		swh_v3->ver_alg.version = cpu_to_be16(3);
@@ -1489,7 +1524,8 @@ int main(int argc, char* argv[])
 
 		// Dump the Software header.
 		if (params.swhdrfn)
-			writeHdr((void *) swh_v3, params.swhdrfn, SOFTWARE_HDR, params.container_version, hash_alg);
+			writeHdr((void *) swh_v3, params.swhdrfn, SOFTWARE_HDR, params.container_version, hash_alg,
+			         params.mldsa_pure_mode);
 
 		ssig_v3 = (ROM_sw_sig_v3_raw*)&c_v3->sw_data;
 		memset(ssig_v3->sw_sig_p, 0, sizeof(ecc_signature_t));
@@ -1511,7 +1547,8 @@ int main(int argc, char* argv[])
 
 		// Dump the full container header.
 		if (params.cthdrfn)
-			writeHdr((void *) c, params.cthdrfn, CONTAINER_HDR, params.container_version, hash_alg);
+			writeHdr((void *) c, params.cthdrfn, CONTAINER_HDR, params.container_version, hash_alg,
+			         false);
 
 		// Print container stats.
 		size = (uint8_t*) ph_v3 - (uint8_t *) c_v3;

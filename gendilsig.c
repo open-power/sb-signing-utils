@@ -205,7 +205,7 @@ int main(int argc, char** argv)
 
     if(0 == sRc)
     {
-        printf("Generating %s signature ...\n",gAlgname);
+        printf("Generating %s signature ... (signing %zu bytes)\n",gAlgname, sTBSBytes);
         int gRc = mlca_sign(sSignature,
                             sSignatureBytes, /// validate RC
                             sTBS,

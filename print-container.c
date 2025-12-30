@@ -232,6 +232,7 @@ static void display_version_raw(const ROM_version_raw v)
 	else if (v.sig_alg == SIG_ALG_SHA3_512_ECDSA_DIL) printf("  sig_alg:  %02x (%s)\n", v.sig_alg, "SHA3-512, ECDSA-521/Dilithium r2 8/7");
 	else if (v.sig_alg == SIG_ALG_SHA3_512_ECDSA_MLDSA) printf(" sig_alg:  %02x (%s)\n", v.sig_alg, "SHA3-512, ECDSA 521/ML-DSA-87");
 	else if (v.sig_alg == SIG_ALG_SHA512_ECDSA_MLDSA) printf(" sig_alg:  %02x (%s)\n", v.sig_alg, "SHA512, ECDSA 521/ML-DSA-87");
+	else if (v.sig_alg == SIG_ALG_SHA512_ECDSA_MLDSA_PURE_MODE) printf(" sig_alg:  %02x (%s)\n", v.sig_alg, "SHA512, ECDSA 521/ML-DSA-87 pure mode");
 	else printf("  sig_alg:  %02x (%s)\n", v.sig_alg, "UNKNOWN");
 }
 
@@ -761,7 +762,8 @@ static bool validate_container_v2(struct parsed_stb_container_v2 c, int fdin)
 	return status;
 }
 
-static bool validate_container_v3(struct parsed_stb_container_v3 c, int fdin, uint8_t hash_alg)
+static bool validate_container_v3(struct parsed_stb_container_v3 c, int fdin, uint8_t hash_alg,
+                                  int mldsa_pure_mode)
 {
 	static int status = true;
 
@@ -784,8 +786,13 @@ static bool validate_container_v3(struct parsed_stb_container_v3 c, int fdin, ui
 		printf("HW_key_A is NULL, skipping signature check.\n");
 	}
 	if (memcmp(&(c.c->hw_pkey_d), &ECDSA_KEY_NULL, sizeof(ecc_key_t))) {
-		status = verify_mldsa_87_signature("HW_key_D", md, SHA512_DIGEST_LENGTH,
-						    c.pd->hw_sig_d, c.c->hw_pkey_d) && status;
+		if (mldsa_pure_mode)
+			status = verify_mldsa_87_signature("HW_key_D",
+							   c.ph, sizeof(ROM_prefix_header_v3_raw),
+							   c.pd->hw_sig_d, c.c->hw_pkey_d) && status;
+		else
+			status = verify_mldsa_87_signature("HW_key_D", md, SHA512_DIGEST_LENGTH,
+							   c.pd->hw_sig_d, c.c->hw_pkey_d) && status;
 	} else if (verbose) {
 		printf("HW_key_D is NULL, skipping signature check.\n");
 	}
@@ -807,8 +814,13 @@ static bool validate_container_v3(struct parsed_stb_container_v3 c, int fdin, ui
 		printf("%s is NULL, skipping\n", "SW_key_P");
 	}
 	if (memcmp(&(c.pd->sw_pkey_s), &ECDSA_KEY_NULL, sizeof(ecc_key_t))) {
-		status = verify_mldsa_87_signature("SW_key_S", md, SHA512_DIGEST_LENGTH,
-						    c.ssig->sw_sig_s, c.pd->sw_pkey_s) && status;
+		if (mldsa_pure_mode)
+			status = verify_mldsa_87_signature("SW_key_S",
+							   c.sh, sizeof(ROM_sw_header_v3_raw),
+							   c.ssig->sw_sig_s, c.pd->sw_pkey_s) && status;
+		else
+			status = verify_mldsa_87_signature("SW_key_S", md, SHA512_DIGEST_LENGTH,
+							   c.ssig->sw_sig_s, c.pd->sw_pkey_s) && status;
 		sSwKeySize += sizeof(mldsa_key_t);
 	} else if (verbose) {
 		printf("%s is NULL, skipping\n", "SW_key_S");
@@ -1289,6 +1301,7 @@ int main(int argc, char* argv[])
 	int container_status = EX_OK;
 	int validate_status = UNATTEMPTED;
 	int verify_status = UNATTEMPTED;
+	int mldsa_pure_mode = false;
 
 	params.print_container = true;
 
@@ -1458,7 +1471,8 @@ int main(int argc, char* argv[])
 			die(EX_DATAERR, "%s", "Failed to parse container");
 
 		if ((c_v3.ph->ver_alg.hash_alg == HASH_ALG_SHA512 &&
-		     c_v3.ph->ver_alg.sig_alg  != SIG_ALG_SHA512_ECDSA_MLDSA) ||
+		     c_v3.ph->ver_alg.sig_alg  != SIG_ALG_SHA512_ECDSA_MLDSA &&
+		     c_v3.ph->ver_alg.sig_alg  != SIG_ALG_SHA512_ECDSA_MLDSA_PURE_MODE) ||
 		    (c_v3.ph->ver_alg.hash_alg == HASH_ALG_SHA3_512 &&
                      c_v3.ph->ver_alg.sig_alg  != SIG_ALG_SHA3_512_ECDSA_MLDSA))
 			die(EX_DATAERR,
@@ -1466,11 +1480,14 @@ int main(int argc, char* argv[])
 			    "hash_alg '%u' and sig_alg '%u'\n",
 			    c_v3.ph->ver_alg.hash_alg, c_v3.ph->ver_alg.sig_alg);
 
+		mldsa_pure_mode = (c_v3.ph->ver_alg.sig_alg == SIG_ALG_SHA512_ECDSA_MLDSA_PURE_MODE);
+
 		if (params.print_container)
 			display_container_v3(c_v3, c_v3.ph->ver_alg.hash_alg);
 
 		if (params.validate)
-			validate_status = validate_container_v3(c_v3, fdin, c_v3.ph->ver_alg.hash_alg);
+			validate_status = validate_container_v3(c_v3, fdin, c_v3.ph->ver_alg.hash_alg,
+			                                        mldsa_pure_mode);
 
 		if (params.verify)
 			verify_status = verify_container_v3(c_v3, params.verify,
