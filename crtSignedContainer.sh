@@ -18,6 +18,7 @@ VERIFY_ARGS=""
 DEBUG_ARGS=""
 ADDL_ARGS=""
 DIGEST_ARG="-sha512"
+GENDILSIG_ARGS=""
 
 RC=0
 
@@ -65,6 +66,7 @@ usage () {
     echo "	-V, --container-version Container version to generate (1, 2, 3)"
     echo "	-P, --password          ENV variable containing the sf_client password to pass to sf_client via 'sf_client --password"
     echo "	-H, --hash              Hash algorithm to use for container V3: sha3-512 (default), sha512"
+    echo "	    --pure              Use proper ML-DSA pure mode signing of raw data"
     echo ""
     exit 1
 }
@@ -390,12 +392,13 @@ for arg in "$@"; do
     "--fw-ecid")    set -- "$@" "-@" ;;
     "--password")   set -- "$@" "-P" ;;
     "--hash")       set -- "$@" "-H" ;;
+    "--pure")       set -- "$@" "-2" ;;
     *)              set -- "$@" "$arg"
   esac
 done
 
 # Process command-line arguments
-while getopts -- ?hdvw:a:b:c:0:p:q:r:1:f:F:o:l:i:m:k:s:L:S:P:H:V:4:5:6:7:89:@: opt
+while getopts -- ?hdvw:a:b:c:0:p:q:r:1:f:F:o:l:i:m:k:s:L:S:P:H:V:24:5:6:7:89:@: opt
 do
   case "${opt:?}" in
     v) SB_VERBOSE="TRUE";;
@@ -420,6 +423,7 @@ do
     s) SB_SCRATCH_DIR="$OPTARG";;
     L) LABEL="$OPTARG";;
     S) SECURITY_VERSION="$OPTARG";;
+    2) MLDSA_PURE_MODE="TRUE";;
     4) PROJECT_INI="$OPTARG";;
     5) SB_CONTR_HDR_OUT="$OPTARG";;
     6) SB_ARCHIVE_IN="$OPTARG";;
@@ -648,6 +652,7 @@ test "$SECURITY_VERSION" && ADDL_ARGS="$ADDL_ARGS --security-version $SECURITY_V
 test "$SB_CONTR_HDR_OUT" && CONTR_HDR_OUT_OPT="--dumpContrHdr"
 test "$CONTAINER_VERSION" && ADDL_ARGS="$ADDL_ARGS --container-version $CONTAINER_VERSION"
 test "$FW_ECID" && ADDL_ARGS="$ADDL_ARGS --fw-ecid $FW_ECID"
+test "$MLDSA_PURE_MODE" && GENDILSIG_ARGS="$GENDILSIG_ARGS --pure"
 
 test "$SB_VERBOSE" && SF_DEBUG_ARGS=" -v"
 test "$SB_DEBUG" && SF_DEBUG_ARGS="$SF_DEBUG_ARGS -d -stdout"
@@ -657,6 +662,9 @@ test $CONTAINER_VERSION == 3 && DIGEST_ARG="-sha3-512"
 [[ $CONTAINER_VERSION -eq 3 && -n "$HASHALG" ]] && {
 	DIGEST_ARG="-$HASHALG"
 	ADDL_ARGS="$ADDL_ARGS --hash $HASHALG"
+}
+[[ $CONTAINER_VERSION -eq 3 && -n "$MLDSA_PURE_MODE" ]] && {
+	ADDL_ARGS="$ADDL_ARGS --pure"
 }
 
 test "$SF_PWD_ENV" && SF_COMMON_ARGS="$SF_COMMON_ARGS --password $SF_PWD_ENV"
@@ -991,6 +999,10 @@ then
                 echo "--> $P: Found signature for HW key $(to_upper $KEY).${msg}"
                 cp -p "$SIGFOUND" "$T/"
             else
+                infile="$T/prefix_hdr.md.bin"
+                if [ -n "$MLDSA_PURE_MODE" ]; then
+                    infile="$T/prefix_hdr.bin"
+                fi
                 # If no signature found, try to generate one.
                 if [ -f "$KEYFILE" ] && is_private_key "$KEYFILE"
                 then
@@ -1001,13 +1013,13 @@ then
                 elif [ -f "$KEYFILE" ] && is_dilithium_private_key "$KEYFILE"
                 then
                     echo "--> $P: Generating signature for HW key $(to_upper $KEY)..."
-                    gendilsig -k "$KEYFILE" -i "$T/prefix_hdr.md.bin" -o "$T/$SIGFILE"
+                    gendilsig -k "$KEYFILE" -i "$infile" -o "$T/$SIGFILE" $GENDILSIG_ARGS
                     rc=$?
                     test $rc -ne 0 && die "Call to gendilsig failed with error: $rc"
                 elif [ -f "$KEYFILE" ] && is_dilithium_raw_private_key "$KEYFILE"
                 then
                     echo "--> $P: Generating signature for HW key $(to_upper $KEY)..."
-                    gendilsig -k "$KEYFILE" -i "$T/prefix_hdr.md.bin" -o "$T/$SIGFILE"
+                    gendilsig -k "$KEYFILE" -i "$infile" -o "$T/$SIGFILE" $GENDILSIG_ARGS
                     rc=$?
                     test $rc -ne 0 && die "Call to gendilsig failed with error: $rc"
                 else
@@ -1029,6 +1041,11 @@ then
         test -z "$KEYFILE" && continue
         test "$KEYFILE" == __skip && continue
 
+        infile="$T/software_hdr.md.bin"
+        if [ -n "$MLDSA_PURE_MODE" ]; then
+            infile="$T/software_hdr.bin"
+        fi
+
         # Look for a signature in the local cache dir, if found use it.
         # (but never reuse a sig for SBKT, the payload is always regenerated)
         if [ -f "$T/$SIGFILE" ] && \
@@ -1047,13 +1064,13 @@ then
         elif [ -f "$KEYFILE" ] && is_dilithium_private_key "$KEYFILE"
         then
             echo "--> $P: Generating signature for HW key $(to_upper $KEY)..."
-            gendilsig -k "$KEYFILE" -i "$T/software_hdr.md.bin" -o "$T/$SIGFILE"
+            gendilsig -k "$KEYFILE" -i "$infile" -o "$T/$SIGFILE" $GENDILSIG_ARGS
             rc=$?
             test $rc -ne 0 && die "Call to gendilsig failed with error: $rc"
         elif [ -f "$KEYFILE" ] && is_dilithium_raw_private_key "$KEYFILE"
         then
             echo "--> $P: Generating signature for HW key $(to_upper $KEY)..."
-            gendilsig -k "$KEYFILE" -i "$T/software_hdr.md.bin" -o "$T/$SIGFILE"
+            gendilsig -k "$KEYFILE" -i "$infile" -o "$T/$SIGFILE" $GENDILSIG_ARGS
             rc=$?
             test $rc -ne 0 && die "Call to gendilsig failed with error: $rc"
         else
