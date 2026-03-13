@@ -189,15 +189,22 @@ int main(int argc, char** argv)
                     gOid = MLCA_ALGORITHM_SIG_MLDSA_87_OID;
                     gOidBytes = 11;
                 }
-                else if (RawDilithiumR28x7PrivateKeySize == sPrivKeyBytes && sMLDSAPureMode)
+                else if (RawDilithiumR28x7PrivateKeySize == sPrivKeyBytes)
                 {
-                    // This should have been caught earlier, but double-check
-                    printf("**** ERROR: Pure mode is not supported with Dilithium R2 keys\n");
-                    printf("            Pure mode is only supported with ML-DSA-87 keys\n");
-                    sRc = 1;
+                    gAlgname = MLCA_ALGORITHM_SIG_DILITHIUM_87_R2;
+                    gOid = MLCA_ALGORITHM_SIG_DILITHIUM_R2_8x7_OID;
+                    gOidBytes = 13;
                 }
             }
         }
+    }
+
+    // Check for pure mode with Dilithium R2 after key conversion
+    if(0 == sRc && sMLDSAPureMode && RawDilithiumR28x7PrivateKeySize == sPrivKeyBytes)
+    {
+        printf("**** ERROR: Pure mode is not supported with Dilithium R2 keys\n");
+        printf("            Pure mode is only supported with ML-DSA-87 keys\n");
+        sRc = 1;
     }
 
     if(0 == sRc)
