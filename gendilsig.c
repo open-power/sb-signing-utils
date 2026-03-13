@@ -95,6 +95,7 @@ int main(int argc, char** argv)
 
     mlca_ctx_t     sCtx;
     MLCA_RC        sMlRc        = 0;
+    bool           sCtxInitialized = false;
     unsigned char* sTBS         = NULL;
     unsigned char* sSignature   = malloc(BUF_SIZE);
     unsigned char* sPrivKey     = malloc(BUF_SIZE);
@@ -117,6 +118,22 @@ int main(int argc, char** argv)
     if(0 == sRc)
     {
         sRc = readFile(sWirePrivKey, &sWirePrivKeyBytes, sPrivKeyFile);
+        if (sVerbose)
+            printf("DEBUG: Read key file, size=%zu bytes\n", sWirePrivKeyBytes);
+    }
+
+    // Check for Dilithium R2 key with pure mode (not supported)
+    if(0 == sRc && sMLDSAPureMode && RawDilithiumR28x7PrivateKeySize == sWirePrivKeyBytes)
+    {
+        printf("**** ERROR: Pure mode is not supported with Dilithium R2 keys\n");
+        printf("            Pure mode is only supported with ML-DSA-87 keys\n");
+        sRc = 1;
+    }
+    else if (0 == sRc && sMLDSAPureMode)
+    {
+        if (sVerbose)
+            printf("DEBUG: Pure mode enabled, key size %zu (Dil R2=%d, MLDSA=%d)\n",
+                   sWirePrivKeyBytes, RawDilithiumR28x7PrivateKeySize, RawMldsa87PrivateKeySize);
     }
 
     // Convert the key
@@ -155,7 +172,7 @@ int main(int argc, char** argv)
             unsigned int sWireType = 0;
             sRc                    = mlca_wire2key(
                 sPrivKey, sPrivKeyBytes, &sWireType, sWirePrivKey, sWirePrivKeyBytes, NULL, ~0);
-            if (0 >= sRc || 
+            if (0 >= sRc ||
                 (RawDilithiumR28x7PrivateKeySize != sRc && RawMldsa87PrivateKeySize != sRc))
             {
                 printf("**** ERROR: Unable to convert raw private key : %d\n", sRc);
@@ -172,6 +189,13 @@ int main(int argc, char** argv)
                     gOid = MLCA_ALGORITHM_SIG_MLDSA_87_OID;
                     gOidBytes = 11;
                 }
+                else if (RawDilithiumR28x7PrivateKeySize == sPrivKeyBytes && sMLDSAPureMode)
+                {
+                    // This should have been caught earlier, but double-check
+                    printf("**** ERROR: Pure mode is not supported with Dilithium R2 keys\n");
+                    printf("            Pure mode is only supported with ML-DSA-87 keys\n");
+                    sRc = 1;
+                }
             }
         }
     }
@@ -183,6 +207,10 @@ int main(int argc, char** argv)
         {
             printf("**** ERROR : Failed mlca_init : %d\n", sMlRc);
             sRc = 1;
+        }
+        else
+        {
+            sCtxInitialized = true;
         }
     }
     if(0 == sRc)
@@ -238,7 +266,10 @@ int main(int argc, char** argv)
     free(sSignature);
     free(sPrivKey);
     free(sWirePrivKey);
-    mlca_ctx_free(&sCtx);
+    if(sCtxInitialized)
+    {
+        mlca_ctx_free(&sCtx);
+    }
 
     exit(sRc);
 }

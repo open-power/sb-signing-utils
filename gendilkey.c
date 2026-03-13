@@ -175,6 +175,12 @@ int main(int argc, char** argv)
             if(sRc < 0)
             {
                 printf("**** ERROR: Failure during private key conversion : %d\n", sRc);
+                sRc = 1;
+            }
+            else if(sRc == 0)
+            {
+                printf("**** ERROR: Private key conversion returned 0 bytes\n");
+                sRc = 1;
             }
             else
             {
