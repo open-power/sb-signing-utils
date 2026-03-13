@@ -88,7 +88,8 @@ int main(int argc, char** argv)
 
     if(sPrintHelp)
     {
-        printf("\ngendilsig -i <input digest> -k <private key> -o <output filename>\n");
+        printf("\ngendilsig -i <input digest or raw data> -k <private key> -o <output filename> [--pure]\n");
+        printf("  --pure   pure mode: -i accepts raw data instead of a digest\n");
         exit(0);
     }
 

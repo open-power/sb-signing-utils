@@ -78,7 +78,7 @@ typedef struct {
 	uint8_t sig_alg;	/* (1: SHA-512/ECDSA-521) 2: SHA3-512 ECDSA-521/Dilithium r2 8/7
                                                           3: SHA3-512 ECDSA-521/ML-DSA-87
                                                           4: SHA-512 ECDSA-521/ML-DSA-87
-                                                          5: SHA-512 ECDSA-512/ML-DSA-87 pure mode */
+                                                          5: SHA-512 ECDSA-521/ML-DSA-87 pure mode */
 #define SIG_ALG_NONE                 0
 #define SIG_ALG_SHA512_ECDSA         1
 #define SIG_ALG_SHA3_512_ECDSA_DIL   2

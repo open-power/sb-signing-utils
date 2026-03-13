@@ -788,7 +788,7 @@ static bool validate_container_v3(struct parsed_stb_container_v3 c, int fdin, ui
 	if (memcmp(&(c.c->hw_pkey_d), &ECDSA_KEY_NULL, sizeof(ecc_key_t))) {
 		if (mldsa_pure_mode)
 			status = verify_mldsa_87_signature("HW_key_D",
-							   c.ph, sizeof(ROM_prefix_header_v3_raw),
+							   (const unsigned char *)c.ph, sizeof(ROM_prefix_header_v3_raw),
 							   c.pd->hw_sig_d, c.c->hw_pkey_d) && status;
 		else
 			status = verify_mldsa_87_signature("HW_key_D", md, SHA512_DIGEST_LENGTH,
@@ -816,7 +816,7 @@ static bool validate_container_v3(struct parsed_stb_container_v3 c, int fdin, ui
 	if (memcmp(&(c.pd->sw_pkey_s), &ECDSA_KEY_NULL, sizeof(ecc_key_t))) {
 		if (mldsa_pure_mode)
 			status = verify_mldsa_87_signature("SW_key_S",
-							   c.sh, sizeof(ROM_sw_header_v3_raw),
+							   (const unsigned char *)c.sh, sizeof(ROM_sw_header_v3_raw),
 							   c.ssig->sw_sig_s, c.pd->sw_pkey_s) && status;
 		else
 			status = verify_mldsa_87_signature("SW_key_S", md, SHA512_DIGEST_LENGTH,

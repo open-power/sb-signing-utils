@@ -427,6 +427,7 @@ void writeHdr(void *hdr, const char *outFile, int hdr_type, int container_versio
 
 		fwrite(hdr, hdr_sz, 1, fp);
 		fclose(fp);
+		free(fn);
 	}
 	return;
 }
